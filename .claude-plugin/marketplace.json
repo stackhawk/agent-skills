@@ -1,0 +1,20 @@
+{
+  "name": "stackhawk",
+  "owner": {
+    "name": "StackHawk",
+    "email": "support@stackhawk.com",
+    "url": "https://www.stackhawk.com"
+  },
+  "description": "Official StackHawk plugins for Claude Code. Dynamic application and API security testing (DAST) powered by HawkScan.",
+  "homepage": "https://github.com/stackhawk/claude-plugins",
+  "plugins": [
+    {
+      "name": "hawkscan",
+      "description": "Configure, run, and interpret HawkScan DAST results inside Claude Code. Generates stackhawk.yml configs, runs scans via CLI or Docker, and transforms security findings into prioritized fix tasks for your coding agent.",
+      "category": "security",
+      "source": "./plugins/hawkscan",
+      "homepage": "https://github.com/stackhawk/claude-plugins/tree/main/plugins/hawkscan",
+      "version": "1.0.0"
+    }
+  ]
+}
