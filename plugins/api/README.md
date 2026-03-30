@@ -24,7 +24,7 @@ Question → Authenticate → Query API → Present Results → Suggest Next Act
 /plugin marketplace add stackhawk/claude-plugins
 
 # Install the StackHawk API plugin
-/plugin install stackhawk-api@stackhawk
+/plugin install api@stackhawk
 ```
 
 ## Usage

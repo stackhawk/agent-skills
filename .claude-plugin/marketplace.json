@@ -17,11 +17,11 @@
       "version": "1.0.0"
     },
     {
-      "name": "stackhawk-api",
+      "name": "api",
       "description": "Query the StackHawk platform API for security posture reporting, findings analysis, and app management.",
       "category": "security",
-      "source": "./plugins/stackhawk-api",
-      "homepage": "https://github.com/stackhawk/claude-plugins/tree/main/plugins/stackhawk-api",
+      "source": "./plugins/api",
+      "homepage": "https://github.com/stackhawk/claude-plugins/tree/main/plugins/api",
       "version": "1.0.0"
     }
   ]

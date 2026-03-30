@@ -1,5 +1,5 @@
 ---
-name: stackhawk-api
+name: api
 description: >
   Use this skill when a user or agent needs to query the StackHawk platform for
   security reporting, findings analysis, or app management. Triggers include:
