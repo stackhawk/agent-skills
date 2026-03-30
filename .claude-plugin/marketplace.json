@@ -15,6 +15,14 @@
       "source": "./plugins/hawkscan",
       "homepage": "https://github.com/stackhawk/claude-plugins/tree/main/plugins/hawkscan",
       "version": "1.0.0"
+    },
+    {
+      "name": "stackhawk-api",
+      "description": "Query the StackHawk platform API for security posture reporting, findings analysis, and app management.",
+      "category": "security",
+      "source": "./plugins/stackhawk-api",
+      "homepage": "https://github.com/stackhawk/claude-plugins/tree/main/plugins/stackhawk-api",
+      "version": "1.0.0"
     }
   ]
 }
