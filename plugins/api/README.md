@@ -1,6 +1,6 @@
-# StackHawk API Plugin for Claude Code
+# StackHawk API Skill for Claude
 
-Security posture reporting and findings analysis powered by the [StackHawk platform API](https://apidocs.stackhawk.com), embedded directly into your Claude Code agentic workflow.
+Security posture reporting and findings analysis powered by the [StackHawk platform API](https://apidocs.stackhawk.com), embedded directly into your Claude agentic workflow.
 
 ## What This Does
 
@@ -23,7 +23,7 @@ Question → Authenticate → Query API → Present Results → Suggest Next Act
 # Add the StackHawk marketplace
 /plugin marketplace add stackhawk/claude-skills
 
-# Install the StackHawk API plugin
+# Install the StackHawk API skill
 /plugin install api@stackhawk
 ```
 

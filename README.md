@@ -1,8 +1,10 @@
-# StackHawk Skills for Claude Code
+# StackHawk Skills for Claude
 
 **Your AI coding agent is also your security team.**
 
-StackHawk skills teach Claude Code to find security vulnerabilities as you build, report your security posture across applications, and help you fix what it finds — all without leaving your editor. No context switching, no tickets to another team. Your agent scans, reports, and remediates.
+StackHawk skills teach Claude to find security vulnerabilities as you build, report your security posture across applications, and help you fix what it finds — all without leaving your workflow. No context switching, no tickets to another team. Your agent scans, reports, and remediates.
+
+Works with [Claude Code](https://docs.anthropic.com/en/docs/claude-code), the Claude desktop app, and anywhere Claude skills are supported.
 
 ---
 
@@ -43,7 +45,7 @@ export HAWK_API_KEY=hawk.xxxxxxxxxxxx.xxxxxxxxxxxx
 **2. Install the skills**
 
 ```bash
-# Add the StackHawk marketplace to Claude Code
+# Add the StackHawk marketplace
 /plugin marketplace add stackhawk/claude-skills
 
 # Install both skills (or just the one you need)
@@ -99,7 +101,7 @@ export HAWK_API_KEY=hawk.xxxxxxxxxxxx.xxxxxxxxxxxx
 
 ## How It Works
 
-These skills are [Claude Code plugins](https://docs.anthropic.com/en/docs/claude-code) — they teach Claude domain-specific knowledge through structured markdown files. No runtime dependencies are installed. No code runs in the background.
+These are [Claude skills](https://docs.anthropic.com/en/docs/claude-code) — they teach Claude domain-specific knowledge through structured markdown files. No runtime dependencies are installed. No code runs in the background.
 
 - **Skill files** define step-by-step workflows with decision logic (assess → configure → execute → parse → act)
 - **Reference files** provide endpoint catalogs, config patterns, and pre-built recipes loaded on demand

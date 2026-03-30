@@ -5,7 +5,7 @@
     "email": "support@stackhawk.com",
     "url": "https://www.stackhawk.com"
   },
-  "description": "Official StackHawk plugins for Claude Code. Dynamic application and API security testing (DAST) powered by HawkScan.",
+  "description": "Official StackHawk skills for Claude. Dynamic application and API security testing (DAST) powered by HawkScan.",
   "homepage": "https://github.com/stackhawk/claude-skills",
   "plugins": [
     {

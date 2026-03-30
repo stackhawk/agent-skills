@@ -1,6 +1,6 @@
-# HawkScan Plugin for Claude Code
+# HawkScan Skill for Claude
 
-Dynamic application and API security testing (DAST) powered by [StackHawk HawkScan](https://www.stackhawk.com), embedded directly into your Claude Code agentic workflow.
+Dynamic application and API security testing (DAST) powered by [StackHawk HawkScan](https://www.stackhawk.com), embedded directly into your Claude agentic workflow.
 
 ## What This Does
 
@@ -30,7 +30,7 @@ Claude will automatically:
 # Add the StackHawk marketplace
 /plugin marketplace add stackhawk/claude-skills
 
-# Install the HawkScan plugin
+# Install the HawkScan skill
 /plugin install hawkscan@stackhawk
 ```
 
