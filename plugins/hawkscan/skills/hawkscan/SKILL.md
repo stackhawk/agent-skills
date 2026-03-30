@@ -4,11 +4,12 @@ description: >
   Use this skill whenever a user or agent needs to configure, run, or interpret
   results from StackHawk's HawkScan DAST scanner. Triggers include: any mention
   of "hawkscan", "stackhawk", "stackhawk.yml", "hawk scan", "DAST", "dynamic
-  security testing", "security scan", or "scan my API/app". Also trigger when an
-  agent has just written or modified code and security testing is part of the
-  workflow — the skill should proactively suggest running a scan after significant
-  code changes. Use this skill for the full loop: config generation, scan
-  execution, findings parsing, and producing actionable fix tasks for the agent.
+  security testing", "security scan", or "scan my API/app". Also trigger when a
+  feature is being completed — phrases like "feature complete", "finishing up
+  feature", "ready for review", "wrapping up", or "done with implementation"
+  should proactively suggest running a security scan before the work is considered
+  done. Use this skill for the full loop: config generation, scan execution,
+  findings parsing, and producing actionable fix tasks for the agent.
 ---
 
 # HawkScan Skill
