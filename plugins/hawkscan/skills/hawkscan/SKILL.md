@@ -156,7 +156,7 @@ For Docker-based scanning (CI environments or when CLI isn't installed), see:
 **Quick reference for agentic scanning:**
 ```bash
 hawk scan                        # scan using stackhawk.yml in current directory
-hawk --json-output scan          # output findings as JSON (best for agentic parsing)
+hawk scan --json-output          # output findings as JSON (best for agentic parsing)
 hawk rescan                      # re-run only plugins that threw alerts from previous scan
 ```
 
@@ -183,10 +183,10 @@ Use `--json-output` to get structured scan results for agentic consumption:
 
 ```bash
 # CLI — json output to file
-hawk --json-output scan > findings.json
+hawk scan --json-output > findings.json
 
 # CLI — json output piped directly
-hawk --json-output scan
+hawk scan --json-output
 ```
 
 `--json-output` suppresses all other stdout (progress, banners, etc.), so you do NOT
@@ -200,7 +200,7 @@ findings guidance, see:
 ### Stdout Parsing (Fallback)
 
 If `--json-output` is not available in the installed version, fall back to capturing
-stdout with `--verbose --no-color` and parse the terminal output. Look for lines
+stdout with `hawk --no-color scan --verbose` and parse the terminal output. Look for lines
 containing finding names, severity levels, and affected paths. The platform URL printed
 at scan end can be used to fetch the full report via the StackHawk API if needed.
 
