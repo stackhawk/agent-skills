@@ -21,7 +21,7 @@ Question → Authenticate → Query API → Present Results → Suggest Next Act
 
 ```bash
 # Add the StackHawk marketplace
-/plugin marketplace add stackhawk/claude-plugins
+/plugin marketplace add stackhawk/claude-skills
 
 # Install the StackHawk API plugin
 /plugin install api@stackhawk

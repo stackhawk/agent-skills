@@ -1,15 +1,16 @@
-# StackHawk Claude Code Plugins
+# StackHawk Claude Code Skills
 
-Official [StackHawk](https://www.stackhawk.com) plugins for [Claude Code](https://code.claude.com).
+Official [StackHawk](https://www.stackhawk.com) skills for [Claude Code](https://code.claude.com).
 
 ## Installation
 
 ```bash
 # Add the StackHawk marketplace to Claude Code
-/plugin marketplace add stackhawk/claude-plugins
+/plugin marketplace add stackhawk/claude-skills
 
 # Install individual plugins
 /plugin install hawkscan@stackhawk
+/plugin install api@stackhawk
 ```
 
 ## Plugins
@@ -17,6 +18,7 @@ Official [StackHawk](https://www.stackhawk.com) plugins for [Claude Code](https:
 | Plugin | Description |
 |--------|-------------|
 | [hawkscan](./plugins/hawkscan/) | Configure, run, and interpret HawkScan DAST scans in your agentic coding workflow |
+| [api](./plugins/api/) | Query the StackHawk platform API for security posture reporting and findings analysis |
 
 ## Contributing
 

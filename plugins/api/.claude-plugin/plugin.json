@@ -8,7 +8,7 @@
     "url": "https://www.stackhawk.com"
   },
   "homepage": "https://docs.stackhawk.com",
-  "repository": "https://github.com/stackhawk/claude-plugins",
+  "repository": "https://github.com/stackhawk/claude-skills",
   "license": "MIT",
   "keywords": ["security", "appsec", "stackhawk", "api", "reporting", "findings", "posture", "triage"]
 }
