@@ -59,8 +59,8 @@ need human-readable log output instead, use `hawk --no-color scan --verbose`.
 **Note:** `--json-output` and `--trace` cannot be used together — the CLI will error
 with exit code 1 if both are set.
 
-**Note:** `--json-output` is available starting in HawkScan v5.4.0. If not available
-in your version, fall back to `hawk --no-color scan --verbose` and parse stdout.
+**Note:** `--json-output` requires at least HawkScan Dev Release v5.3.41. If not
+available in your version, fall back to `hawk --no-color scan --verbose` and parse stdout.
 
 ---
 

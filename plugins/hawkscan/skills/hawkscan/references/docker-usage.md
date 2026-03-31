@@ -44,6 +44,8 @@ docker run --rm \
 
 ## JSON Output (Agentic Use)
 
+**Note:** `--json-output` requires at least HawkScan Dev Release v5.3.41.
+
 ```bash
 docker run --rm \
   -v $(pwd):/hawk:rw \

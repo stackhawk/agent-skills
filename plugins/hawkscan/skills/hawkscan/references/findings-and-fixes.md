@@ -6,6 +6,8 @@ When running with `--json-output`, HawkScan produces a single pretty-printed JSO
 object to stdout. All other output (progress bars, banners, status messages) is
 suppressed.
 
+**Important:** `--json-output` requires at least HawkScan Dev Release v5.3.41.
+
 **Important:** `--json-output` cannot be used with `--trace` — the CLI will error
 with exit code 1 if both are set.
 
