@@ -1,0 +1,230 @@
+---
+description: >
+  Use when querying the StackHawk platform for security reporting, findings analysis, or app management. Triggers include "stackhawk api", "security posture", "findings report", "show me findings", "untriaged findings", "which apps", "scan history", "security dashboard", "triage", "what needs attention". Do NOT use for scanning — use the stackhawk-hawkscan rule for "scan my app", "hawkscan", "stackhawk.yml", "DAST".
+globs:
+alwaysApply: false
+---
+
+# StackHawk API Skill
+
+This skill enables Claude to act as a security reporting agent against the StackHawk
+platform REST API. The core workflow is:
+
+**Question → Authenticate → Query API → Present Results → Suggest Next Actions**
+
+---
+
+## Step 1: Assess Context
+
+Before making any API calls, gather what you know:
+
+1. **Is `HAWK_API_KEY` set?** Required for all calls. If missing:
+   - Direct the user to **app.stackhawk.com → Settings → API Keys**
+   - Instruct them to: `export HAWK_API_KEY=hawk.xxxxxxxxxxxx`
+   - Do not proceed until this is set.
+
+2. **Is `orgId` known?** Required for most endpoints. If unknown:
+   - Authenticate (Step 2), then extract it from the login response:
+     `jq -r '.organization.id'` on the `/auth/login` response body
+   - Set it: `export ORG_ID=<uuid>`
+
+3. **Route based on user intent:**
+
+   | User says... | Go to... |
+   |---|---|
+   | "What's my security posture?" or "dashboard" | Step 3 (org summary) |
+   | "Tell me about [app]'s findings" or "what needs attention" | Step 4 (app deep dive) |
+   | "What apps haven't been scanned recently?" | Step 3 with stale-app focus |
+   | "What changed since last week?" or "what's new" | Step 4 with diff recipe |
+   | "Show me untriaged findings" | Step 3, then drill into Step 4 for flagged apps |
+
+---
+
+## Step 2: Authenticate
+
+### Single call — inline one-liner
+
+For one-off queries, get a token inline and proceed:
+
+```bash
+HAWK_TOKEN=$(curl -s -H "X-ApiKey: ${HAWK_API_KEY}" \
+  https://api.stackhawk.com/api/v1/auth/login | jq -r '.token')
+```
+
+Verify the token was captured before making further calls:
+```bash
+[[ -z "${HAWK_TOKEN}" || "${HAWK_TOKEN}" == "null" ]] && \
+  echo "ERROR: auth failed — check HAWK_API_KEY" && exit 1
+```
+
+### Multi-call sessions — use the helper script
+
+For reporting workflows that make many API calls, use the reusable helper. It handles
+token caching, 401 auto-retry, and full pagination:
+
+→ `references/api-auth.md`
+
+### Key auth rules
+
+- JWT expires in **30 minutes** — detect `401` responses and re-authenticate
+- The helper script handles this automatically; for manual calls, re-run the login
+  one-liner and retry the failed request
+- `orgId` is in the login response under `.organization.id` — capture it on first auth
+
+---
+
+## Step 3: Org Posture Summary
+
+**Goal:** Give the user a bird's-eye view of security health across all apps and environments.
+
+### Primary endpoint
+
+```
+GET /api/v2/org/{orgId}/envs
+```
+
+Use this endpoint because it returns **untriaged finding counts baked in** per environment —
+no need to fetch individual scans just to get severity totals.
+
+```bash
+hawk_api GET "/api/v2/org/${ORG_ID}/envs?pageSize=100"
+```
+
+### Present as a table
+
+Format the response as:
+
+| App | Environment | High | Medium | Low | Last Scan |
+|-----|-------------|------|--------|-----|-----------|
+| My API | Production | 3 | 7 | 12 | 2024-01-15 |
+| Auth Service | Staging | 0 | 2 | 4 | 2024-01-10 |
+
+Fields: `applicationId` (resolve to app name via apps endpoint), `environmentName`,
+`lastScanHighUntriaged`, `lastScanMediumUntriaged`, `lastScanLowUntriaged`,
+`lastScanTimestamp`.
+
+### Flag priority items
+
+- **Stale apps**: `lastScanTimestamp` older than 30 days — flag as "No recent scan"
+- **High severity hotspots**: environments with `lastScanHighUntriaged > 0`, sorted descending
+- **Incomplete apps**: `lastScanStatus` not `COMPLETED` — may indicate config issues
+
+### After presenting the table
+
+Offer to drill down on any flagged app:
+- "App X has 3 unaddressed High findings — shall I pull the full finding details?"
+- → Step 4 for any app the user selects
+
+Full recipe with jq transforms:
+→ `references/reporting-recipes.md`
+
+Full endpoint field reference:
+→ `references/api-endpoints.md` (Section 3: Environments)
+
+---
+
+## Step 4: App Deep Dive
+
+**Goal:** Get specific finding details for a single app — what was found, where, and what it means.
+
+### The drill-down chain (3 API calls, in order)
+
+You cannot get findings in a single call. Follow this chain:
+
+```
+Step 1: List scans     GET /api/v1/scan/{orgId}          → extract scanId
+Step 2: List alerts    GET /api/v1/scan/{scanId}/alerts   → extract pluginId
+Step 3: List findings  GET /api/v1/scan/{scanId}/alert/{pluginId}
+```
+
+**Step 1 — Get the most recent scan for the target app:**
+```bash
+# List scans, filter to the target appId, take the most recent
+hawk_api GET "/api/v1/scan/${ORG_ID}?pageSize=50" | \
+  jq --arg app "${APP_ID}" \
+    '[.applicationScanResults[] | select(.applicationId == $app)] | first'
+```
+Extract: `scanId`, `highAlertCount`, `mediumAlertCount`, `lowAlertCount`, `startedTimestamp`
+
+**Step 2 — Get alerts for that scan:**
+```bash
+hawk_api GET "/api/v1/scan/${SCAN_ID}/alerts"
+```
+Extract per alert: `pluginId`, `alertName`, `severity`, `affectedUriCount`, `cweId`
+
+**Step 3 — Get affected paths per alert:**
+```bash
+hawk_api GET "/api/v1/scan/${SCAN_ID}/alert/${PLUGIN_ID}"
+```
+Extract per finding: `uri`, `method`, `triageStatus`, `parameter`
+
+### Present findings
+
+Show a structured summary:
+- **Scan summary**: date, duration, total alerts by severity
+- **Alert breakdown**: alert name, severity, CWE, number of affected paths
+- **Finding details**: for High severity — affected URI, HTTP method, parameter, triage status
+
+Link to the scan on the platform:
+```
+https://app.stackhawk.com/scans/{scanId}
+```
+
+### "What changed?" — diff recipe
+
+When the user asks what's new or what changed since last scan, compare two scans:
+- Fetch the two most recent `scanId`s for the app from Step 1
+- Run the alerts chain for each
+- Diff the `pluginId` sets — new alerts are those in scan N but not scan N-1
+
+Full recipe:
+→ `references/reporting-recipes.md`
+
+Full endpoint field reference:
+→ `references/api-endpoints.md` (Section 4: Scan Results Drill-Down Chain)
+
+---
+
+## Step 5: Present Results and Suggest Next Actions
+
+### Formatting
+
+- Use **tables** for multi-app/multi-finding summaries
+- Use **structured lists** for single-app deep dives
+- Include the platform link (`app.stackhawk.com/scans/{scanId}`) whenever referencing a specific scan
+- Show triage status (`New`, `Accepted`, `False Positive`, `Reopened`) alongside each finding
+
+### Next action suggestions
+
+Base suggestions on what the data shows:
+
+| Finding | Suggested action |
+|---|---|
+| High severity findings present | Recommend immediate remediation; offer to hand finding details to → hawkscan skill for a re-scan to verify fixes |
+| Stale apps (no scan > 30 days) | Recommend running a fresh scan → hawkscan skill |
+| Clean results across all envs | Note that low path count may mean the spider needs tuning → hawkscan skill, config-patterns reference |
+| Untriaged findings (`triageStatus: New`) | Direct to platform for triage: **app.stackhawk.com** — triage write operations are out of scope for this skill |
+| `ENV_INCOMPLETE` app status | Direct to platform to complete environment configuration |
+
+### Platform UI vs API data
+
+**Use API data (this skill) when:**
+- Generating a bulk posture report across many apps
+- Comparing findings across scans programmatically
+- Building a CI/CD gate decision from scan output
+
+**Direct to platform UI when:**
+- Triaging individual findings (accept, mark false positive)
+- Managing API keys, team membership, or app configuration
+- Viewing request/response evidence for a specific finding
+
+---
+
+## Common Mistakes to Avoid
+
+- **Don't hardcode API keys in scripts** — always use `${HAWK_API_KEY}`. Never inline the key value.
+- **Don't skip the drill-down chain** — there is no single endpoint that returns full finding details. Scans → Alerts → Findings is mandatory.
+- **Don't confuse `orgId` with `appId`** — `/api/v1/scan/{orgId}` takes the org UUID, not the app UUID. Mixing these returns empty results, not an error.
+- **JWT expires in 30 minutes** — if you get a `401` mid-session, re-authenticate and replay the failed request. The helper script handles this automatically.
+- **Don't attempt triage via API** — triage write operations (accept, false positive) are not in scope for this skill. Direct users to the platform UI at app.stackhawk.com.
+- **Don't report "no findings" without checking path count** — an empty findings list may mean the spider didn't crawl enough routes. Low path count on a scan is a coverage gap, not a clean bill of health. Recommend spider tuning via → hawkscan skill.

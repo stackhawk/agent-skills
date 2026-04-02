@@ -1,0 +1,93 @@
+---
+description: >
+  HawkScan installation: Homebrew (macOS), package installers (all platforms), prerequisites (Java 17+), verification (hawk --version).
+globs:
+alwaysApply: false
+---
+# HawkScan Installation Reference
+
+## CLI Installation
+
+### Homebrew (macOS — Recommended)
+
+```bash
+brew tap stackhawk/cli
+brew install hawk
+```
+
+### Package Installers (All Platforms)
+
+Download platform-specific installers from https://docs.stackhawk.com/downloads/:
+- **macOS:** `.pkg` installer or `.zip` (includes bundled Java)
+- **Windows:** Windows installer (includes bundled Java)
+- **Linux:** `.zip` package (may require Java 17+ installed separately)
+
+### Prerequisites
+
+- **Java 17 or higher** is required
+- macOS and Windows installers bundle Java automatically
+- Linux users may need to install Java separately
+
+### Verify Installation
+
+```bash
+hawk --version
+```
+
+---
+
+## Post-Install Setup
+
+### Authenticate with `hawk init`
+
+```bash
+hawk init
+```
+
+When prompted, enter your StackHawk API key (format: `hawk.xxxxxxxxxx.xxxxxxxxxx`).
+This saves the key to `~/.hawk/hawk.properties`.
+
+**To get an API key:**
+1. Log into https://app.stackhawk.com
+2. Go to Settings → API Keys
+3. Create or copy an existing key (keys only display once on creation)
+
+### Set `HAWK_API_KEY` Environment Variable (Alternative)
+
+Instead of `hawk init`, you can set the key as an env var:
+
+**Bash/Zsh:**
+```bash
+mkdir -p ~/.hawk
+echo 'export HAWK_API_KEY=hawk.xxxxxxxxxx.xxxxxxxxxx' > ~/.hawk/hawk.rc
+source ~/.hawk/hawk.rc
+```
+
+**PowerShell:**
+```powershell
+mkdir "$HOME\.hawk"
+echo '$env:HAWK_API_KEY="hawk.xxxxxxxxxx.xxxxxxxxxx"' > $HOME\.hawk\hawk.ps1
+. $HOME\.hawk\hawk.ps1
+```
+
+Either method works — `hawk init` writes to `~/.hawk/hawk.properties`, while the env
+var approach uses shell config. The CLI resolves keys in this order:
+`--api-key` flag → `HAWK_API_KEY` env var → `~/.hawk/hawk.properties`
+
+---
+
+## Docker (Alternative to CLI)
+
+If you prefer Docker over the CLI:
+
+```bash
+docker pull stackhawk/hawkscan:latest
+```
+
+No Java or CLI installation needed. See `references/docker-usage.md` for run commands.
+
+**Trade-offs:**
+- Docker requires `--network host` (Linux) or `host.docker.internal` (Mac/Windows) to
+  reach apps on localhost
+- CLI is faster for local iteration and has simpler localhost networking
+- Docker is better for CI environments that already have Docker available
