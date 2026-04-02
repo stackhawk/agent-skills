@@ -1,10 +1,10 @@
-# StackHawk Skills for Claude
+# StackHawk Agent Skills
 
 **Your AI coding agent is also your security team.**
 
-StackHawk skills teach Claude to find security vulnerabilities as you build, report your security posture across applications, and help you fix what it finds — all without leaving your workflow. No context switching, no tickets to another team. Your agent scans, reports, and remediates.
+StackHawk agent skills teach your AI coding agent to find security vulnerabilities as you build, report your security posture across applications, and help you fix what it finds — all without leaving your workflow. No context switching, no tickets to another team. Your agent scans, reports, and remediates.
 
-Works with [Claude Code](https://docs.anthropic.com/en/docs/claude-code), the Claude desktop app, and anywhere Claude skills are supported.
+Works with **Claude Code**, **Codex**, **Gemini CLI**, **GitHub Copilot**, **Cursor**, and anywhere the [Agent Skills standard](https://agentskills.io) is supported.
 
 ---
 
@@ -12,7 +12,7 @@ Works with [Claude Code](https://docs.anthropic.com/en/docs/claude-code), the Cl
 
 ### [hawkscan](./plugins/hawkscan/) — Scan & Fix
 
-Embeds [HawkScan](https://www.stackhawk.com) DAST scanning directly into your coding loop. Claude configures the scanner, runs it against your live app, parses the findings, and generates prioritized fix tasks — then re-scans to confirm the fix worked.
+Embeds [HawkScan](https://www.stackhawk.com) DAST scanning directly into your coding loop. Your agent configures the scanner, runs it against your live app, parses the findings, and generates prioritized fix tasks — then re-scans to confirm the fix worked.
 
 ```
 Code changes → Configure HawkScan → Run scan → Parse findings → Fix → Re-scan
@@ -22,7 +22,7 @@ Code changes → Configure HawkScan → Run scan → Parse findings → Fix → 
 
 ### [api](./plugins/api/) — Report & Analyze
 
-Queries the StackHawk platform API to give you a picture of your security posture across all your applications. Claude authenticates, pulls findings data, and presents actionable summaries.
+Queries the StackHawk platform API to give you a picture of your security posture across all your applications. Your agent authenticates, pulls findings data, and presents actionable summaries.
 
 ```
 Question → Authenticate → Query API → Present Results → Suggest Next Actions
@@ -34,7 +34,7 @@ Question → Authenticate → Query API → Present Results → Suggest Next Act
 
 ## Quick Start
 
-**1. Get your API key**
+### 1. Get your API key
 
 Sign up or log in at [app.stackhawk.com](https://app.stackhawk.com), go to **Settings → API Keys**, and create a key.
 
@@ -42,18 +42,51 @@ Sign up or log in at [app.stackhawk.com](https://app.stackhawk.com), go to **Set
 export HAWK_API_KEY=hawk.xxxxxxxxxxxx.xxxxxxxxxxxx
 ```
 
-**2. Install the skills**
+### 2. Install for your platform
 
-```bash
-# Add the StackHawk marketplace
-/plugin marketplace add stackhawk/claude-skills
+#### Claude Code
 
-# Install both skills (or just the one you need)
+```
+/plugin marketplace add stackhawk/agent-skills
 /plugin install hawkscan@stackhawk
 /plugin install api@stackhawk
 ```
 
-**3. Try it**
+#### Codex
+
+```
+/plugin marketplace add stackhawk/agent-skills
+/plugin install hawkscan@stackhawk
+/plugin install api@stackhawk
+```
+
+#### Gemini CLI
+
+```bash
+gemini extensions install https://github.com/stackhawk/agent-skills
+```
+
+#### GitHub Copilot
+
+Skills are auto-discovered. Add to your project:
+
+```bash
+# Option A: Clone into .agents/skills/
+mkdir -p .agents/skills
+cp -r path/to/stackhawk-agent-skills/skills/* .agents/skills/
+
+# Option B: If you have the Claude plugin installed, Copilot reads .claude/skills/ automatically
+```
+
+#### Cursor
+
+Copy the generated Cursor rules into your project:
+
+```bash
+cp -r path/to/stackhawk-agent-skills/cursor/.cursor/rules/* .cursor/rules/
+```
+
+### 3. Try it
 
 ```
 > "Scan my API for security vulnerabilities"
@@ -67,7 +100,7 @@ export HAWK_API_KEY=hawk.xxxxxxxxxxxx.xxxxxxxxxxxx
 
 ### Scanning Workflows (hawkscan skill)
 
-| Say this... | Claude will... |
+| Say this... | Your agent will... |
 |-------------|---------------|
 | "Set up HawkScan for my Express API" | Generate a `stackhawk.yml` config based on your stack |
 | "Scan my app for security issues" | Validate config, run `hawk scan`, parse findings |
@@ -78,7 +111,7 @@ export HAWK_API_KEY=hawk.xxxxxxxxxxxx.xxxxxxxxxxxx
 
 ### Reporting Workflows (api skill)
 
-| Say this... | Claude will... |
+| Say this... | Your agent will... |
 |-------------|---------------|
 | "What's my security posture?" | Pull untriaged findings across all apps, present as a summary table |
 | "Show me findings for payment-api" | Drill down: scan → alerts → findings with severity, CWE, paths |
@@ -101,24 +134,38 @@ export HAWK_API_KEY=hawk.xxxxxxxxxxxx.xxxxxxxxxxxx
 
 ## How It Works
 
-These are [Claude skills](https://docs.anthropic.com/en/docs/claude-code) — they teach Claude domain-specific knowledge through structured markdown files. No runtime dependencies are installed. No code runs in the background.
+These are [Agent Skills](https://agentskills.io) — they teach AI coding agents domain-specific knowledge through structured markdown files. No runtime dependencies are installed. No code runs in the background.
 
 - **Skill files** define step-by-step workflows with decision logic (assess → configure → execute → parse → act)
 - **Reference files** provide endpoint catalogs, config patterns, and pre-built recipes loaded on demand
 - The hawkscan skill calls the `hawk` CLI or Docker to run scans
 - The api skill calls the StackHawk REST API via `curl` and `jq`
 
+### Repository Structure
+
 ```
 plugins/
-├── hawkscan/                    stackhawk:hawkscan
+├── hawkscan/                    HawkScan DAST scanning
 │   └── skills/hawkscan/
 │       ├── SKILL.md             5-step scan workflow
 │       └── references/          CLI flags, config patterns, findings schema, Docker, install
-└── api/                         stackhawk:api
+└── api/                         StackHawk API reporting
     └── skills/api/
         ├── SKILL.md             5-step reporting workflow
         └── references/          Auth flow, endpoint catalog, reporting recipes
+skills/                          Symlinks for Gemini/Copilot discovery
+cursor/                          Generated Cursor .mdc rules
 ```
+
+### Platform Support
+
+| Platform | Install Method | Format |
+|----------|---------------|--------|
+| Claude Code | `/plugin install` | Agent Skills standard (SKILL.md) |
+| Codex | `/plugin install` | Agent Skills standard (SKILL.md) |
+| Gemini CLI | `gemini extensions install` | Agent Skills standard (SKILL.md) |
+| GitHub Copilot | Copy to `.agents/skills/` | Agent Skills standard (SKILL.md) |
+| Cursor | Copy `.mdc` rules | Generated from canonical source |
 
 ---
 
@@ -156,6 +203,7 @@ The hawkscan skill enforces `${HAWK_API_KEY}` interpolation in all generated con
 - [StackHawk CLI Reference](https://docs.stackhawk.com/stackhawk-cli/)
 - [StackHawk API Reference](https://apidocs.stackhawk.com)
 - [Auth Configuration Examples](https://github.com/kaakaww/hawkscan-examples)
+- [Agent Skills Specification](https://agentskills.io)
 - [StackHawk Platform](https://app.stackhawk.com)
 - [StackHawk Support](https://support.stackhawk.com)
 
@@ -163,8 +211,10 @@ The hawkscan skill enforces `${HAWK_API_KEY}` interpolation in all generated con
 
 ## Contributing
 
-This repository is maintained by the StackHawk team. To report issues or suggest improvements, [open a GitHub issue](https://github.com/stackhawk/claude-skills/issues) or contact [support@stackhawk.com](mailto:support@stackhawk.com).
+This repository is maintained by the StackHawk team. To report issues or suggest improvements, [open a GitHub issue](https://github.com/stackhawk/agent-skills/issues) or contact [support@stackhawk.com](mailto:support@stackhawk.com).
 
 ## License
 
 MIT © [StackHawk](https://www.stackhawk.com)
+
+---
