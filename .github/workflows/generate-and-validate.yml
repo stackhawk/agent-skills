@@ -1,0 +1,92 @@
+name: Generate and Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate SKILL.md frontmatter
+        run: |
+          errors=0
+          for skill_file in plugins/*/skills/*/SKILL.md; do
+            if ! head -20 "$skill_file" | grep -q '^name:'; then
+              echo "ERROR: Missing 'name' in frontmatter: $skill_file"
+              errors=$((errors + 1))
+            fi
+            if ! head -20 "$skill_file" | grep -q '^description:'; then
+              echo "ERROR: Missing 'description' in frontmatter: $skill_file"
+              errors=$((errors + 1))
+            fi
+            echo "OK: $skill_file"
+          done
+          if [ $errors -gt 0 ]; then
+            echo "FAILED: $errors validation error(s)"
+            exit 1
+          fi
+
+      - name: Validate manifest versions match VERSION file
+        run: |
+          expected=$(cat VERSION)
+          errors=0
+          for manifest in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json gemini-extension.json; do
+            if [ -f "$manifest" ]; then
+              actual=$(python3 -c "import json; print(json.load(open('$manifest')).get('version', 'MISSING'))")
+              if [ "$actual" != "$expected" ]; then
+                echo "ERROR: $manifest has version '$actual', expected '$expected'"
+                errors=$((errors + 1))
+              else
+                echo "OK: $manifest (v$actual)"
+              fi
+            fi
+          done
+          if [ $errors -gt 0 ]; then
+            echo "FAILED: $errors version mismatch(es)"
+            exit 1
+          fi
+
+      - name: Validate JSON manifests
+        run: |
+          for f in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json .claude-plugin/marketplace.json .codex-plugin/marketplace.json gemini-extension.json; do
+            if [ -f "$f" ]; then
+              python3 -m json.tool "$f" > /dev/null
+              echo "OK: $f"
+            fi
+          done
+
+  generate-cursor-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate Cursor rules
+        run: bash scripts/generate-cursor-rules.sh
+
+      - name: Check for uncommitted changes (PR only)
+        if: github.event_name == 'pull_request'
+        run: |
+          if ! git diff --quiet cursor/; then
+            echo "ERROR: Cursor rules are out of date. Run 'bash scripts/generate-cursor-rules.sh' and commit the output."
+            git diff --stat cursor/
+            exit 1
+          fi
+          echo "OK: Cursor rules are up to date."
+
+      - name: Commit generated rules (push to main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add cursor/
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore: regenerate cursor rules"
+            git push
+          fi

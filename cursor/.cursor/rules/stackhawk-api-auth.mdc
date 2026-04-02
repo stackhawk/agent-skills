@@ -1,0 +1,418 @@
+---
+description: >
+  StackHawk API authentication reference: JWT token flow, HAWK_API_KEY setup, hawk_api and hawk_api_all_pages helper scripts, token refresh, V1/V2 pagination, 401/403 error diagnosis.
+globs:
+alwaysApply: false
+---
+# StackHawk API Authentication Reference
+
+The StackHawk platform REST API uses a two-step auth flow: exchange an API key for a
+short-lived JWT, then present that JWT as a Bearer token on every subsequent request.
+
+---
+
+## Auth Flow Overview
+
+1. **Exchange**: `POST`-equivalent `GET /api/v1/auth/login` with `X-ApiKey` header →
+   returns a JWT in `.token`
+2. **Use**: All API calls carry `Authorization: Bearer <token>`
+3. **Expiry**: Tokens expire after **30 minutes**
+4. **Re-auth**: On any `401` response, re-run the login call and retry the request
+5. **Refresh (optional)**: `GET /api/v1/auth/refresh-token` with a valid Bearer token
+   extends the session without re-submitting the API key
+
+**Required environment variable:** `HAWK_API_KEY` — the same key used by the hawkscan
+skill. Generate or retrieve one at **app.stackhawk.com → Settings → API Keys**.
+
+---
+
+## Quick Inline Auth
+
+Get a token in a single line and store it in a shell variable:
+
+```bash
+HAWK_TOKEN=$(curl -s -H "X-ApiKey: ${HAWK_API_KEY}" \
+  https://api.stackhawk.com/api/v1/auth/login | jq -r '.token')
+```
+
+Verify the token was returned (non-empty, not `null`):
+
+```bash
+[[ -z "${HAWK_TOKEN}" || "${HAWK_TOKEN}" == "null" ]] && \
+  echo "ERROR: auth failed — check HAWK_API_KEY" && exit 1
+```
+
+---
+
+## Using the Token
+
+Pass the JWT as a Bearer token on every API request:
+
+```bash
+curl -s -H "Authorization: Bearer ${HAWK_TOKEN}" \
+  https://api.stackhawk.com/api/v2/org/${ORG_ID}/apps
+```
+
+Replace `${ORG_ID}` with your organization UUID (visible in the StackHawk platform URL
+or returned by `/api/v1/auth/login` in the `organization.id` field).
+
+---
+
+## Token Refresh
+
+Extend an existing session without re-submitting the API key:
+
+```bash
+HAWK_TOKEN=$(curl -s -H "Authorization: Bearer ${HAWK_TOKEN}" \
+  https://api.stackhawk.com/api/v1/auth/refresh-token | jq -r '.token')
+```
+
+Use this when a long-running agent workflow approaches the 30-minute window. If the
+token has already expired, this call will return `401` — fall back to the full login
+flow using `HAWK_API_KEY`.
+
+---
+
+## Reusable Helper Script
+
+Write the block below to a temp file and source it. The helper handles authentication,
+token caching (in-memory only — no secrets written to disk), `401` auto-retry,
+and full pagination for both V1 and V2 endpoints.
+
+```bash
+# Write to a temp file and source it:
+#   _hawk_lib=$(mktemp /tmp/hawk_lib.XXXXXX.sh)
+#   cat > "${_hawk_lib}" << 'HAWK_LIB'
+#   ... (paste block below) ...
+#   HAWK_LIB
+#   source "${_hawk_lib}"
+
+# -----------------------------------------------------------------------
+# StackHawk API helper library
+# Requires: curl, jq, HAWK_API_KEY in environment
+# -----------------------------------------------------------------------
+
+_HAWK_TOKEN=""
+_HAWK_BASE_URL="https://api.stackhawk.com"
+
+# _hawk_auth — authenticate and cache token in _HAWK_TOKEN
+_hawk_auth() {
+  if [[ -z "${HAWK_API_KEY:-}" ]]; then
+    echo "ERROR: HAWK_API_KEY is not set. Generate a key at app.stackhawk.com → Settings → API Keys." >&2
+    return 1
+  fi
+
+  local response
+  response=$(curl -s -w "\n%{http_code}" \
+    -H "X-ApiKey: ${HAWK_API_KEY}" \
+    "${_HAWK_BASE_URL}/api/v1/auth/login")
+
+  local body http_code
+  body=$(printf '%s' "${response}" | head -n -1)
+  http_code=$(printf '%s' "${response}" | tail -n 1)
+
+  if [[ "${http_code}" != "200" ]]; then
+    echo "ERROR: Auth failed with HTTP ${http_code}. Check HAWK_API_KEY." >&2
+    return 1
+  fi
+
+  _HAWK_TOKEN=$(printf '%s' "${body}" | jq -r '.token // empty')
+
+  if [[ -z "${_HAWK_TOKEN}" ]]; then
+    echo "ERROR: Auth response did not contain a token. Response: ${body}" >&2
+    return 1
+  fi
+}
+
+# hawk_api — make an authenticated API call with automatic 401 re-auth
+#
+# Usage:
+#   hawk_api <METHOD> <PATH> [EXTRA_CURL_ARGS...]
+#
+# Examples:
+#   hawk_api GET /api/v1/scan/${ORG_ID}
+#   hawk_api GET "/api/v2/org/${ORG_ID}/apps?pageSize=100"
+#   hawk_api POST /api/v1/org/${ORG_ID}/tag -H "Content-Type: application/json" -d '{"name":"ci"}'
+#
+# Returns: raw JSON response body on stdout; exits non-zero on failure
+hawk_api() {
+  local method="${1:?hawk_api requires METHOD as first argument}"
+  local path="${2:?hawk_api requires PATH as second argument}"
+  shift 2
+  local extra_args=("$@")
+
+  # Authenticate if no token is cached yet
+  if [[ -z "${_HAWK_TOKEN}" ]]; then
+    _hawk_auth || return 1
+  fi
+
+  local response http_code body
+  response=$(curl -s -w "\n%{http_code}" \
+    -X "${method}" \
+    -H "Authorization: Bearer ${_HAWK_TOKEN}" \
+    -H "Accept: application/json" \
+    "${extra_args[@]}" \
+    "${_HAWK_BASE_URL}${path}")
+
+  body=$(printf '%s' "${response}" | head -n -1)
+  http_code=$(printf '%s' "${response}" | tail -n 1)
+
+  # Auto-retry once on 401 (expired token)
+  if [[ "${http_code}" == "401" ]]; then
+    _HAWK_TOKEN=""
+    _hawk_auth || return 1
+
+    response=$(curl -s -w "\n%{http_code}" \
+      -X "${method}" \
+      -H "Authorization: Bearer ${_HAWK_TOKEN}" \
+      -H "Accept: application/json" \
+      "${extra_args[@]}" \
+      "${_HAWK_BASE_URL}${path}")
+
+    body=$(printf '%s' "${response}" | head -n -1)
+    http_code=$(printf '%s' "${response}" | tail -n 1)
+  fi
+
+  if [[ "${http_code}" == "401" ]]; then
+    echo "ERROR: Still receiving 401 after re-auth. Check HAWK_API_KEY scopes." >&2
+    return 1
+  fi
+
+  if [[ "${http_code}" == "403" ]]; then
+    echo "ERROR: HTTP 403 — insufficient permissions. Check API key scopes at app.stackhawk.com → Settings → API Keys." >&2
+    return 1
+  fi
+
+  if [[ "${http_code}" -lt 200 || "${http_code}" -gt 299 ]]; then
+    echo "ERROR: HTTP ${http_code} from ${method} ${path}. Body: ${body}" >&2
+    return 1
+  fi
+
+  printf '%s' "${body}"
+}
+
+# hawk_api_all_pages — auto-paginate an endpoint and collect all results
+#
+# Detects V1 vs V2 pagination automatically based on response shape:
+#   V1: query params pageSize + pageToken (integer), response has nextPageToken
+#   V2: query params pageSize + page (string, e.g. "p_abc") + pageToken,
+#       response has currentPage, hasNext, hasPrev
+#
+# Usage:
+#   hawk_api_all_pages <PATH_WITHOUT_PAGINATION_PARAMS> <RESULTS_KEY> [PAGE_SIZE]
+#
+# Arguments:
+#   PATH_WITHOUT_PAGINATION_PARAMS  — base path, no pageSize/pageToken params
+#   RESULTS_KEY                     — jq key that holds the array of results
+#                                     (e.g. "scans", "applications", "findings")
+#   PAGE_SIZE                       — optional, defaults to 100
+#
+# Returns: JSON array of all collected items on stdout
+#
+# Examples:
+#   hawk_api_all_pages "/api/v1/scan/${ORG_ID}" "scans"
+#   hawk_api_all_pages "/api/v2/org/${ORG_ID}/apps" "applications" 50
+hawk_api_all_pages() {
+  local base_path="${1:?hawk_api_all_pages requires base PATH}"
+  local results_key="${2:?hawk_api_all_pages requires RESULTS_KEY}"
+  local page_size="${3:-100}"
+
+  local all_results="[]"
+  local separator=""
+  local page_token=""
+  local is_v2=""
+  local first_page=true
+
+  while true; do
+    # Build URL with pagination parameters
+    local url
+    if [[ "${first_page}" == "true" ]]; then
+      # First request: add pageSize only; detect API version from response
+      if [[ "${base_path}" == *"?"* ]]; then
+        url="${base_path}&pageSize=${page_size}"
+      else
+        url="${base_path}?pageSize=${page_size}"
+      fi
+    elif [[ "${is_v2}" == "true" ]]; then
+      # V2: pageSize + page (cursor string) + pageToken
+      if [[ "${base_path}" == *"?"* ]]; then
+        url="${base_path}&pageSize=${page_size}&page=${page_token}"
+      else
+        url="${base_path}?pageSize=${page_size}&page=${page_token}"
+      fi
+    else
+      # V1: pageSize + pageToken (integer offset)
+      if [[ "${base_path}" == *"?"* ]]; then
+        url="${base_path}&pageSize=${page_size}&pageToken=${page_token}"
+      else
+        url="${base_path}?pageSize=${page_size}&pageToken=${page_token}"
+      fi
+    fi
+
+    local page_response
+    page_response=$(hawk_api GET "${url}") || return 1
+
+    # Detect pagination version on first page
+    if [[ "${first_page}" == "true" ]]; then
+      first_page=false
+      local has_current_page
+      has_current_page=$(printf '%s' "${page_response}" | jq -r 'has("currentPage")')
+      if [[ "${has_current_page}" == "true" ]]; then
+        is_v2="true"
+      fi
+    fi
+
+    # Extract items from this page and append to accumulated results
+    local page_items
+    page_items=$(printf '%s' "${page_response}" | jq -c ".${results_key} // []")
+    all_results=$(printf '%s\n%s' "${all_results}" "${page_items}" | \
+      jq -sc 'add // []')
+
+    # Determine whether there are more pages
+    if [[ "${is_v2}" == "true" ]]; then
+      local has_next
+      has_next=$(printf '%s' "${page_response}" | jq -r '.hasNext // false')
+      if [[ "${has_next}" != "true" ]]; then
+        break
+      fi
+      page_token=$(printf '%s' "${page_response}" | jq -r '.currentPage // empty')
+      if [[ -z "${page_token}" ]]; then
+        echo "ERROR: V2 response missing currentPage for next-page cursor." >&2
+        return 1
+      fi
+    else
+      page_token=$(printf '%s' "${page_response}" | jq -r '.nextPageToken // empty')
+      if [[ -z "${page_token}" || "${page_token}" == "null" ]]; then
+        break
+      fi
+    fi
+  done
+
+  printf '%s' "${all_results}"
+}
+```
+
+### Usage Examples After Sourcing
+
+```bash
+# Authenticate (happens automatically on first call, but can be called explicitly)
+_hawk_auth
+
+# Single call — get org info
+hawk_api GET /api/v1/org/${ORG_ID}
+
+# Single call — list apps (first page only)
+hawk_api GET "/api/v2/org/${ORG_ID}/apps?pageSize=20"
+
+# Paginated — collect ALL scans across all pages
+all_scans=$(hawk_api_all_pages "/api/v1/scan/${ORG_ID}" "scans")
+echo "${all_scans}" | jq 'length'
+
+# Paginated — collect ALL apps (V2 endpoint)
+all_apps=$(hawk_api_all_pages "/api/v2/org/${ORG_ID}/apps" "applications")
+echo "${all_apps}" | jq '.[].name'
+
+# POST with body
+hawk_api POST "/api/v1/org/${ORG_ID}/tag" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "ci", "color": "blue"}'
+```
+
+---
+
+## Pagination Reference
+
+### V1 Endpoints
+
+Identified by: path begins with `/api/v1/`
+
+| Parameter | Location | Type | Description |
+|-----------|----------|------|-------------|
+| `pageSize` | query | integer | Max items per page |
+| `pageToken` | query | integer | Offset token from previous response |
+
+| Response field | Type | Description |
+|----------------|------|-------------|
+| `nextPageToken` | integer or absent | Present when more pages exist; absent or `null` on last page |
+
+```bash
+# Manual V1 pagination example
+page_token=""
+while true; do
+  params="pageSize=100"
+  [[ -n "${page_token}" ]] && params="${params}&pageToken=${page_token}"
+  response=$(hawk_api GET "/api/v1/scan/${ORG_ID}?${params}")
+  echo "${response}" | jq '.scans[]'
+  page_token=$(echo "${response}" | jq -r '.nextPageToken // empty')
+  [[ -z "${page_token}" ]] && break
+done
+```
+
+### V2 Endpoints
+
+Identified by: path begins with `/api/v2/`
+
+| Parameter | Location | Type | Description |
+|-----------|----------|------|-------------|
+| `pageSize` | query | integer | Max items per page |
+| `page` | query | string (`p_*`) | Cursor from `currentPage` of previous response |
+| `pageToken` | query | string | Alias accepted by some V2 endpoints |
+
+| Response field | Type | Description |
+|----------------|------|-------------|
+| `currentPage` | string | Cursor for this page; pass as `page` to get the next page |
+| `hasNext` | boolean | `true` if more pages follow |
+| `hasPrev` | boolean | `true` if previous pages exist |
+
+```bash
+# Manual V2 pagination example
+page_cursor=""
+while true; do
+  params="pageSize=100"
+  [[ -n "${page_cursor}" ]] && params="${params}&page=${page_cursor}"
+  response=$(hawk_api GET "/api/v2/org/${ORG_ID}/apps?${params}")
+  echo "${response}" | jq '.applications[]'
+  has_next=$(echo "${response}" | jq -r '.hasNext // false')
+  [[ "${has_next}" != "true" ]] && break
+  page_cursor=$(echo "${response}" | jq -r '.currentPage')
+done
+```
+
+**Use `hawk_api_all_pages` instead of manual loops** — it handles both V1 and V2
+automatically based on the response shape.
+
+---
+
+## Common Auth Errors
+
+| HTTP Code | Cause | Resolution |
+|-----------|-------|------------|
+| `401` | Token expired or invalid | Re-authenticate: clear `_HAWK_TOKEN` and call `_hawk_auth` (or just call `hawk_api` — it retries automatically) |
+| `403` | API key lacks required scopes | Go to **app.stackhawk.com → Settings → API Keys** and verify the key has the scopes needed for the operation |
+| N/A | `HAWK_API_KEY` not set | Set the environment variable: `export HAWK_API_KEY=hawk.xxxxxxxxxxxx` — generate a key at **app.stackhawk.com → Settings → API Keys** |
+
+### Diagnosing a 401
+
+```bash
+# Step 1: Confirm the env var is set and non-empty
+echo "${HAWK_API_KEY:?HAWK_API_KEY is not set}"
+
+# Step 2: Attempt a fresh login and inspect the raw response
+curl -s -H "X-ApiKey: ${HAWK_API_KEY}" \
+  https://api.stackhawk.com/api/v1/auth/login | jq .
+
+# If the response contains {"message": "Unauthorized"} or similar, the key itself
+# is invalid or revoked — generate a new one in the platform.
+```
+
+### Diagnosing a 403
+
+A `403` means the API key authenticated successfully but lacks permission for the
+requested resource. Common causes:
+
+- Key was created with restricted scopes (read-only key trying to write)
+- Key belongs to a user without access to the target organization or application
+- The endpoint requires an admin role
+
+Resolution: check the key's scopes at **app.stackhawk.com → Settings → API Keys**,
+or generate a new key with the necessary permissions.

@@ -1,0 +1,21 @@
+{
+  "name": "stackhawk",
+  "interface": {
+    "displayName": "StackHawk Agent Skills",
+    "shortDescription": "Dynamic application and API security testing (DAST) powered by HawkScan."
+  },
+  "plugins": [
+    {
+      "name": "hawkscan",
+      "source": { "source": "local", "path": "./plugins/hawkscan" },
+      "policy": { "installation": "AVAILABLE" },
+      "category": "Security"
+    },
+    {
+      "name": "api",
+      "source": { "source": "local", "path": "./plugins/api" },
+      "policy": { "installation": "AVAILABLE" },
+      "category": "Security"
+    }
+  ]
+}
