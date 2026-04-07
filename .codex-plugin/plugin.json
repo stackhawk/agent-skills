@@ -1,0 +1,23 @@
+{
+  "name": "stackhawk",
+  "version": "1.0.0",
+  "description": "Dynamic application and API security testing (DAST) powered by HawkScan. Configure scans, interpret findings, and query the StackHawk platform API.",
+  "author": {
+    "name": "StackHawk",
+    "email": "support@stackhawk.com",
+    "url": "https://www.stackhawk.com"
+  },
+  "homepage": "https://docs.stackhawk.com",
+  "repository": "https://github.com/stackhawk/agent-skills",
+  "license": "MIT",
+  "keywords": [
+    "security",
+    "dast",
+    "appsec",
+    "hawkscan",
+    "stackhawk",
+    "api-security",
+    "vulnerability-scanning"
+  ],
+  "skills": "./skills/"
+}

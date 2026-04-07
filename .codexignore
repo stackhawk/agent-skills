@@ -1,0 +1,12 @@
+# Build and CI
+.github/
+scripts/
+
+# Platform-specific generated output
+cursor/
+
+# Local settings
+.claude/
+
+# Design docs
+docs/
