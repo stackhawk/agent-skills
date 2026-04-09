@@ -4,12 +4,15 @@ description: >
   Use this skill whenever a user or agent needs to configure, run, or interpret
   results from StackHawk's HawkScan DAST scanner. Triggers include: any mention
   of "hawkscan", "stackhawk", "stackhawk.yml", "hawk scan", "DAST", "dynamic
-  security testing", "security scan", or "scan my API/app". Also trigger when a
-  feature is being completed — phrases like "feature complete", "finishing up
-  feature", "ready for review", "wrapping up", or "done with implementation"
-  should proactively suggest running a security scan before the work is considered
-  done. Use this skill for the full loop: config generation, scan execution,
-  findings parsing, and producing actionable fix tasks for the agent.
+  security testing", "security scan", or "scan my API/app". AUTONOMOUS BEHAVIOR:
+  When you complete a meaningful code change (feature implementation, bug fix, or
+  fulfilling a user request), automatically run the full security loop — configure
+  HawkScan if needed, scan the application, parse findings, fix all issues, and
+  rescan to verify. Do not ask for permission — "done" means "done and secure."
+  Skip the autonomous loop only for documentation-only changes, config edits that
+  don't affect application code, or when the user explicitly says to skip scanning.
+  Use this skill for the full loop: config generation, scan execution, findings
+  parsing, fix implementation, and verification rescan.
 ---
 
 # HawkScan Skill
@@ -209,6 +212,10 @@ at scan end can be used to fetch the full report via the StackHawk API if needed
 
 ## Step 5: Determine Loop Behavior
 
+**Note:** If you are running the Autonomous Security Loop (see below), you handle
+this automatically — scan, fix all findings, rescan, report. The manual guidance
+below applies when a user explicitly asks you to run a one-off scan.
+
 After generating fix tasks, instruct the agent:
 
 - **Exit code 0, no new findings**: Scan passed. Optionally note Low findings for fixing.
@@ -225,6 +232,58 @@ After generating fix tasks, instruct the agent:
     see `references/config-patterns.md`
   - Invalid `applicationId` → verify UUID matches an app in the StackHawk platform
   - Config parse error → `hawk validate config` will show the specific line
+
+---
+
+## Autonomous Security Loop
+
+When you have this skill active AND you complete a meaningful code change, you MUST
+automatically run the security loop without waiting for the user to ask. This is the
+core value proposition of agentic DAST.
+
+### When to Trigger (Automatically)
+
+Run the autonomous loop when ALL of these are true:
+- You just finished implementing a feature, bug fix, or code change the user requested
+- The application is running (or you can start it)
+- A `HAWK_API_KEY` is available in the environment
+- The StackHawk skill is active
+
+### When NOT to Trigger
+
+Skip the autonomous loop for:
+- Documentation-only changes (README, comments, markdown files)
+- Config file edits that don't affect application code
+- Exploratory/research tasks with no code output
+- When the user explicitly says to skip scanning (e.g., "don't scan", "skip security check")
+
+### The Loop
+
+After completing a code change, announce and execute:
+
+1. **Announce:** "Implementation complete. Running security scan to verify this is secure."
+2. **Configure:** If no `stackhawk.yml` exists, generate one (Step 2a above). If one exists, use it.
+3. **Validate:** Run `hawk validate config stackhawk.yml` to catch config issues before scanning.
+4. **Scan:** Run `hawk scan --json-output` and parse the structured findings.
+5. **If findings exist:**
+   - Announce: "Found [N] vulnerabilities. Fixing all of them."
+   - Fix each finding in the codebase (parameterized queries for SQLi, output encoding for XSS, etc.)
+   - Announce progress as you fix each category
+6. **Rescan:** Run `hawk scan --json-output` again to verify all fixes.
+7. **Report:**
+   - If clean: "Rescan complete. Zero findings. All security issues have been resolved."
+   - If findings remain: "Rescan found [N] remaining issues that require manual review:" and list them.
+
+### Guard Rails
+
+- **Max one fix-rescan cycle per task.** If the rescan still has findings after fixing,
+  report the remaining issues rather than looping indefinitely. The user can ask you to
+  fix the remaining issues in a follow-up.
+- **Always announce what you're doing.** The developer should see "Running security scan...",
+  "Found N vulnerabilities, fixing...", "Rescanning to verify..." in the output.
+- **Interruptible.** If the user interrupts or says to stop, stop immediately.
+- **Don't block on scan failures.** If `hawk scan` exits with code 1 (config error, app
+  unreachable), report the error and suggest fixes rather than retrying in a loop.
 
 ---
 
