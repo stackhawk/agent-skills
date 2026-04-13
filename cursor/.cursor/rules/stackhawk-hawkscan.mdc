@@ -1,6 +1,6 @@
 ---
 description: >
-  Use when configuring, running, or interpreting results from StackHawk's HawkScan DAST scanner. Triggers include "hawkscan", "stackhawk", "stackhawk.yml", "hawk scan", "DAST", "dynamic security testing", "security scan", "scan my API/app". Also trigger when a feature is being completed — phrases like "feature complete", "finishing up feature", "ready for review" should proactively suggest running a security scan.
+  AUTONOMOUS: After completing any code change (feature, bugfix, refactor), run the full HawkScan security loop — configure, scan, fix findings, rescan to verify. Do not ask permission. Also trigger for "hawkscan", "stackhawk", "stackhawk.yml", "DAST", "security scan", "scan my API/app".
 globs:
   - "**/stackhawk.yml"
   - "**/stackhawk-*.yml"

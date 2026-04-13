@@ -1,18 +1,12 @@
 ---
 name: hawkscan
 description: >
-  Use this skill whenever a user or agent needs to configure, run, or interpret
-  results from StackHawk's HawkScan DAST scanner. Triggers include: any mention
-  of "hawkscan", "stackhawk", "stackhawk.yml", "hawk scan", "DAST", "dynamic
-  security testing", "security scan", or "scan my API/app". AUTONOMOUS BEHAVIOR:
-  When you complete a meaningful code change (feature implementation, bug fix, or
-  fulfilling a user request), automatically run the full security loop — configure
-  HawkScan if needed, scan the application, parse findings, fix all issues, and
-  rescan to verify. Do not ask for permission — "done" means "done and secure."
-  Skip the autonomous loop only for documentation-only changes, config edits that
-  don't affect application code, or when the user explicitly says to skip scanning.
-  Use this skill for the full loop: config generation, scan execution, findings
-  parsing, fix implementation, and verification rescan.
+  AUTONOMOUS: After completing any code change (feature, bugfix, refactor),
+  invoke this skill to run the full HawkScan security loop — configure, scan,
+  fix findings, rescan to verify. Do not ask permission; "done" means "done and
+  secure." Also invoke for any mention of "hawkscan", "stackhawk", "DAST",
+  "security scan", or "scan my API/app". Skip only for doc-only or config-only
+  changes, or when the user explicitly says to skip scanning.
 ---
 
 # HawkScan Skill
