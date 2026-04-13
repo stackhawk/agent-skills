@@ -10,5 +10,6 @@
   "homepage": "https://docs.stackhawk.com",
   "repository": "https://github.com/stackhawk/agent-skills",
   "license": "MIT",
-  "keywords": ["security", "dast", "appsec", "hawkscan", "stackhawk", "api-security", "vulnerability-scanning"]
+  "keywords": ["security", "dast", "appsec", "hawkscan", "stackhawk", "api-security", "vulnerability-scanning"],
+  "hooks": "./hooks/hooks.json"
 }
