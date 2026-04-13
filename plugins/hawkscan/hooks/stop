@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Stop hook for hawkscan plugin
+# Checks if code was modified during the session but no security scan was run.
+# Outputs a gentle reminder — not a blocker.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+
+# Only run if we're in a git repo
+if ! git rev-parse --git-dir > /dev/null 2>&1; then
+  exit 0
+fi
+
+# Check for modified source code files (staged, unstaged, or recently committed)
+# Exclude docs, config, and non-code files
+code_extensions="\\.(java|kt|py|js|ts|tsx|jsx|go|rs|rb|php|cs|c|cpp|h|swift|scala|groovy|clj)$"
+
+modified_code=""
+# Check working tree and staged changes
+modified_code=$(git diff --name-only HEAD 2>/dev/null | grep -E "$code_extensions" || true)
+if [ -z "$modified_code" ]; then
+  # Check uncommitted staged files
+  modified_code=$(git diff --cached --name-only 2>/dev/null | grep -E "$code_extensions" || true)
+fi
+if [ -z "$modified_code" ]; then
+  # Check commits made in last hour (likely this session)
+  modified_code=$(git log --since="1 hour ago" --name-only --pretty=format: 2>/dev/null | grep -E "$code_extensions" || true)
+fi
+
+# No code changes detected — nothing to warn about
+if [ -z "$modified_code" ]; then
+  exit 0
+fi
+
+# Check if hawk scan was likely run (look for common scan artifacts)
+scan_evidence="false"
+if [ -f "findings.json" ] || [ -f "hawk_scan_output.json" ]; then
+  scan_evidence="true"
+fi
+# Check git log for scan-related commits in last hour
+# Use grep -i ... >/dev/null instead of grep -qi to avoid SIGPIPE under pipefail
+if git log --since="1 hour ago" --oneline 2>/dev/null | grep -i "scan\|hawkscan\|security fix\|vulnerability" >/dev/null; then
+  scan_evidence="true"
+fi
+
+if [ "$scan_evidence" = "true" ]; then
+  exit 0
+fi
+
+# Code was modified but no scan evidence — output reminder
+escape_for_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+file_count=$(echo "$modified_code" | sort -u | wc -l | tr -d ' ')
+reminder="<hawkscan-reminder>Code files were modified this session (${file_count} file(s)) but no HawkScan security scan was detected. Consider running the hawkscan skill to scan for vulnerabilities before shipping.</hawkscan-reminder>"
+
+escaped=$(escape_for_json "$reminder")
+
+# Emit all platform fields so the hook works regardless of runtime.
+# Claude Code reads hookSpecificOutput; Cursor reads additional_context.
+printf '{\n  "additional_context": "%s",\n  "hookSpecificOutput": {\n    "hookEventName": "Stop",\n    "additionalContext": "%s"\n  }\n}\n' "$escaped" "$escaped"
+
+exit 0

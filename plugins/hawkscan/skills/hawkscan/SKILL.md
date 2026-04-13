@@ -1,18 +1,12 @@
 ---
 name: hawkscan
 description: >
-  Use this skill whenever a user or agent needs to configure, run, or interpret
-  results from StackHawk's HawkScan DAST scanner. Triggers include: any mention
-  of "hawkscan", "stackhawk", "stackhawk.yml", "hawk scan", "DAST", "dynamic
-  security testing", "security scan", or "scan my API/app". AUTONOMOUS BEHAVIOR:
-  When you complete a meaningful code change (feature implementation, bug fix, or
-  fulfilling a user request), automatically run the full security loop — configure
-  HawkScan if needed, scan the application, parse findings, fix all issues, and
-  rescan to verify. Do not ask for permission — "done" means "done and secure."
-  Skip the autonomous loop only for documentation-only changes, config edits that
-  don't affect application code, or when the user explicitly says to skip scanning.
-  Use this skill for the full loop: config generation, scan execution, findings
-  parsing, fix implementation, and verification rescan.
+  AUTONOMOUS: After completing any code change (feature, bugfix, refactor),
+  invoke this skill to run the full HawkScan security loop — configure, scan,
+  fix findings, rescan to verify. Do not ask permission; "done" means "done and
+  secure." Also invoke for any mention of "hawkscan", "stackhawk", "DAST",
+  "security scan", or "scan my API/app". Skip only for doc-only or config-only
+  changes, or when the user explicitly says to skip scanning.
 ---
 
 # HawkScan Skill
@@ -197,8 +191,13 @@ hawk scan --json-output
 need `--no-color` or `--verbose` when using it. It cannot be combined with `--trace`.
 
 Parse the JSON output to extract findings, then transform them into fix tasks for the
-coding agent. For the full JSON schema, field reference, fix task format, and common
-findings guidance, see:
+coding agent. **Fix all findings the scan reports — not just findings you think are
+related to recent changes.** DAST scans the running application as a whole; it does not
+distinguish between old and new vulnerabilities. A pre-existing SQL injection is just as
+exploitable as one introduced today.
+
+For the full JSON schema, field reference, fix task format, and common findings guidance,
+see:
 → `references/findings-and-fixes.md`
 
 ### Stdout Parsing (Fallback)
@@ -218,7 +217,7 @@ below applies when a user explicitly asks you to run a one-off scan.
 
 After generating fix tasks, instruct the agent:
 
-- **Exit code 0, no new findings**: Scan passed. Optionally note Low findings for fixing.
+- **Exit code 0, no findings above threshold**: Scan passed. Optionally note Low findings for fixing.
 - **Exit code 42**: Hand fix tasks to the coding agent. After fixes, **re-run the scan**
   to confirm remediation. Repeat until exit 0 or only accepted-risk findings remain.
 - **Exit code 1**: Do NOT hand fix tasks. Run validation commands to diagnose first:
@@ -261,12 +260,15 @@ Skip the autonomous loop for:
 
 After completing a code change, announce and execute:
 
-1. **Announce:** "Implementation complete. Running security scan to verify this is secure."
+1. **Announce:** "Implementation complete. Running security scan against the application."
 2. **Configure:** If no `stackhawk.yml` exists, generate one (Step 2a above). If one exists, use it.
 3. **Validate:** Run `hawk validate config stackhawk.yml` to catch config issues before scanning.
 4. **Scan:** Run `hawk scan --json-output` and parse the structured findings.
 5. **If findings exist:**
    - Announce: "Found [N] vulnerabilities. Fixing all of them."
+   - **Fix ALL findings — not just ones related to your recent changes.** DAST scans the
+     entire running application. Pre-existing vulnerabilities are just as exploitable as
+     new ones. If the scan found it, fix it.
    - Fix each finding in the codebase (parameterized queries for SQLi, output encoding for XSS, etc.)
    - Announce progress as you fix each category
 6. **Rescan:** Run `hawk scan --json-output` again to verify all fixes.

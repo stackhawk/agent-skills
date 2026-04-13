@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# SessionStart hook for hawkscan plugin
+# Injects autonomous scanning context so Claude knows to run HawkScan
+# after completing code changes — without the user having to ask.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# Check if hawk CLI or Docker is available
+hawk_available="false"
+if command -v hawk >/dev/null 2>&1; then
+  hawk_available="true (CLI)"
+elif command -v docker >/dev/null 2>&1; then
+  hawk_available="true (Docker)"
+fi
+
+# Check for HAWK_API_KEY
+has_api_key="false"
+if [ -n "${HAWK_API_KEY:-}" ]; then
+  has_api_key="true"
+fi
+
+# Build the context injection
+escape_for_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+context_text="<hawkscan-autonomous-security>
+The HawkScan DAST security scanning skill (hawkscan:hawkscan) is active.
+
+AUTONOMOUS BEHAVIOR — after completing any meaningful code change (feature, bugfix, refactor):
+1. Invoke the hawkscan skill to run the security scan loop
+2. Fix any vulnerabilities found
+3. Rescan to verify the fixes
+
+Do not ask for permission. \"Done\" means \"done and secure.\"
+Skip only for documentation-only changes, config-only edits, or when the user explicitly says to skip.
+
+Environment: hawk runtime=${hawk_available}, HAWK_API_KEY=${has_api_key}
+</hawkscan-autonomous-security>"
+
+session_context=$(escape_for_json "$context_text")
+
+# Output context injection as JSON.
+# Both additional_context and hookSpecificOutput are emitted so the hook works
+# regardless of platform. Claude Code reads hookSpecificOutput; Cursor reads
+# additional_context; Copilot CLI reads additionalContext. Emitting all three
+# avoids fragile environment-variable detection.
+printf '{\n  "additional_context": "%s",\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$session_context" "$session_context"
+
+exit 0
