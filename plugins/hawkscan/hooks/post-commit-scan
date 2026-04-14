@@ -75,6 +75,6 @@ If the application is running and HAWK_API_KEY is set, run the scan now. Fix all
 
 escaped=$(escape_for_json "$context_text")
 
-printf '{\n  "additional_context": "%s",\n  "hookSpecificOutput": {\n    "hookEventName": "PostToolUse",\n    "additionalContext": "%s"\n  }\n}\n' "$escaped" "$escaped"
+printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "PostToolUse",\n    "additionalContext": "%s"\n  }\n}\n' "$escaped"
 
 exit 0

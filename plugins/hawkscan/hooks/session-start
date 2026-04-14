@@ -50,10 +50,9 @@ Environment: hawk runtime=${hawk_available}, HAWK_API_KEY=${has_api_key}
 session_context=$(escape_for_json "$context_text")
 
 # Output context injection as JSON.
-# Both additional_context and hookSpecificOutput are emitted so the hook works
-# regardless of platform. Claude Code reads hookSpecificOutput; Cursor reads
-# additional_context; Copilot CLI reads additionalContext. Emitting all three
-# avoids fragile environment-variable detection.
-printf '{\n  "additional_context": "%s",\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$session_context" "$session_context"
+# SessionStart hooks support hookSpecificOutput with additionalContext for
+# injecting context into the session. Use the UserPromptSubmit schema format
+# which SessionStart hooks share.
+printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$session_context"
 
 exit 0
