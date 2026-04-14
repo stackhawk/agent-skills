@@ -11,6 +11,5 @@
   "repository": "https://github.com/stackhawk/agent-skills",
   "license": "MIT",
   "keywords": ["security", "dast", "appsec", "hawkscan", "stackhawk", "api-security", "vulnerability-scanning"],
-  "skills": "./skills/",
-  "hooks": "./hooks/hooks.json"
+  "skills": "./skills/"
 }
