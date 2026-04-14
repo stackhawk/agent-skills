@@ -60,6 +60,45 @@ jobs:
             fi
           done
 
+      - name: Validate symlinks resolve
+        run: |
+          errors=0
+          for link in skills/*/; do
+            link_name="${link%/}"
+            if [ -L "$link_name" ]; then
+              if [ ! -e "$link_name" ]; then
+                echo "ERROR: Broken symlink: $link_name -> $(readlink "$link_name")"
+                errors=$((errors + 1))
+              else
+                echo "OK: $link_name -> $(readlink "$link_name")"
+              fi
+            fi
+          done
+          if [ $errors -gt 0 ]; then
+            echo "FAILED: $errors broken symlink(s)"
+            exit 1
+          fi
+
+      - name: Validate hook scripts are executable
+        run: |
+          errors=0
+          for hook in plugins/*/hooks/*; do
+            # Skip JSON config files and .cmd wrappers
+            if [[ "$hook" == *.json ]] || [[ "$hook" == *.cmd ]]; then
+              continue
+            fi
+            if [ -f "$hook" ] && [ ! -x "$hook" ]; then
+              echo "ERROR: Hook script not executable: $hook"
+              errors=$((errors + 1))
+            else
+              echo "OK: $hook"
+            fi
+          done
+          if [ $errors -gt 0 ]; then
+            echo "FAILED: $errors hook script(s) not executable. Run: chmod +x <file>"
+            exit 1
+          fi
+
   generate-cursor-rules:
     runs-on: ubuntu-latest
     steps:
@@ -67,6 +106,28 @@ jobs:
 
       - name: Generate Cursor rules
         run: bash scripts/generate-cursor-rules.sh
+
+      - name: Verify critical content in generated rules
+        run: |
+          errors=0
+          # Check that "Fix ALL findings" survived generation
+          if ! grep -q "Fix ALL findings" cursor/.cursor/rules/stackhawk-hawkscan.mdc; then
+            echo "ERROR: 'Fix ALL findings' not found in generated stackhawk-hawkscan.mdc"
+            errors=$((errors + 1))
+          else
+            echo "OK: 'Fix ALL findings' present in stackhawk-hawkscan.mdc"
+          fi
+          # Check that alwaysApply is true for main rule
+          if ! grep -q "alwaysApply: true" cursor/.cursor/rules/stackhawk-hawkscan.mdc; then
+            echo "ERROR: alwaysApply not set to true in stackhawk-hawkscan.mdc"
+            errors=$((errors + 1))
+          else
+            echo "OK: alwaysApply: true in stackhawk-hawkscan.mdc"
+          fi
+          if [ $errors -gt 0 ]; then
+            echo "FAILED: $errors content check(s) failed"
+            exit 1
+          fi
 
       - name: Check for uncommitted changes (PR only)
         if: github.event_name == 'pull_request'
