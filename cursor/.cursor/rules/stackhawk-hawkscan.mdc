@@ -261,14 +261,21 @@ After completing a code change, announce and execute:
 1. **Announce:** "Implementation complete. Running security scan against the application."
 2. **Configure:** If no `stackhawk.yml` exists, generate one (Step 2a above). If one exists, use it.
 3. **Validate:** Run `hawk validate config stackhawk.yml` to catch config issues before scanning.
-4. **Scan:** Run `hawk scan --json-output` and parse the structured findings.
+4. **Scan:** Run `hawk scan --json-output` and parse the structured findings. Note the current
+   commit SHA (`git rev-parse --short HEAD`) — scan results are associated with this commit.
 5. **If findings exist:**
    - Announce: "Found [N] vulnerabilities. Fixing all of them."
    - **Fix ALL findings — not just ones related to your recent changes.** DAST scans the
      entire running application. Pre-existing vulnerabilities are just as exploitable as
      new ones. If the scan found it, fix it.
+   - **Fix in severity order:** High severity first, then within the same severity level:
+     injection > auth bypass > IDOR > XSS > header issues. Do not fix Low-severity items
+     while High-severity ones remain open.
    - Fix each finding in the codebase (parameterized queries for SQLi, output encoding for XSS, etc.)
    - Announce progress as you fix each category
+   - **Commit fixes with a consistent message format:**
+     `fix: resolve [CWE-XXX] [vulnerability type] found by HawkScan`
+     Example: `fix: resolve CWE-89 SQL injection found by HawkScan`
 6. **Rescan:** Run `hawk scan --json-output` again to verify all fixes.
 7. **Report:**
    - If clean: "Rescan complete. Zero findings. All security issues have been resolved."
