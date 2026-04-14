@@ -1,10 +1,10 @@
 ---
 description: >
-  AUTONOMOUS: After completing any code change (feature, bugfix, refactor), run the full HawkScan security loop — configure, scan, fix findings, rescan to verify. Do not ask permission. Also trigger for "hawkscan", "stackhawk", "stackhawk.yml", "DAST", "security scan", "scan my API/app".
+  AUTONOMOUS: After completing any code change (feature, bugfix, refactor), run the full HawkScan security loop — configure, scan, fix all reported vulnerabilities (not just your changes), rescan to verify. Do not ask permission. Also trigger for "hawkscan", "stackhawk", "stackhawk.yml", "DAST", "security scan", "scan my API/app".
 globs:
   - "**/stackhawk.yml"
   - "**/stackhawk-*.yml"
-alwaysApply: false
+alwaysApply: true
 ---
 
 # HawkScan Skill
