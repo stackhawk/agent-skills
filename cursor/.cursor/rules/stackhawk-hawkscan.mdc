@@ -72,14 +72,22 @@ Review the existing config against the current app state:
 - **New API type added?** → Add corresponding `graphqlConf`, `openApiConf`, etc.
 - **Need custom headers?** → Use `hawkAddOn.replacer` for tenant headers, API version
   headers, etc.
-- **Running after commit and before or IN CI?** → Add commit SHA tags:
+- **Running after commit and before or IN CI?** → Add commit SHA tags.
+  Tags are **top-level** in `stackhawk.yml` (not under `app:`):
   ```yaml
   app:
-    tags:
-      - name: Commit
-        value: ${GIT_COMMIT_SHA}
-      - name: Branch
-        value: ${GIT_BRANCH}
+    applicationId: ${APP_ID}
+    host: ${APP_HOST}
+  tags:
+    - name: _STACKHAWK_GIT_COMMIT_SHA
+      value: ${COMMIT_SHA}
+    - name: _STACKHAWK_GIT_BRANCH
+      value: ${BRANCH_NAME}
+  ```
+  Then set the env vars before scanning:
+  ```bash
+  export COMMIT_SHA=$(git rev-parse HEAD)
+  export BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
   ```
 
 ---
@@ -259,10 +267,24 @@ Skip the autonomous loop for:
 After completing a code change, announce and execute:
 
 1. **Announce:** "Implementation complete. Running security scan against the application."
-2. **Configure:** If no `stackhawk.yml` exists, generate one (Step 2a above). If one exists, use it.
-3. **Validate:** Run `hawk validate config stackhawk.yml` to catch config issues before scanning.
-4. **Scan:** Run `hawk scan --json-output` and parse the structured findings. Note the current
-   commit SHA (`git rev-parse --short HEAD`) — scan results are associated with this commit.
+2. **Configure:** If no `stackhawk.yml` exists, generate one (Step 2a above). If one exists,
+   ensure it has commit SHA tags (top-level, not under `app:`) so scan results are linked
+   to the commit:
+   ```yaml
+   tags:
+     - name: _STACKHAWK_GIT_COMMIT_SHA
+       value: ${COMMIT_SHA}
+     - name: _STACKHAWK_GIT_BRANCH
+       value: ${BRANCH_NAME}
+   ```
+3. **Set env vars and validate:**
+   ```bash
+   export COMMIT_SHA=$(git rev-parse HEAD)
+   export BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
+   hawk validate config stackhawk.yml
+   ```
+4. **Scan:** Run `hawk scan --json-output` and parse the structured findings. The scan
+   results will be tagged with the commit SHA and branch from the env vars above.
 5. **If findings exist:**
    - Announce: "Found [N] vulnerabilities. Fixing all of them."
    - **Fix ALL findings — not just ones related to your recent changes.** DAST scans the

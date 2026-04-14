@@ -1,6 +1,6 @@
 {
   "name": "api",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Query the StackHawk platform API for security posture reporting, findings analysis, and app management. Guides agents through authentication, data retrieval, and result presentation.",
   "author": {
     "name": "StackHawk",
@@ -10,5 +10,14 @@
   "homepage": "https://docs.stackhawk.com",
   "repository": "https://github.com/stackhawk/agent-skills",
   "license": "MIT",
-  "keywords": ["security", "appsec", "stackhawk", "api", "reporting", "findings", "posture", "triage"]
+  "keywords": [
+    "security",
+    "appsec",
+    "stackhawk",
+    "api",
+    "reporting",
+    "findings",
+    "posture",
+    "triage"
+  ]
 }

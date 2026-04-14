@@ -443,11 +443,11 @@ app:
 app:
   env: CI
   host: http://localhost:8080
-  tags:
-    - name: Commit
-      value: ${GITHUB_SHA}
-    - name: Branch
-      value: ${GITHUB_REF_NAME}
+tags:
+  - name: _STACKHAWK_GIT_COMMIT_SHA
+    value: ${COMMIT_SHA}
+  - name: _STACKHAWK_GIT_BRANCH
+    value: ${BRANCH_NAME}
 hawk:
   failureThreshold: high
 ```

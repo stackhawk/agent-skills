@@ -64,8 +64,8 @@ reminder="<hawkscan-reminder>Code files were modified this session (${file_count
 
 escaped=$(escape_for_json "$reminder")
 
-# Emit all platform fields so the hook works regardless of runtime.
-# Claude Code reads hookSpecificOutput; Cursor reads additional_context.
-printf '{\n  "additional_context": "%s",\n  "hookSpecificOutput": {\n    "hookEventName": "Stop",\n    "additionalContext": "%s"\n  }\n}\n' "$escaped" "$escaped"
+# Emit valid Stop hook JSON. The Stop hook schema supports stopReason (shown to
+# the user) but not hookSpecificOutput or additional_context.
+printf '{\n  "stopReason": "%s"\n}\n' "$escaped"
 
 exit 0
