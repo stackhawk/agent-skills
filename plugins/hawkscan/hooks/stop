@@ -40,7 +40,7 @@ if [ -f "findings.json" ] || [ -f "hawk_scan_output.json" ]; then
 fi
 # Check git log for scan-related commits in last hour
 # Use grep -i ... >/dev/null instead of grep -qi to avoid SIGPIPE under pipefail
-if git log --since="1 hour ago" --oneline 2>/dev/null | grep -i "scan\|hawkscan\|security fix\|vulnerability" >/dev/null; then
+if git log --since="1 hour ago" --oneline 2>/dev/null | grep -i "scan\|hawkscan\|security fix\|vulnerability\|resolve CWE" >/dev/null; then
   scan_evidence="true"
 fi
 

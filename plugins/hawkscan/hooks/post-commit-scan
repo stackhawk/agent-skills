@@ -16,7 +16,11 @@ tool_input=$(cat)
 
 # Extract the command that was run (best-effort — look for git commit pattern)
 # The tool input JSON has a "command" field for Bash tool uses.
-command_text=$(printf '%s' "$tool_input" | grep -oE '"command"\s*:\s*"[^"]*"' | head -1 | sed 's/"command"\s*:\s*"//;s/"$//' || true)
+if command -v jq >/dev/null 2>&1; then
+  command_text=$(printf '%s' "$tool_input" | jq -r '.command // empty' 2>/dev/null || true)
+else
+  command_text=$(printf '%s' "$tool_input" | grep -oE '"command"\s*:\s*"[^"]*"' | head -1 | sed 's/"command"\s*:\s*"//;s/"$//' || true)
+fi
 
 # If we couldn't extract it, try the whole input as a fallback
 if [ -z "$command_text" ]; then
@@ -44,7 +48,7 @@ if [ -f "findings.json" ] || [ -f "hawk_scan_output.json" ]; then
   scan_evidence="true"
 fi
 # Check if there's a very recent scan-related commit (within last 5 minutes)
-if git log --since="5 minutes ago" --oneline 2>/dev/null | grep -i "hawkscan\|security scan\|resolve CWE" >/dev/null 2>&1; then
+if git log --since="5 minutes ago" --oneline 2>/dev/null | grep -iE "scan|hawkscan|security fix|vulnerability|resolve CWE" >/dev/null 2>&1; then
   scan_evidence="true"
 fi
 
