@@ -54,8 +54,11 @@ values and anything that varies across environments. Note: HawkScan does NOT sup
 string interpolation inside larger strings like `"https://${HOST}/api"` — the entire
 value must be the variable.
 
-For API-type-specific config and auth patterns, see:
+For API-type-specific config, see:
 → `references/config-patterns.md`
+
+For authentication (strategy selection, per-pattern configs), see:
+→ `references/auth/README.md`
 
 ---
 
@@ -66,7 +69,7 @@ Review the existing config against the current app state:
 - **Low path count on last scan?** → Add API spec references (openapi, introspection,
   reflection), enable the AJAX spider, or add `seedPaths`. See spider tuning in
   `references/config-patterns.md`
-- **Auth failing?** → Verify `authentication` block; check `app.authentication.testPath`
+- **Auth failing?** → Verify `authentication` block; check `app.authentication.testPath`. See `references/auth/README.md#common-mistakes`.
 - **Too noisy / too slow?** → Add `app.excludePaths` or `app.includePaths`, tune
   `hawk.spider.maxDurationMinutes` and `hawk.scan` settings
 - **New API type added?** → Add corresponding `graphqlConf`, `openApiConf`, etc.
@@ -234,7 +237,7 @@ After generating fix tasks, instruct the agent:
   Common causes:
   - App not reachable → confirm it's running and `host` in config is correct
   - Auth failure → run `hawk validate auth` (requires `hawk perch start` first);
-    see `references/config-patterns.md`
+    see `references/auth/README.md`
   - Invalid `applicationId` → verify UUID matches an app in the StackHawk platform
   - Config parse error → `hawk validate config` will show the specific line
 
