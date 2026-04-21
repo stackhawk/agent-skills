@@ -192,7 +192,9 @@ app:
 ### Inject Token or Cookie (External)
 
 Use when you have a pre-obtained token or cookie (e.g., from a CI secret or external
-auth flow). This is the simplest auth pattern — no login is performed by HawkScan.
+auth flow). `external` supplies the value; pair it with `tokenAuthorization` to tell
+HawkScan which header to inject it into, or `cookieAuthorization` to manage it as a
+session cookie.
 
 **Inject a Bearer token:**
 ```yaml
@@ -201,12 +203,12 @@ app:
     loggedInIndicator: "HTTP/[0-9]+.[0-9]+\\s+([2-3][0-9][0-9])"
     loggedOutIndicator: "HTTP/[0-9]+.[0-9]+\\s+(4[0-9][0-9])"
     external:
-      values:
-        - type: TOKEN
-          tokenType: Bearer
-          value:
-            name: Authorization
-            val: ${AUTH_TOKEN}
+      type: TOKEN
+      value: ${AUTH_TOKEN}
+    tokenAuthorization:
+      type: HEADER
+      value: Authorization
+      tokenType: Bearer
     testPath:
       path: /api/protected
       success: ".*200.*"
@@ -215,28 +217,24 @@ app:
 
 **Inject a cookie:**
 ```yaml
+app:
+  authentication:
     external:
-      values:
-        - type: COOKIE
-          value:
-            name: session
-            val: ${SESSION_COOKIE}
+      type: COOKIE
+      value: ${SESSION_COOKIE}
+    cookieAuthorization:
+      cookieNames:
+        - session
+    testPath:
+      path: /dashboard
+      success: ".*200.*"
 ```
 
-**Inject multiple values (token + cookie):**
-```yaml
-    external:
-      values:
-        - type: TOKEN
-          tokenType: Bearer
-          value:
-            name: Authorization
-            val: ${AUTH_TOKEN}
-        - type: COOKIE
-          value:
-            name: session
-            val: ${SESSION_COOKIE}
-```
+**Key fields:**
+- `external.type`: `TOKEN` or `COOKIE`
+- `external.value`: the raw token or cookie value — use `${VAR}` env var interpolation
+- Pair `external` with `tokenAuthorization` (header injection) or `cookieAuthorization`
+  (cookie jar) — the authorization block carries the header name / cookie name
 
 ---
 
