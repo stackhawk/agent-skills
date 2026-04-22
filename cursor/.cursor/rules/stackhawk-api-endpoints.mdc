@@ -1,6 +1,6 @@
 ---
 description: >
-  StackHawk API endpoint catalog: REST endpoints for authentication, applications, environments, scan results drill-down chain (scans -> alerts -> findings -> evidence), organization-wide queries, teams, V1/V2 pagination patterns.
+  StackHawk API endpoint catalog (raw REST, used when hawkop doesn't wrap the endpoint): authentication, applications, environments, scan results drill-down chain (scans -> alerts -> findings -> evidence), organization-wide queries, teams, V1/V2 pagination patterns.
 globs:
 alwaysApply: false
 ---

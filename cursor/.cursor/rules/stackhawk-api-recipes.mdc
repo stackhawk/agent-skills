@@ -1,6 +1,6 @@
 ---
 description: >
-  StackHawk API reporting recipes: org security posture summary, app deep dive (scan -> alerts -> findings), stale apps detection, scan diff (what changed since last scan). Pre-built jq compositions using hawk_api helpers.
+  StackHawk API reporting recipes: org security posture summary, app deep dive (scan -> alerts -> findings), stale apps detection, scan diff (what changed since last scan). Pre-built jq compositions using hawk_api helpers. Prefer hawkop shortcuts (stackhawk-api-hawkop) for the deep-dive chain; use these recipes for the per-env untriaged posture view.
 globs:
 alwaysApply: false
 ---
