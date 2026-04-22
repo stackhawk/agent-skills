@@ -1,6 +1,6 @@
 ---
 description: >
-  Use when querying the StackHawk platform for security reporting, findings analysis, or app management. Triggers include "stackhawk api", "security posture", "findings report", "show me findings", "untriaged findings", "which apps", "scan history", "security dashboard", "triage", "what needs attention". Do NOT use for scanning — use the stackhawk-hawkscan rule for "scan my app", "hawkscan", "stackhawk.yml", "DAST".
+  Use when querying the StackHawk platform for security reporting, findings analysis, or app management. Triggers include "stackhawk api", "security posture", "findings report", "show me findings", "untriaged findings", "which apps", "scan history", "security dashboard", "triage", "what needs attention". Prefers the hawkop CLI when installed; falls back to raw REST calls otherwise. Do NOT use for scanning — use the stackhawk-hawkscan rule for "scan my app", "hawkscan", "stackhawk.yml", "DAST".
 globs:
 alwaysApply: false
 ---
@@ -8,27 +8,55 @@ alwaysApply: false
 # StackHawk API Skill
 
 This skill enables Claude to act as a security reporting agent against the StackHawk
-platform REST API. The core workflow is:
+platform. The core workflow is:
 
 **Question → Authenticate → Query API → Present Results → Suggest Next Actions**
+
+There are two execution paths for the "Query API" step:
+
+1. **Preferred: `hawkop` CLI** — a single binary that wraps the StackHawk API with
+   human and JSON output, response caching, and built-in pagination/auth.
+   Most operations collapse to one command. See [`references/hawkop-shortcuts.md`](references/hawkop-shortcuts.md).
+2. **Fallback: raw REST calls** — use when `hawkop` is not installed, when you need
+   an endpoint `hawkop` doesn't wrap, or when the user explicitly asks for curl.
+   See [`references/api-auth.md`](references/api-auth.md) and
+   [`references/api-endpoints.md`](references/api-endpoints.md).
+
+Always try `hawkop` first. It authenticates, handles token refresh, follows
+pagination, and produces stable JSON — eliminating most of the boilerplate in the
+raw-API path.
 
 ---
 
 ## Step 1: Assess Context
 
-Before making any API calls, gather what you know:
+Before making any calls, check what's available:
 
-1. **Is `HAWK_API_KEY` set?** Required for all calls. If missing:
+1. **Is `hawkop` installed and configured?**
+   ```bash
+   command -v hawkop >/dev/null && hawkop status
+   ```
+   - If `hawkop status` reports a valid org and JWT → use the **hawkop path** below.
+   - If `hawkop` is installed but not configured → run `hawkop init` (interactive) or
+     set `HAWKOP_API_KEY` and `HAWKOP_ORG_ID` in the environment.
+   - If `hawkop` is not installed → use the **raw API path**. Optionally mention
+     `hawkop` as a productivity option (install docs:
+     [docs.stackhawk.com/hawkop/](https://docs.stackhawk.com/hawkop/)), but do not
+     block on installing it.
+
+2. **Is `HAWK_API_KEY` set?** Required for the raw API path. If missing and
+   `hawkop` is not configured:
    - Direct the user to **app.stackhawk.com → Settings → API Keys**
    - Instruct them to: `export HAWK_API_KEY=hawk.xxxxxxxxxxxx`
-   - Do not proceed until this is set.
+   - Do not proceed until one of `hawkop` config or `HAWK_API_KEY` is in place.
 
-2. **Is `orgId` known?** Required for most endpoints. If unknown:
-   - Authenticate (Step 2), then extract it from the login response:
-     `jq -r '.organization.id'` on the `/auth/login` response body
-   - Set it: `export ORG_ID=<uuid>`
+3. **Is `orgId` known?** Required for most endpoints.
+   - With `hawkop`: `hawkop org get` returns the active org UUID. `hawkop org set <ID>`
+     switches the default.
+   - With raw API: extract it from the login response (`jq -r '.organization.id'`
+     on `/auth/login`) and `export ORG_ID=<uuid>`.
 
-3. **Route based on user intent:**
+4. **Route based on user intent:**
 
    | User says... | Go to... |
    |---|---|
@@ -42,29 +70,28 @@ Before making any API calls, gather what you know:
 
 ## Step 2: Authenticate
 
-### Single call — inline one-liner
+### Preferred — `hawkop`
 
-For one-off queries, get a token inline and proceed:
+`hawkop init` once (or `HAWKOP_API_KEY` in headless environments) — the CLI handles token refresh and `401` retry on every subsequent call. No further auth work for this skill.
+
+→ Full setup commands (Homebrew install, headless env vars, profiles for org switching): [`references/hawkop-shortcuts.md`](references/hawkop-shortcuts.md#setup-once).
+
+### Fallback — raw API
+
+If `hawkop` isn't available, use the inline one-liner for single queries:
 
 ```bash
 HAWK_TOKEN=$(curl -s -H "X-ApiKey: ${HAWK_API_KEY}" \
   https://api.stackhawk.com/api/v1/auth/login | jq -r '.token')
-```
 
-Verify the token was captured before making further calls:
-```bash
 [[ -z "${HAWK_TOKEN}" || "${HAWK_TOKEN}" == "null" ]] && \
   echo "ERROR: auth failed — check HAWK_API_KEY" && exit 1
 ```
 
-### Multi-call sessions — use the helper script
+For multi-call reporting workflows without `hawkop`, use the helper script
+(token caching, `401` auto-retry, pagination): → [`references/api-auth.md`](references/api-auth.md).
 
-For reporting workflows that make many API calls, use the reusable helper. It handles
-token caching, 401 auto-retry, and full pagination:
-
-→ `references/api-auth.md`
-
-### Key auth rules
+### Key auth rules (raw API path)
 
 - JWT expires in **30 minutes** — detect `401` responses and re-authenticate
 - The helper script handles this automatically; for manual calls, re-run the login
@@ -77,7 +104,13 @@ token caching, 401 auto-retry, and full pagination:
 
 **Goal:** Give the user a bird's-eye view of security health across all apps and environments.
 
-### Primary endpoint
+### Tool choice
+
+This step is the one place where the raw API beats `hawkop`: `/api/v2/org/{orgId}/envs` returns per-environment untriaged counts in a single call, and `hawkop` does not yet wrap that endpoint. Use the raw endpoint below.
+
+A `hawkop`-only approximation (app-level view, not per-env) exists — see [`references/hawkop-shortcuts.md`](references/hawkop-shortcuts.md#1--org-posture-summary) §1 for when that's acceptable. Either way, use `hawkop app list --format json` to resolve `applicationId` → app name when presenting the table.
+
+### Canonical endpoint (raw API)
 
 ```
 GET /api/v2/org/{orgId}/envs
@@ -99,9 +132,9 @@ Format the response as:
 | My API | Production | 3 | 7 | 12 | 2024-01-15 |
 | Auth Service | Staging | 0 | 2 | 4 | 2024-01-10 |
 
-Fields: `applicationId` (resolve to app name via apps endpoint), `environmentName`,
-`lastScanHighUntriaged`, `lastScanMediumUntriaged`, `lastScanLowUntriaged`,
-`lastScanTimestamp`.
+Fields: `applicationId` (resolve to app name via apps endpoint — or
+`hawkop app list --format json`), `environmentName`, `lastScanHighUntriaged`,
+`lastScanMediumUntriaged`, `lastScanLowUntriaged`, `lastScanTimestamp`.
 
 ### Flag priority items
 
@@ -116,10 +149,10 @@ Offer to drill down on any flagged app:
 - → Step 4 for any app the user selects
 
 Full recipe with jq transforms:
-→ `references/reporting-recipes.md`
+→ [`references/reporting-recipes.md`](references/reporting-recipes.md)
 
 Full endpoint field reference:
-→ `references/api-endpoints.md` (Section 3: Environments)
+→ [`references/api-endpoints.md`](references/api-endpoints.md) (Section 3: Environments)
 
 ---
 
@@ -127,9 +160,26 @@ Full endpoint field reference:
 
 **Goal:** Get specific finding details for a single app — what was found, where, and what it means.
 
-### The drill-down chain (3 API calls, in order)
+### Preferred — `hawkop` (one command)
 
-You cannot get findings in a single call. Follow this chain:
+`hawkop scan get` walks the scan → alerts → findings chain internally. No manual drill-down, no ID extraction, no token handling. Two patterns cover ~90% of cases:
+
+```bash
+# Latest scan for an app — overview + alerts table
+hawkop scan get --app "<APP_NAME>"
+
+# Full findings with HTTP evidence + remediation (best for AI agent reasoning)
+hawkop scan get --app "<APP_NAME>" --detail full --format json
+```
+
+`--detail full` returns every alert, every affected URI, HTTP messages (subject to `--max-body-size`), and remediation guidance in one JSON blob.
+
+→ Specific scan IDs, single-alert / single-URI drill-down, `--max-findings` tuning: [`references/hawkop-shortcuts.md`](references/hawkop-shortcuts.md#2--app-deep-dive-scan--alerts--findings) §2.
+
+### Fallback — raw API drill-down chain (3 calls)
+
+When `hawkop` is not available, there is no single endpoint that returns full
+finding details. Follow this chain:
 
 ```
 Step 1: List scans     GET /api/v1/scan/{orgId}          → extract scanId
@@ -172,16 +222,11 @@ https://app.stackhawk.com/scans/{scanId}
 
 ### "What changed?" — diff recipe
 
-When the user asks what's new or what changed since last scan, compare two scans:
-- Fetch the two most recent `scanId`s for the app from Step 1
-- Run the alerts chain for each
-- Diff the `pluginId` sets — new alerts are those in scan N but not scan N-1
+Compare two scans: fetch the two most recent scanIds for the app, pull alerts for each, diff the `pluginId` sets — new alerts are those in scan N but not scan N-1.
 
-Full recipe:
-→ `references/reporting-recipes.md`
-
-Full endpoint field reference:
-→ `references/api-endpoints.md` (Section 4: Scan Results Drill-Down Chain)
+→ Executable recipe (`hawkop` pipeline with `comm` diff): [`references/hawkop-shortcuts.md`](references/hawkop-shortcuts.md#2--app-deep-dive-scan--alerts--findings) §2.
+→ Raw API version: [`references/reporting-recipes.md`](references/reporting-recipes.md).
+→ Endpoint field reference: [`references/api-endpoints.md`](references/api-endpoints.md) §4.
 
 ---
 
@@ -216,15 +261,17 @@ Base suggestions on what the data shows:
 **Direct to platform UI when:**
 - Triaging individual findings (accept, mark false positive)
 - Managing API keys, team membership, or app configuration
-- Viewing request/response evidence for a specific finding
+- Viewing request/response evidence for a specific finding (or use `hawkop scan get <SCAN_ID> --uri-id <ID> --message`)
 
 ---
 
 ## Common Mistakes to Avoid
 
-- **Don't hardcode API keys in scripts** — always use `${HAWK_API_KEY}`. Never inline the key value.
-- **Don't skip the drill-down chain** — there is no single endpoint that returns full finding details. Scans → Alerts → Findings is mandatory.
-- **Don't confuse `orgId` with `appId`** — `/api/v1/scan/{orgId}` takes the org UUID, not the app UUID. Mixing these returns empty results, not an error.
-- **JWT expires in 30 minutes** — if you get a `401` mid-session, re-authenticate and replay the failed request. The helper script handles this automatically.
+- **Don't reach for curl first when `hawkop` is available** — `hawkop scan get --detail full --format json` replaces the three-call drill-down chain and handles auth automatically. Use the raw API only for endpoints `hawkop` doesn't expose (e.g., `/api/v2/org/{orgId}/envs`) or when `hawkop` is not installed.
+- **Don't hardcode API keys in scripts** — always use `${HAWK_API_KEY}` (raw API) or `${HAWKOP_API_KEY}` (hawkop in CI/CD). Never inline the key value.
+- **Don't skip the drill-down chain on the raw path** — there is no single raw endpoint that returns full finding details. Scans → Alerts → Findings is mandatory when not using `hawkop`.
+- **Don't confuse `orgId` with `appId`** — `/api/v1/scan/{orgId}` takes the org UUID, not the app UUID. Mixing these returns empty results, not an error. `hawkop scan list --app <APP_ID>` avoids the confusion entirely.
+- **JWT expires in 30 minutes** — if you get a `401` mid-session on the raw path, re-authenticate and replay the failed request. The helper script handles this automatically. `hawkop` handles it silently.
 - **Don't attempt triage via API** — triage write operations (accept, false positive) are not in scope for this skill. Direct users to the platform UI at app.stackhawk.com.
 - **Don't report "no findings" without checking path count** — an empty findings list may mean the spider didn't crawl enough routes. Low path count on a scan is a coverage gap, not a clean bill of health. Recommend spider tuning via → hawkscan skill.
+- **Don't mix `hawkop` and raw API output in the same response** — they both serialize JSON from the same upstream data, but `hawkop` may add a `{data: [...], meta: {...}}` envelope. Pick one tool per query and stay consistent.

@@ -1,6 +1,6 @@
 ---
 description: >
-  StackHawk API authentication reference: JWT token flow, HAWK_API_KEY setup, hawk_api and hawk_api_all_pages helper scripts, token refresh, V1/V2 pagination, 401/403 error diagnosis.
+  StackHawk API authentication reference (fallback when hawkop is not installed): JWT token flow, HAWK_API_KEY setup, hawk_api and hawk_api_all_pages helper scripts, token refresh, V1/V2 pagination, 401/403 error diagnosis.
 globs:
 alwaysApply: false
 ---

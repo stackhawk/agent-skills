@@ -4,18 +4,21 @@ Security posture reporting and findings analysis powered by the [StackHawk platf
 
 ## What This Does
 
-This plugin teaches Claude how to query the StackHawk platform API for security reporting. It authenticates with your API key, retrieves findings data across your applications and environments, and presents actionable security posture summaries — helping you understand where your risks are, what changed between scans, and which apps need attention.
+This plugin teaches Claude how to query the StackHawk platform for security reporting. It authenticates, retrieves findings data across your applications and environments, and presents actionable security posture summaries — helping you understand where your risks are, what changed between scans, and which apps need attention.
 
 ```
 Question → Authenticate → Query API → Present Results → Suggest Next Actions
 ```
 
+The skill prefers the [**`hawkop` CLI**](https://docs.stackhawk.com/hawkop/) when it's installed — most operations collapse from a three-call drill-down pipeline into a single `hawkop` command with built-in auth, pagination, and JSON output. When `hawkop` is not available, the skill falls back to raw REST calls using the bundled helper scripts.
+
 ## Prerequisites
 
 - A [StackHawk account](https://app.stackhawk.com) (free tier available)
 - A StackHawk API key — generate one at **Settings → API Keys**
-- `HAWK_API_KEY` set as an environment variable
-- `jq` installed (for JSON processing in helper scripts)
+- **Recommended:** [`hawkop`](https://docs.stackhawk.com/hawkop/) installed and configured (`hawkop init`)
+- **Or** `HAWK_API_KEY` set as an environment variable (raw API fallback)
+- `jq` installed (used for JSON processing in the raw API path)
 
 ## Installation
 
@@ -49,10 +52,11 @@ Once installed, Claude will use the StackHawk API skill when you ask questions l
 
 ## Security Note
 
-Never hardcode your `HAWK_API_KEY`. Always set it as an environment variable and reference it as `$HAWK_API_KEY` in any scripts or configurations.
+Never hardcode your API key. Always set it as an environment variable and reference it as `$HAWK_API_KEY` (raw API) or `$HAWKOP_API_KEY` (hawkop in CI/CD) in scripts or configurations.
 
 ## Resources
 
+- [HawkOp CLI docs](https://docs.stackhawk.com/hawkop/)
 - [StackHawk API Docs](https://apidocs.stackhawk.com)
 - [StackHawk Platform](https://app.stackhawk.com)
 - [StackHawk Support](https://support.stackhawk.com)
