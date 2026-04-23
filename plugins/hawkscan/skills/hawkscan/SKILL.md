@@ -76,14 +76,38 @@ Before configuring or running a scan, gather:
 4. **What runtime is available?** Docker or CLI (`hawk`). If neither is installed, see
    → `references/installation.md`
 
+5. **Does the App exist?** Run `hawkop app list --format json`.
+   - **Primary match:** app name equals the repo name (normalized: lowercased,
+     `_` and `-` treated as equivalent). Exactly one match → use its
+     `applicationId`.
+   - **Multiple name matches:** pick the one whose envs include a host that
+     matches the current `host` from context. Still ambiguous → surface
+     candidates to the user briefly.
+   - **No name match:** do NOT fall back to host-only matching — different
+     apps can share hosts in CI. Proceed to create.
+   - **Create path:** run `hawk create app` with the repo name as default.
+     Announce: "Created application <name> — verify at
+     https://app.stackhawk.com/applications/<id>/details/settings". Use the
+     returned ID. No user prompt (autonomy default).
+
+6. **Does the target Env exist?** Determine the env name from context, in
+   order:
+   1. `STACKHAWK_ENV` env var if set.
+   2. CI detection: `CI=true` or `GITHUB_ACTIONS=true` → `CI`.
+   3. Git branch: `main` / `master` / `production` → `Production`;
+      `staging` → `Staging`; otherwise → `Development`.
+
+   Then run `hawkop env list --app <APP_ID> --format json`. If an env with
+   the target name exists, reuse it. If not, run
+   `hawkop env create --app <APP_ID> --env <name> --host <url>`.
+
 ---
 
 ## Step 2a: Generate `stackhawk.yml` from Scratch
 
-Ask (or infer from codebase) the following, then generate the config:
+Use the `applicationId` and `env` resolved in Step 1 (substeps 5–6). Gather
+the rest from context (or ask if unclear), then generate the config:
 
-- `applicationId` — from StackHawk platform (required, looks like a UUID)
-- `env` — environment name (e.g., `Development`, `CI`, `Staging`)
 - `host` — base URL of the running app (e.g., `http://localhost:8080`)
 - API type: REST/OpenAPI, GraphQL, gRPC, SOAP, JSON-RPC or standard web app
 - Auth pattern: none, form login, header token, cookie, OAuth2, or custom script
