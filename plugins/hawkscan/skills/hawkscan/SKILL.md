@@ -22,7 +22,7 @@ coding loop. The core workflow is:
 ## Companion Skills
 
 The `api` skill wraps read-only StackHawk platform lookups via the `hawkop`
-CLI. Commands this skill relies on:
+CLI. Read-only lookups this skill relies on:
 
 | Purpose                  | Command                                                    |
 |--------------------------|------------------------------------------------------------|
@@ -80,19 +80,23 @@ Before configuring or running a scan, gather:
    - **Primary match:** app name equals the repo name (normalized: lowercased,
      `_` and `-` treated as equivalent). Exactly one match → use its
      `applicationId`.
-   - **Multiple name matches:** pick the one whose envs include a host that
-     matches the current `host` from context. Still ambiguous → surface
-     candidates to the user briefly.
+   - **Multiple name matches:** pick the one whose envs include a host
+     matching the URL confirmed in substep 1 (if host was established).
+     Still ambiguous → surface candidates to the user briefly.
    - **No name match:** do NOT fall back to host-only matching — different
      apps can share hosts in CI. Proceed to create.
    - **Create path:** run `hawk create app` with the repo name as default.
-     Announce: "Created application <name> — verify at
-     https://app.stackhawk.com/applications/<id>/details/settings". Use the
-     returned ID. No user prompt (autonomy default).
+     Announce: "Created application <name> (ID: <applicationId>) — verify
+     at https://app.stackhawk.com/applications/<applicationId>/details/settings".
+     No user prompt (autonomy default).
 
-6. **Does the target Env exist?** Determine the env name from context, in
-   order:
-   1. `STACKHAWK_ENV` env var if set.
+   If `hawkop` is not installed, see the api skill's
+   `references/hawkop-shortcuts.md` and `references/api-endpoints.md` for
+   raw REST fallbacks.
+
+6. **Does the target Env exist?** Determine the env name from context;
+   stop at the first match:
+   1. `STACKHAWK_ENV` env var if set — use it exactly as written.
    2. CI detection: `CI=true` or `GITHUB_ACTIONS=true` → `CI`.
    3. Git branch: `main` / `master` / `production` → `Production`;
       `staging` → `Staging`; otherwise → `Development`.
@@ -100,6 +104,10 @@ Before configuring or running a scan, gather:
    Then run `hawkop env list --app <APP_ID> --format json`. If an env with
    the target name exists, reuse it. If not, run
    `hawkop env create --app <APP_ID> --env <name> --host <url>`.
+
+   If `hawkop` is not installed, see the api skill's
+   `references/hawkop-shortcuts.md` and `references/api-endpoints.md` for
+   raw REST fallbacks.
 
 ---
 
