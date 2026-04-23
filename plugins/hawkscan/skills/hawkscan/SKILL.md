@@ -297,6 +297,34 @@ at scan end can be used to fetch the full report via the StackHawk API if needed
 
 ---
 
+## Step 4.5: Filter Findings by Triage State
+
+Before handing findings to the coding agent (Step 5) or the autonomous loop,
+filter the parsed findings by `triageStatus`:
+
+- **SKIP** findings where `triageStatus` is `Accepted` or `False Positive`.
+  A human already decided these are not actionable. Re-fixing them either
+  wastes effort (they reappear as findings even when "fixed") or creates
+  churn against a deliberate human decision.
+- **PRIORITIZE** findings where `triageStatus` is `Reopened`. These were
+  previously closed (fixed or accepted) and have returned — either a
+  regression or a changed context. Fix these before `New` findings of the
+  same severity.
+- **FIX** findings where `triageStatus` is `New` in normal severity order.
+
+### If you're confident a New finding is a true false positive
+
+Do NOT suppress it in the codebase. The platform does not expose a
+triage-write API today — only the platform UI can record FP / Accepted
+decisions. Surface it in the scan report:
+
+> Finding `<name>` at `<path>` appears to be a false positive. Mark it at
+> `https://app.stackhawk.com/scans/<scanId>`
+
+(Platform gap captured internally; not in this public repo.)
+
+---
+
 ## Step 5: Determine Loop Behavior
 
 **Note:** If you are running the Autonomous Security Loop (see below), you handle
