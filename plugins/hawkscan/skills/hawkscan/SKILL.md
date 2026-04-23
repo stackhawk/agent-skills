@@ -70,7 +70,7 @@ Before configuring or running a scan, gather:
 
 1. **Is the app/api running?** HawkScan requires a live target. If not running, instruct
    the agent to start it first and confirm the host/port.
-2. **Do we have a `stackhawk.yml`?** Check the project root. If missing, go to Step 2.
+2. **Do we have a `stackhawk.yml`?** Check the project root. If missing, go to Step 2a (generate).
    If present, go to Step 2b (tune).
 3. **Do we have `HAWK_API_KEY`?** Required. If missing, tell the user to generate one
    at app.stackhawk.com → Settings → API Keys and set it as an env var.
