@@ -2,7 +2,8 @@
 
 Deep reference for the object model behind every HawkScan run. Read this
 when the primer in `SKILL.md` isn't enough, when you see an unexpected
-`triageStatus`, or when deciding whether to create a new App / Env.
+`findings[].paths[].status` value, or when deciding whether to create a
+new App / Env.
 
 ## Table of Contents
 
@@ -69,7 +70,7 @@ by the platform. Scans:
 - Are immutable once complete
 - Are tied to one App and one Env
 - Carry tags (commit SHA, branch, custom CI run IDs)
-- Produce findings, each with a `triageStatus`
+- Produce findings; each affected path carries a triage `status` field (`findings[].paths[].status`)
 - Are viewable at `https://app.stackhawk.com/scans/<scanId>`
 
 You don't configure the Scan object directly — the platform generates it
@@ -114,9 +115,13 @@ The states and transitions:
          │                                              │
          └── (human marks FP in UI)     ──► FP ─────────┤
                                                         │
-                                 (detected again after  ►  Reopened
-                                  triage reverted or
-                                  scan context changed)
+                                  (finding reappears   ►  Reopened
+                                   in a later scan —                │
+                                   platform detects                 │
+                                   this automatically)              │
+                                                                    ▼
+                                             (human fixes, gone next scan)
+                                                    ──► (removed)
 ```
 
 ### What each state means for the agent
@@ -143,10 +148,12 @@ repo.)
 ### Verify the exact state strings
 
 The table above describes the states as the agent should reason about
-them. The exact string values in the JSON may differ (e.g.,
-`FALSE_POSITIVE` vs. `False Positive`). When implementing a filter, run
-one real scan against an app with known-triaged findings and copy the
-exact strings from the JSON output.
+them. The canonical JSON string values for `findings[].paths[].status`
+are documented in
+[`findings-and-fixes.md` — Field Reference](findings-and-fixes.md).
+If you ever encounter a value not listed there (e.g., a newer state
+introduced platform-side), run one scan against an app with known-triaged
+findings and copy the exact string from the JSON output.
 
 ---
 
@@ -227,14 +234,15 @@ lands, Step 1 of `SKILL.md` will gain a tech-flag reconciliation substep.
 
 For context only (not yet actionable): common detection heuristics are
 
-| Evidence                                       | Likely flag(s)              |
-|------------------------------------------------|-----------------------------|
-| `package.json` → `react` / `next` / `vue`      | React / Next / Vue          |
-| `pom.xml` / `build.gradle` → Spring Boot       | Java / Spring               |
-| `requirements.txt` → Django / Flask / FastAPI  | Python / Django / Flask     |
-| `docker-compose.yml` → `image: postgres:...`   | Postgres                    |
-| Connection strings with `mongodb://`           | MongoDB                     |
-| `go.mod`                                       | Go                          |
+| Evidence                                       | Likely flag(s)                                          |
+|------------------------------------------------|---------------------------------------------------------|
+| `package.json` → `react` / `next` / `vue`      | React / Next / Vue                                      |
+| `pom.xml` / `build.gradle` → Spring Boot       | Java / Spring                                           |
+| `requirements.txt` → Django / Flask / FastAPI  | Python / Django / Flask                                 |
+| `docker-compose.yml` → `image: postgres:...`   | Postgres                                                |
+| Connection strings with `mongodb://`           | MongoDB                                                 |
+| `go.mod`                                       | Go                                                      |
+| No evidence matched                            | Leave flags unset — platform defaults will apply        |
 
 When the tech-flag API arrives, the skill will do this detection
 automatically.
@@ -281,9 +289,9 @@ hawk rescan --scan-id "${INITIAL_SCAN_ID}" --json-output > /tmp/rescan.json
 ### Triage and tags behavior on rescan
 
 - **Triage state inherits from the parent scan.** A finding that was
-  `Accepted` on the parent remains `Accepted` on the rescan (unless a
-  human changed triage between scans). Step 4.5's filter applies to
-  rescan results the same way.
+  `Accepted` or `False Positive` on the parent remains in that state on
+  the rescan (unless a human changed triage between scans). Step 4.5's
+  filter applies to rescan results the same way.
 - **Tags do not inherit automatically.** Re-set `_STACKHAWK_GIT_COMMIT_SHA`
   and `_STACKHAWK_GIT_BRANCH` env vars before rescan if the commit
   changed due to fixes — otherwise the rescan will carry the parent's
@@ -360,7 +368,7 @@ lookups. Relevant commands and their documentation:
 | Purpose                       | Command                                                    | Reference                                                                                             |
 |-------------------------------|------------------------------------------------------------|-------------------------------------------------------------------------------------------------------|
 | List apps                     | `hawkop app list --format json`                            | [`api` skill `hawkop-shortcuts.md` §3](../../../../api/skills/api/references/hawkop-shortcuts.md)        |
-| List envs for an app          | `hawkop env list --app <APP_ID> --format json`             | [same, §6](../../../../api/skills/api/references/hawkop-shortcuts.md)                                    |
+| List envs for an app          | `hawkop env list --app <APP_ID> --format json`             | [same, §3](../../../../api/skills/api/references/hawkop-shortcuts.md)                                    |
 | Get scan findings with triage | `hawkop scan get --app <NAME> --detail full --format json` | [same, §2](../../../../api/skills/api/references/hawkop-shortcuts.md)                                    |
 
 If `hawkop` is not installed, the api skill documents raw REST fallbacks.
