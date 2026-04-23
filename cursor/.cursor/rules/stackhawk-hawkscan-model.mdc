@@ -15,7 +15,7 @@ new App / Env.
 
 1. [The Four Objects in Detail](#the-four-objects-in-detail)
 2. [What Goes in `stackhawk.yml` (and What Doesn't)](#what-goes-in-stackhawkyml-and-what-doesnt)
-3. [The Finding Lifecycle (Triage State Machine)](#the-finding-lifecycle-triage-state-machine)
+3. [The Finding Lifecycle (Triage States)](#the-finding-lifecycle-triage-states)
 4. [Tags and Commit Traceability](#tags-and-commit-traceability)
 5. [Technology Flags](#technology-flags)
 6. [Rescan: Derived Scans for Fast Fix Verification](#rescan-derived-scans-for-fast-fix-verification)
@@ -60,11 +60,10 @@ A scan context under an App. Identified by a **string name** — not a UUID.
 Canonical names: `Development`, `CI`, `Staging`, `Production`. You can use
 others, but stick to a small, deliberate set.
 
-Environments group scans for comparison: StackHawk computes "new", "fixed",
-and "reopened" status for findings by comparing successive scans **within
-the same env**. A finding that disappears across scans in the Development
-env is considered resolved for Development. The same finding in Production
-is a separate timeline.
+Environments group scans for comparison: StackHawk tracks which findings
+are new or fixed across successive scans **within the same env**. A finding
+that disappears across scans in the Development env is considered resolved
+for Development. The same finding in Production is a separate timeline.
 
 **In `stackhawk.yml`:** `app.env`.
 
@@ -108,42 +107,41 @@ concern in its proper layer.
 
 ---
 
-## The Finding Lifecycle (Triage State Machine)
+## The Finding Lifecycle (Triage States)
 
 Every affected path in the JSON output (`hawk scan --json-output` or
 `hawkop scan get --detail full --format json`) carries a triage `status`
-field (`findings[].paths[].status`). The states and transitions:
+field (`findings[].paths[].status`). The values match the `FindingStatus`
+enum in the StackHawk proto:
 
-```
-        New ───── (human fixes, gone next scan) ─────► (removed)
-         │
-         ├── (human Accepts in UI)      ──► Accepted  ──┐
-         │                                              │
-         └── (human marks FP in UI)     ──► FP ─────────┤
-                                                        │
-                                  (finding reappears   ►  Reopened
-                                   in a later scan —                │
-                                   platform detects                 │
-                                   this automatically)              │
-                                                                    ▼
-                                             (human fixes, gone next scan)
-                                                    ──► (removed)
+```proto
+enum FindingStatus {
+  NEW = 0;
+  FALSE_POSITIVE = 1;
+  RISK_ACCEPTED = 2;
+  ASSIGNED = 3;
+}
 ```
 
 ### What each state means for the agent
 
-| State            | What happened                                                                                | Agent action                                                                             |
-|------------------|----------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|
-| `New`            | Finding detected for the first time, not yet triaged                                         | **Fix** in severity order.                                                               |
-| `Accepted`       | Human marked "this risk is acceptable" in the platform UI                                    | **Skip.** Re-fixing either wastes effort or overrides a human decision.                  |
-| `False Positive` | Human marked "scanner is wrong" in the platform UI                                           | **Skip.** Same reasoning.                                                                |
-| `Reopened`       | Was previously `Accepted` / `False Positive` / "fixed and gone"; detected again              | **Prioritize.** Signals a regression or changed context. Fix before same-severity `New`. |
+| Value             | What it means                                                                       | Agent action                                                                          |
+|-------------------|-------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------|
+| `NEW`             | Finding detected, not yet triaged by a human                                        | **Fix** in severity order.                                                            |
+| `FALSE_POSITIVE`  | Human marked "scanner is wrong" in the platform UI                                  | **Skip.** Re-fixing overrides a human decision.                                       |
+| `RISK_ACCEPTED`   | Human marked "this risk is acceptable" in the platform UI                           | **Skip.** Same reasoning.                                                             |
+| `ASSIGNED`        | Human confirmed this is real and assigned it for remediation                        | **Prioritize.** Fix before same-severity `NEW` — guaranteed-real, not pending-triage. |
+
+There is no "reopened" state — if a previously-triaged finding reappears
+on a later scan, the platform continues to report its current triage
+value (`FALSE_POSITIVE` / `RISK_ACCEPTED` stays sticky unless a human
+changes it).
 
 ### The agent cannot write triage
 
-There is no API today for marking a finding `Accepted` or `False Positive`
-programmatically. If the agent is confident a `New` finding is a true
-false positive, the right behavior is to **report** it in the scan
+There is no API today for setting `FALSE_POSITIVE` / `RISK_ACCEPTED` /
+`ASSIGNED` programmatically. If the agent is confident a `NEW` finding is
+a true false positive, the right behavior is to **report** it in the scan
 summary with a link to `https://app.stackhawk.com/scans/<scanId>` so a
 human can triage it in the platform UI. Do NOT suppress it in the
 codebase — that would make future scans invisible.
@@ -151,15 +149,12 @@ codebase — that would make future scans invisible.
 (Tracked internally as a platform-team ask; not documented in this public
 repo.)
 
-### Verify the exact state strings
+### Exact JSON serialization
 
-The table above describes the states as the agent should reason about
-them. The canonical JSON string values for `findings[].paths[].status`
-are documented in
-[`findings-and-fixes.md` — Field Reference](findings-and-fixes.md).
-If you ever encounter a value not listed there (e.g., a newer state
-introduced platform-side), run one scan against an app with known-triaged
-findings and copy the exact string from the JSON output.
+The proto enum values above are the canonical names. JSON serialization
+should match exactly (`"status": "NEW"`). If you observe a different
+format (e.g., lowercase or title-case) in real output, treat the proto
+names as authoritative and file the discrepancy as a platform bug.
 
 ---
 
@@ -295,9 +290,9 @@ hawk rescan --scan-id "${INITIAL_SCAN_ID}" --json-output > /tmp/rescan.json
 ### Triage and tags behavior on rescan
 
 - **Triage state inherits from the parent scan.** A finding that was
-  `Accepted` or `False Positive` on the parent remains in that state on
-  the rescan (unless a human changed triage between scans). Step 4.5's
-  filter applies to rescan results the same way.
+  `FALSE_POSITIVE` / `RISK_ACCEPTED` / `ASSIGNED` on the parent remains
+  in that state on the rescan (unless a human changed triage between
+  scans). Step 4.5's filter applies to rescan results the same way.
 - **Tags do not inherit automatically.** Re-set `_STACKHAWK_GIT_COMMIT_SHA`
   and `_STACKHAWK_GIT_BRANCH` env vars before rescan if the commit
   changed due to fixes — otherwise the rescan will carry the parent's
