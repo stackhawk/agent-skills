@@ -307,9 +307,8 @@ filter the parsed findings by `triageStatus`:
   wastes effort (they reappear as findings even when "fixed") or creates
   churn against a deliberate human decision.
 - **PRIORITIZE** findings where `triageStatus` is `Reopened`. These were
-  previously closed (fixed or accepted) and have returned — either a
-  regression or a changed context. Fix these before `New` findings of the
-  same severity.
+  previously closed and have returned — either a regression or a changed
+  context. Fix these before `New` findings of the same severity.
 - **FIX** findings where `triageStatus` is `New` in normal severity order.
 
 ### If you're confident a New finding is a true false positive
@@ -322,6 +321,12 @@ decisions. Surface it in the scan report:
 > `https://app.stackhawk.com/scans/<scanId>`
 
 (Platform gap captured internally; not in this public repo.)
+
+→ See `references/false-positives.md` for config-based suppression
+  patterns (excludePaths, excluded scan plugins) — useful for scan noise
+  that should never reach the triage pipeline in the first place. Step 4.5
+  is about per-finding triage from the platform; `false-positives.md` is
+  about scope-level config.
 
 ---
 
