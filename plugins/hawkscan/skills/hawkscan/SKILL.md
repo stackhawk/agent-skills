@@ -54,8 +54,8 @@ Before running a scan, the agent must understand four layered objects:
   generating config; match by name/host; only `hawk create app` on miss. See
   Step 1 substep 5.
 - **Envs group history.** Pick a name deliberately; reuse canonical names
-  (Development, CI, Staging, Production); `hawkop env list --app <id>` before
-  committing. See Step 1 substep 6.
+  (Development, CI, Staging, Production); `hawkop env list --app <APP_ID>`
+  before committing. See Step 1 substep 6.
 - **Findings have a lifecycle.** Each finding has a `triageStatus` — `New`,
   `Accepted`, `False Positive`, or `Reopened`. Respect it. See Step 4.5.
 
