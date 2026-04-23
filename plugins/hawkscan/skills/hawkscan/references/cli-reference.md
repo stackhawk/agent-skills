@@ -57,7 +57,9 @@ into a targeted regression-test engine, ideal for the agentic fix loop:
 **Triage and tags inherit from the parent scan.** A finding that was
 `Accepted` on the parent will still be `Accepted` on the rescan.
 Tags (commit SHA, branch) should be re-set before rescan if the commit
-changed due to fixes.
+changed due to fixes — re-export `COMMIT_SHA` / `BRANCH_NAME` and update
+the top-level `tags:` block in `stackhawk.yml` before running
+`hawk rescan`. See SKILL.md Step 2b for the tag syntax.
 
 **When to use a full `hawk scan` instead of rescan:**
 - Fixes added new API endpoints, input vectors, or auth paths (rescan

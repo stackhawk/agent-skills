@@ -251,7 +251,7 @@ hawk rescan --scan-id <SCAN_ID> --json-output      # re-run plugins against a sp
 from scan `<SCAN_ID>`, `hawk rescan --scan-id <SCAN_ID>` re-runs only the
 plugins that previously produced findings — seconds vs. minutes. Use it
 in the Autonomous Loop's rescan step (Step 6). Capture the `scan.id`
-from the initial scan's JSON output (`scan.id` field).
+field from the initial scan's JSON output.
 
 ---
 
@@ -430,10 +430,15 @@ After completing a code change, announce and execute:
    - **Commit fixes with a consistent message format:**
      `fix: resolve [CWE-XXX] [vulnerability type] found by HawkScan`
      Example: `fix: resolve CWE-89 SQL injection found by HawkScan`
-6. **Rescan:** Decide first — did the fix add cross-cutting surfaces (new
-   API endpoints, new input vectors, new auth paths)? If YES, run a full
-   `hawk scan --json-output` to catch regressions in code paths rescan
-   won't touch. If NO (the common case), run
+6. **Rescan:** Decide first — run a full `hawk scan --json-output` instead
+   of rescan if ANY of these apply:
+   - The fix added cross-cutting surfaces (new API endpoints, new input
+     vectors, new auth paths) — rescan won't test them.
+   - The codebase has changed substantially since the parent scan.
+   - You're baselining a new release where the full scan policy needs to
+     pass, not just the subset that fired previously.
+
+   Otherwise (the common case), run
    `hawk rescan --scan-id <SCAN_ID> --json-output` to verify fixes
    quickly. `<SCAN_ID>` is the `scan.id` value from the JSON output
    captured in Step 4. Rescan re-runs only the plugins that fired on the
