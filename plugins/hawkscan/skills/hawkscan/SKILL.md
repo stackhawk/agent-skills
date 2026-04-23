@@ -19,6 +19,50 @@ coding loop. The core workflow is:
 
 ---
 
+## Companion Skills
+
+The `api` skill wraps read-only StackHawk platform lookups via the `hawkop`
+CLI. Commands this skill relies on:
+
+| Purpose                  | Command                                                    |
+|--------------------------|------------------------------------------------------------|
+| Check if App exists      | `hawkop app list --format json`                            |
+| Check if Env exists      | `hawkop env list --app <APP_ID> --format json`             |
+| Get findings with triage | `hawkop scan get --app <NAME> --detail full --format json` |
+
+If `hawkop` is not installed, the api skill documents raw REST fallbacks.
+Prefer `hawkop`; fall back only if unavailable.
+
+---
+
+## StackHawk Platform Model (read this first)
+
+Before running a scan, the agent must understand four layered objects:
+
+- **Organization** (`orgId`): the tenant. Set once via `HAWK_API_KEY`. Most
+  customers have only one — you rarely think about it.
+- **Application** (`applicationId`, UUID): long-lived; holds tech flags, team
+  ownership, metadata. One App is scanned across many Environments.
+- **Environment** (`env`, string name): a scan context under an App. Findings
+  are compared scan-to-scan *within the same env*. Different env = different
+  timeline.
+- **Scan**: a single run. Tagged with commit SHA and branch for traceability.
+
+### Non-negotiable autonomous-behavior rules
+
+- **Apps are reused, not created per scan.** Run `hawkop app list` before
+  generating config; match by name/host; only `hawk create app` on miss. See
+  Step 1 substep 5.
+- **Envs group history.** Pick a name deliberately; reuse canonical names
+  (Development, CI, Staging, Production); `hawkop env list --app <id>` before
+  committing. See Step 1 substep 6.
+- **Findings have a lifecycle.** Each finding has a `triageStatus` — `New`,
+  `Accepted`, `False Positive`, or `Reopened`. Respect it. See Step 4.5.
+
+→ Deep reference: [`references/platform-model.md`](references/platform-model.md)
+
+---
+
 ## Step 1: Assess Context
 
 Before configuring or running a scan, gather:
