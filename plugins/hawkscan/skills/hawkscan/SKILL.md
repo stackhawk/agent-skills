@@ -56,8 +56,9 @@ Before running a scan, the agent must understand four layered objects:
 - **Envs group history.** Pick a name deliberately; reuse canonical names
   (Development, CI, Staging, Production); `hawkop env list --app <APP_ID>`
   before committing. See Step 1 substep 6.
-- **Findings have a lifecycle.** Each finding has a `triageStatus` — `New`,
-  `Accepted`, `False Positive`, or `Reopened`. Respect it. See Step 4.5.
+- **Findings have a lifecycle.** Each affected path of a finding carries a
+  triage status (JSON field `findings[].paths[].status`) — `New`, `Accepted`,
+  `False Positive`, or `Reopened`. Respect it. See Step 4.5.
 
 → Deep reference: [`references/platform-model.md`](references/platform-model.md)
 
@@ -300,16 +301,18 @@ at scan end can be used to fetch the full report via the StackHawk API if needed
 ## Step 4.5: Filter Findings by Triage State
 
 Before handing findings to the coding agent (Step 5) or the autonomous loop,
-filter the parsed findings by `triageStatus`:
+filter by the per-path triage status (JSON field `findings[].paths[].status`
+— one status per affected path within each finding):
 
-- **SKIP** findings where `triageStatus` is `Accepted` or `False Positive`.
-  A human already decided these are not actionable. Re-fixing them either
-  wastes effort (they reappear as findings even when "fixed") or creates
-  churn against a deliberate human decision.
-- **PRIORITIZE** findings where `triageStatus` is `Reopened`. These were
-  previously closed and have returned — either a regression or a changed
-  context. Fix these before `New` findings of the same severity.
-- **FIX** findings where `triageStatus` is `New` in normal severity order.
+- **SKIP** paths where `status` is `Accepted` or `False Positive`. A human
+  already decided these are not actionable. Re-fixing them either wastes
+  effort (they reappear on the next scan even when "fixed") or creates
+  churn against a deliberate human decision. If every path of a finding is
+  SKIP, skip the finding entirely.
+- **PRIORITIZE** paths where `status` is `Reopened`. These were previously
+  closed and have returned — either a regression or a changed context. Fix
+  these before `New` paths of the same severity.
+- **FIX** paths where `status` is `New` in normal severity order.
 
 ### If you're confident a New finding is a true false positive
 
@@ -404,8 +407,9 @@ After completing a code change, announce and execute:
 4. **Scan:** Run `hawk scan --json-output` and parse the structured findings. The scan
    results will be tagged with the commit SHA and branch from the env vars above.
 5. **If findings exist:**
-   - **Run the Step 4.5 triage filter first.** Skip `Accepted` / `False
-     Positive` findings; prioritize `Reopened`; fix `New` in severity order.
+   - **Run the Step 4.5 triage filter first** (per-path `status` field).
+     Skip `Accepted` / `False Positive`; prioritize `Reopened`; fix `New`
+     in severity order.
    - Announce: "Found [N] actionable vulnerabilities (+ [M] skipped due to
      prior triage). Fixing all actionable ones."
    - **Fix ALL findings — not just ones related to your recent changes.** DAST scans the
@@ -419,14 +423,14 @@ After completing a code change, announce and execute:
    - **Commit fixes with a consistent message format:**
      `fix: resolve [CWE-XXX] [vulnerability type] found by HawkScan`
      Example: `fix: resolve CWE-89 SQL injection found by HawkScan`
-6. **Rescan:** Run
-   `hawk rescan --scan-id <INITIAL_SCAN_ID> --json-output`
-   to verify fixes. `<INITIAL_SCAN_ID>` is the `scan.id` value from the
-   JSON output captured in Step 4. Rescan re-runs only the plugins that
-   fired on the parent scan — dramatically faster than a full scan. If
-   the fix introduced cross-cutting surfaces (new API endpoints, new
-   input vectors, new auth paths), run a full `hawk scan` instead to
-   catch regressions in code paths rescan won't touch.
+6. **Rescan:** Decide first — did the fix add cross-cutting surfaces (new
+   API endpoints, new input vectors, new auth paths)? If YES, run a full
+   `hawk scan --json-output` to catch regressions in code paths rescan
+   won't touch. If NO (the common case), run
+   `hawk rescan --scan-id <SCAN_ID> --json-output` to verify fixes
+   quickly. `<SCAN_ID>` is the `scan.id` value from the JSON output
+   captured in Step 4. Rescan re-runs only the plugins that fired on the
+   parent scan — dramatically faster than a full scan.
 7. **Report:**
    - If clean: "Rescan complete. Zero new findings. All security issues have been resolved."
    - If findings remain: "Rescan found [N] remaining issues that require manual review:" and list them.
