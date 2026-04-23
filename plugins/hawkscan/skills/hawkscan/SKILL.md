@@ -382,9 +382,12 @@ Skip the autonomous loop for:
 After completing a code change, announce and execute:
 
 1. **Announce:** "Implementation complete. Running security scan against the application."
-2. **Configure:** If no `stackhawk.yml` exists, generate one (Step 2a above). If one exists,
-   ensure it has commit SHA tags (top-level, not under `app:`) so scan results are linked
-   to the commit:
+2. **Configure:** Before generating or reusing `stackhawk.yml`, verify the
+   App and Env exist via Step 1 substeps 5–6 — this prevents duplicate App
+   creation on every autonomous run. Then, if no `stackhawk.yml` exists,
+   generate one (Step 2a above). If one exists, ensure it has commit SHA
+   tags (top-level, not under `app:`) so scan results are linked to the
+   commit:
    ```yaml
    tags:
      - name: _STACKHAWK_GIT_COMMIT_SHA
@@ -401,7 +404,10 @@ After completing a code change, announce and execute:
 4. **Scan:** Run `hawk scan --json-output` and parse the structured findings. The scan
    results will be tagged with the commit SHA and branch from the env vars above.
 5. **If findings exist:**
-   - Announce: "Found [N] vulnerabilities. Fixing all of them."
+   - **Run the Step 4.5 triage filter first.** Skip `Accepted` / `False
+     Positive` findings; prioritize `Reopened`; fix `New` in severity order.
+   - Announce: "Found [N] actionable vulnerabilities (+ [M] skipped due to
+     prior triage). Fixing all actionable ones."
    - **Fix ALL findings — not just ones related to your recent changes.** DAST scans the
      entire running application. Pre-existing vulnerabilities are just as exploitable as
      new ones. If the scan found it, fix it.
@@ -413,10 +419,23 @@ After completing a code change, announce and execute:
    - **Commit fixes with a consistent message format:**
      `fix: resolve [CWE-XXX] [vulnerability type] found by HawkScan`
      Example: `fix: resolve CWE-89 SQL injection found by HawkScan`
-6. **Rescan:** Run `hawk scan --json-output` again to verify all fixes.
+6. **Rescan:** Run
+   `hawk rescan --scan-id <INITIAL_SCAN_ID> --json-output`
+   to verify fixes. `<INITIAL_SCAN_ID>` is the `scan.id` value from the
+   JSON output captured in Step 4. Rescan re-runs only the plugins that
+   fired on the parent scan — dramatically faster than a full scan. If
+   the fix introduced cross-cutting surfaces (new API endpoints, new
+   input vectors, new auth paths), run a full `hawk scan` instead to
+   catch regressions in code paths rescan won't touch.
 7. **Report:**
-   - If clean: "Rescan complete. Zero findings. All security issues have been resolved."
+   - If clean: "Rescan complete. Zero new findings. All security issues have been resolved."
    - If findings remain: "Rescan found [N] remaining issues that require manual review:" and list them.
+   - If any findings were filtered by Step 4.5 triage state, append a
+     one-line summary: "Skipped [X] findings already triaged as Accepted /
+     False Positive."
+   - If any suspected false positives were identified during fixing, list
+     them with the `https://app.stackhawk.com/scans/<scanId>` platform link
+     so a human can triage them in the platform UI.
 
 ### Guard Rails
 
