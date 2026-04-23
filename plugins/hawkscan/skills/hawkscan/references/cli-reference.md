@@ -33,11 +33,38 @@ hawk --api-key=${HAWK_API_KEY} scan      # or supply key inline without init
 ## Core Scan Commands
 
 ```bash
-hawk scan                                # scan using stackhawk.yml in current directory
-hawk scan stackhawk-ci.yml              # scan with a specific config file
-hawk scan base.yml override.yml         # merge configs (later file wins)
-hawk rescan                              # re-run only plugins that threw alerts from previous scan
+hawk scan                                          # scan using stackhawk.yml in current directory
+hawk scan stackhawk-ci.yml                         # scan with a specific config file
+hawk scan base.yml override.yml                    # merge configs (later file wins)
+hawk rescan                                        # re-run plugins that fired on the most recent scan
+hawk rescan --scan-id <SCAN_ID>                    # re-run plugins against a specific prior scan
+hawk rescan --scan-id <SCAN_ID> --json-output      # rescan + structured output for parsing
 ```
+
+### Rescan: fast fix verification
+
+`hawk rescan` re-runs only the plugins that produced findings on the
+parent scan, skipping the rest of the test suite. This turns the scanner
+into a targeted regression-test engine, ideal for the agentic fix loop:
+
+1. Run an initial `hawk scan --json-output` — capture `scan.id` from the
+   JSON output.
+2. Hand findings to a coding agent, let it fix them.
+3. Run `hawk rescan --scan-id <that scan.id> --json-output` to verify
+   fixes — dramatically faster than a full re-scan (often seconds vs.
+   minutes).
+
+**Triage and tags inherit from the parent scan.** A finding that was
+`Accepted` on the parent will still be `Accepted` on the rescan.
+Tags (commit SHA, branch) should be re-set before rescan if the commit
+changed due to fixes.
+
+**When to use a full `hawk scan` instead of rescan:**
+- Fixes added new API endpoints, input vectors, or auth paths (rescan
+  won't test them).
+- The codebase has changed substantially since the parent scan.
+- You want to baseline a new release where the full policy needs to
+  pass, not just the subset that fired previously.
 
 ---
 

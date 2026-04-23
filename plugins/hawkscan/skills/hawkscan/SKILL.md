@@ -241,10 +241,17 @@ For Docker-based scanning (CI environments or when CLI isn't installed), see:
 
 **Quick reference for agentic scanning:**
 ```bash
-hawk scan                        # scan using stackhawk.yml in current directory
-hawk scan --json-output          # output findings as JSON (best for agentic parsing, requires Dev Release v5.3.41+)
-hawk rescan                      # re-run only plugins that threw alerts from previous scan
+hawk scan                                          # scan using stackhawk.yml in current directory
+hawk scan --json-output                            # output findings as JSON (best for agentic parsing, requires Dev Release v5.3.41+)
+hawk rescan                                        # re-run plugins that fired on the most recent scan
+hawk rescan --scan-id <SCAN_ID> --json-output      # re-run plugins against a specific prior scan — fast fix verification
 ```
+
+**Rescan is the agentic fix-loop's best friend.** After fixing findings
+from scan `<SCAN_ID>`, `hawk rescan --scan-id <SCAN_ID>` re-runs only the
+plugins that previously produced findings — seconds vs. minutes. Use it
+in the Autonomous Loop's rescan step (Step 6). Capture the `scan.id`
+from the initial scan's JSON output (`scan.id` field).
 
 ---
 
