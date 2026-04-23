@@ -57,8 +57,9 @@ Before running a scan, the agent must understand four layered objects:
   (Development, CI, Staging, Production); `hawkop env list --app <APP_ID>`
   before committing. See Step 1 substep 6.
 - **Findings have a lifecycle.** Each affected path of a finding carries a
-  triage status (JSON field `findings[].paths[].status`) — `New`, `Accepted`,
-  `False Positive`, or `Reopened`. Respect it. See Step 4.5.
+  triage status (JSON field `findings[].paths[].status`; values match the
+  `FindingStatus` proto enum) — `NEW`, `FALSE_POSITIVE`, `RISK_ACCEPTED`,
+  or `ASSIGNED`. Respect it. See Step 4.5.
 
 → Deep reference: [`references/platform-model.md`](references/platform-model.md)
 
@@ -311,21 +312,22 @@ Before handing findings to the coding agent (Step 5) or the autonomous loop,
 filter by the per-path triage status (JSON field `findings[].paths[].status`
 — one status per affected path within each finding):
 
-- **SKIP** paths where `status` is `Accepted` or `False Positive`. A human
-  already decided these are not actionable. Re-fixing them either wastes
-  effort (they reappear on the next scan even when "fixed") or creates
-  churn against a deliberate human decision. If every path of a finding is
-  SKIP, skip the finding entirely.
-- **PRIORITIZE** paths where `status` is `Reopened`. These were previously
-  closed and have returned — either a regression or a changed context. Fix
-  these before `New` paths of the same severity.
-- **FIX** paths where `status` is `New` in normal severity order.
+- **SKIP** paths where `status` is `FALSE_POSITIVE` or `RISK_ACCEPTED`. A
+  human already decided these are not actionable. Re-fixing them either
+  wastes effort (they reappear on the next scan even when "fixed") or
+  creates churn against a deliberate human decision. If every path of a
+  finding is SKIP, skip the finding entirely.
+- **PRIORITIZE** paths where `status` is `ASSIGNED`. A human has confirmed
+  this is real and is tracking its remediation. Fix these before `NEW`
+  paths of the same severity — they're guaranteed-real, not
+  pending-triage.
+- **FIX** paths where `status` is `NEW` in normal severity order.
 
 ### If you're confident a New finding is a true false positive
 
 Do NOT suppress it in the codebase. The platform does not expose a
-triage-write API today — only the platform UI can record FP / Accepted
-decisions. Surface it in the scan report:
+triage-write API today — only the platform UI can set `FALSE_POSITIVE` /
+`RISK_ACCEPTED` / `ASSIGNED` decisions. Surface it in the scan report:
 
 > Finding `<name>` at `<path>` appears to be a false positive. Mark it at
 > `https://app.stackhawk.com/scans/<scanId>`
@@ -415,8 +417,8 @@ After completing a code change, announce and execute:
    results will be tagged with the commit SHA and branch from the env vars above.
 5. **If findings exist:**
    - **Run the Step 4.5 triage filter first** (per-path `status` field).
-     Skip `Accepted` / `False Positive`; prioritize `Reopened`; fix `New`
-     in severity order.
+     Skip `FALSE_POSITIVE` / `RISK_ACCEPTED`; prioritize `ASSIGNED`; fix
+     `NEW` in severity order.
    - Announce: "Found [N] actionable vulnerabilities (+ [M] skipped due to
      prior triage). Fixing all actionable ones."
    - **Fix ALL findings — not just ones related to your recent changes.** DAST scans the
@@ -447,8 +449,8 @@ After completing a code change, announce and execute:
    - If clean: "Rescan complete. Zero new findings. All security issues have been resolved."
    - If findings remain: "Rescan found [N] remaining issues that require manual review:" and list them.
    - If any findings were filtered by Step 4.5 triage state, append a
-     one-line summary: "Skipped [X] findings already triaged as Accepted /
-     False Positive."
+     one-line summary: "Skipped [X] findings already triaged as
+     RISK_ACCEPTED / FALSE_POSITIVE."
    - If any suspected false positives were identified during fixing, list
      them with the `https://app.stackhawk.com/scans/<scanId>` platform link
      so a human can triage them in the platform UI.

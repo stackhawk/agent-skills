@@ -211,7 +211,7 @@ Extract per alert: `pluginId`, `alertName`, `severity`, `affectedUriCount`, `cwe
 ```bash
 hawk_api GET "/api/v1/scan/${SCAN_ID}/alert/${PLUGIN_ID}"
 ```
-Extract per finding: `uri`, `method`, `triageStatus`, `parameter`
+Extract per finding: `uri`, `method`, `status` (triage state; see hawkscan skill `references/platform-model.md` §3 for values), `parameter`
 
 ### Present findings
 
@@ -242,7 +242,7 @@ Compare two scans: fetch the two most recent scanIds for the app, pull alerts fo
 - Use **tables** for multi-app/multi-finding summaries
 - Use **structured lists** for single-app deep dives
 - Include the platform link (`app.stackhawk.com/scans/{scanId}`) whenever referencing a specific scan
-- Show triage status (`New`, `Accepted`, `False Positive`, `Reopened`) alongside each finding
+- Show triage status (`NEW`, `FALSE_POSITIVE`, `RISK_ACCEPTED`, `ASSIGNED`) alongside each finding
 
 ### Next action suggestions
 
@@ -253,7 +253,7 @@ Base suggestions on what the data shows:
 | High severity findings present | Recommend immediate remediation; offer to hand finding details to → hawkscan skill for a re-scan to verify fixes |
 | Stale apps (no scan > 30 days) | Recommend running a fresh scan → hawkscan skill |
 | Clean results across all envs | Note that low path count may mean the spider needs tuning → hawkscan skill, config-patterns reference |
-| Untriaged findings (`triageStatus: New`) | Direct to platform for triage: **app.stackhawk.com** — triage write operations are out of scope for this skill |
+| Untriaged findings (`status: NEW`) | Direct to platform for triage: **app.stackhawk.com** — triage write operations are out of scope for this skill |
 | `ENV_INCOMPLETE` app status | Direct to platform to complete environment configuration |
 
 ### Platform UI vs API data
