@@ -57,9 +57,9 @@ Before running a scan, the agent must understand four layered objects:
   (Development, CI, Staging, Production); `hawkop env list --app <APP_ID>`
   before committing. See Step 1 substep 6.
 - **Findings have a lifecycle.** Each affected path of a finding carries a
-  triage status (JSON field `findings[].paths[].status`; values match the
-  `FindingStatus` proto enum) — `NEW`, `FALSE_POSITIVE`, `RISK_ACCEPTED`,
-  or `ASSIGNED`. Respect it. See Step 4.5.
+  triage status (JSON field `findings[].paths[].status`) — `NEW`,
+  `FALSE_POSITIVE`, `RISK_ACCEPTED`, or `ASSIGNED`. Respect it. See
+  Step 4.5.
 
 → Deep reference: [`references/platform-model.md`](references/platform-model.md)
 

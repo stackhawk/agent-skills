@@ -71,7 +71,7 @@ with exit code 1 if both are set.
 | `findings[].paths[]` | array | Affected endpoints |
 | `findings[].paths[].path` | string | Endpoint path (e.g., "/api/users") |
 | `findings[].paths[].method` | string | HTTP method (`GET`, `POST`, etc.) |
-| `findings[].paths[].status` | string | Triage status: `NEW`, `FALSE_POSITIVE`, `RISK_ACCEPTED`, or `ASSIGNED` (values match the `FindingStatus` proto enum) |
+| `findings[].paths[].status` | string | Triage status: `NEW`, `FALSE_POSITIVE`, `RISK_ACCEPTED`, or `ASSIGNED` |
 | `errors[]` | array | Errors during scan. Empty `[]` if none |
 | `errors[].message` | string | Error description |
 | `errors[].category` | string | Error category: `AUTH`, `CONFIG`, `UNKNOWN`, etc. |
