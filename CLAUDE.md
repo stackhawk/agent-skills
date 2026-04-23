@@ -7,6 +7,7 @@ Multi-platform agent skills repo serving Claude, Codex, Gemini, Copilot, and Cur
 - `plugins/hawkscan/` — HawkScan DAST scanning skill (SKILL.md + references)
 - `plugins/api/` — StackHawk API reporting skill (SKILL.md + references)
 - `skills/` — Symlinks for Gemini/Copilot discovery (points into plugins/)
+- `.opencode/skills/` — Symlinks for OpenCode discovery (points into plugins/)
 - `cursor/` — Generated Cursor .mdc rules (do NOT edit manually)
 - `scripts/generate-cursor-rules.sh` — Transforms SKILL.md → Cursor .mdc format
 
@@ -35,6 +36,6 @@ All platform manifests share the version in `VERSION` (currently 1.0.0).
 ## Gotchas
 
 - `cursor/` is generated output — edit the source SKILL.md, then regenerate
-- `skills/` entries are symlinks, not copies — don't break the relative paths
+- `skills/` and `.opencode/skills/` entries are symlinks, not copies — don't break the relative paths
 - `docs/superpowers/` is gitignored (design specs/plans kept locally)
 - `.claude/` dir is gitignored (local settings only)
