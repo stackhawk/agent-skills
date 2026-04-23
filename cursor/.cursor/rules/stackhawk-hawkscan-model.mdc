@@ -111,17 +111,12 @@ concern in its proper layer.
 
 Every affected path in the JSON output (`hawk scan --json-output` or
 `hawkop scan get --detail full --format json`) carries a triage `status`
-field (`findings[].paths[].status`). The values match the `FindingStatus`
-enum in the StackHawk proto:
+field (`findings[].paths[].status`). The canonical values:
 
-```proto
-enum FindingStatus {
-  NEW = 0;
-  FALSE_POSITIVE = 1;
-  RISK_ACCEPTED = 2;
-  ASSIGNED = 3;
-}
-```
+- `NEW`
+- `FALSE_POSITIVE`
+- `RISK_ACCEPTED`
+- `ASSIGNED`
 
 ### What each state means for the agent
 
@@ -151,10 +146,10 @@ repo.)
 
 ### Exact JSON serialization
 
-The proto enum values above are the canonical names. JSON serialization
-should match exactly (`"status": "NEW"`). If you observe a different
-format (e.g., lowercase or title-case) in real output, treat the proto
-names as authoritative and file the discrepancy as a platform bug.
+The values above are the canonical names. JSON serialization should match
+exactly (`"status": "NEW"`). If you observe a different format (e.g.,
+lowercase or title-case) in real output, treat the values above as
+authoritative and file the discrepancy as a platform bug.
 
 ---
 
