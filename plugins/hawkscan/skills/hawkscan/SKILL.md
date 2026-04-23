@@ -19,27 +19,105 @@ coding loop. The core workflow is:
 
 ---
 
+## Companion Skills
+
+The `api` skill wraps read-only StackHawk platform lookups via the `hawkop`
+CLI. Read-only lookups this skill relies on:
+
+| Purpose                  | Command                                                    |
+|--------------------------|------------------------------------------------------------|
+| Check if App exists      | `hawkop app list --format json`                            |
+| Check if Env exists      | `hawkop env list --app <APP_ID> --format json`             |
+| Get findings with triage | `hawkop scan get --app <NAME> --detail full --format json` |
+
+If `hawkop` is not installed, the api skill documents raw REST fallbacks.
+Prefer `hawkop`; fall back only if unavailable.
+
+---
+
+## StackHawk Platform Model (read this first)
+
+Before running a scan, the agent must understand four layered objects:
+
+- **Organization** (`orgId`): the tenant. Set once via `HAWK_API_KEY`. Most
+  customers have only one — you rarely think about it.
+- **Application** (`applicationId`, UUID): long-lived; holds tech flags, team
+  ownership, metadata. One App is scanned across many Environments.
+- **Environment** (`env`, string name): a scan context under an App. Findings
+  are compared scan-to-scan *within the same env*. Different env = different
+  timeline.
+- **Scan**: a single run. Tagged with commit SHA and branch for traceability.
+
+### Non-negotiable autonomous-behavior rules
+
+- **Apps are reused, not created per scan.** Run `hawkop app list` before
+  generating config; match by name/host; only `hawk create app` on miss. See
+  Step 1 substep 5.
+- **Envs group history.** Pick a name deliberately; reuse canonical names
+  (Development, CI, Staging, Production); `hawkop env list --app <APP_ID>`
+  before committing. See Step 1 substep 6.
+- **Findings have a lifecycle.** Each affected path of a finding carries a
+  triage status (JSON field `findings[].paths[].status`) — `NEW`,
+  `FALSE_POSITIVE`, `RISK_ACCEPTED`, or `ASSIGNED`. Respect it. See
+  Step 4.5.
+
+→ Deep reference: [`references/platform-model.md`](references/platform-model.md)
+
+---
+
 ## Step 1: Assess Context
 
 Before configuring or running a scan, gather:
 
 1. **Is the app/api running?** HawkScan requires a live target. If not running, instruct
    the agent to start it first and confirm the host/port.
-2. **Do we have a `stackhawk.yml`?** Check the project root. If missing, go to Step 2.
+2. **Do we have a `stackhawk.yml`?** Check the project root. If missing, go to Step 2a (generate).
    If present, go to Step 2b (tune).
 3. **Do we have `HAWK_API_KEY`?** Required. If missing, tell the user to generate one
    at app.stackhawk.com → Settings → API Keys and set it as an env var.
 4. **What runtime is available?** Docker or CLI (`hawk`). If neither is installed, see
    → `references/installation.md`
 
+5. **Does the App exist?** Run `hawkop app list --format json`.
+   - **Primary match:** app name equals the repo name (normalized: lowercased,
+     `_` and `-` treated as equivalent). Exactly one match → use its
+     `applicationId`.
+   - **Multiple name matches:** pick the one whose envs include a host
+     matching the URL confirmed in substep 1 (if host was established).
+     Still ambiguous → surface candidates to the user briefly.
+   - **No name match:** do NOT fall back to host-only matching — different
+     apps can share hosts in CI. Proceed to create.
+   - **Create path:** run `hawk create app` with the repo name as default.
+     Announce: "Created application <name> (ID: <applicationId>) — verify
+     at https://app.stackhawk.com/applications/<applicationId>/details/settings".
+     No user prompt (autonomy default).
+
+   If `hawkop` is not installed, see the api skill's
+   `references/hawkop-shortcuts.md` and `references/api-endpoints.md` for
+   raw REST fallbacks.
+
+6. **Does the target Env exist?** Determine the env name from context;
+   stop at the first match:
+   1. `STACKHAWK_ENV` env var if set — use it exactly as written.
+   2. CI detection: `CI=true` or `GITHUB_ACTIONS=true` → `CI`.
+   3. Git branch: `main` / `master` / `production` → `Production`;
+      `staging` → `Staging`; otherwise → `Development`.
+
+   Then run `hawkop env list --app <APP_ID> --format json`. If an env with
+   the target name exists, reuse it. If not, run
+   `hawkop env create --app <APP_ID> --env <name> --host <url>`.
+
+   If `hawkop` is not installed, see the api skill's
+   `references/hawkop-shortcuts.md` and `references/api-endpoints.md` for
+   raw REST fallbacks.
+
 ---
 
 ## Step 2a: Generate `stackhawk.yml` from Scratch
 
-Ask (or infer from codebase) the following, then generate the config:
+Use the `applicationId` and `env` resolved in Step 1 (substeps 5–6). Gather
+the rest from context (or ask if unclear), then generate the config:
 
-- `applicationId` — from StackHawk platform (required, looks like a UUID)
-- `env` — environment name (e.g., `Development`, `CI`, `Staging`)
 - `host` — base URL of the running app (e.g., `http://localhost:8080`)
 - API type: REST/OpenAPI, GraphQL, gRPC, SOAP, JSON-RPC or standard web app
 - Auth pattern: none, form login, header token, cookie, OAuth2, or custom script
@@ -164,10 +242,17 @@ For Docker-based scanning (CI environments or when CLI isn't installed), see:
 
 **Quick reference for agentic scanning:**
 ```bash
-hawk scan                        # scan using stackhawk.yml in current directory
-hawk scan --json-output          # output findings as JSON (best for agentic parsing, requires Dev Release v5.3.41+)
-hawk rescan                      # re-run only plugins that threw alerts from previous scan
+hawk scan                                          # scan using stackhawk.yml in current directory
+hawk scan --json-output                            # output findings as JSON (best for agentic parsing, requires Dev Release v5.3.41+)
+hawk rescan                                        # re-run plugins that fired on the most recent scan
+hawk rescan --scan-id <SCAN_ID> --json-output      # re-run plugins against a specific prior scan — fast fix verification
 ```
+
+**Rescan is the agentic fix-loop's best friend.** After fixing findings
+from scan `<SCAN_ID>`, `hawk rescan --scan-id <SCAN_ID>` re-runs only the
+plugins that previously produced findings — seconds vs. minutes. Use it
+in the Autonomous Loop's rescan step (Step 6). Capture the `scan.id`
+field from the initial scan's JSON output.
 
 ---
 
@@ -218,6 +303,42 @@ If `--json-output` is not available (requires at least Dev Release v5.3.41), fal
 stdout with `hawk --no-color scan --verbose` and parse the terminal output. Look for lines
 containing finding names, severity levels, and affected paths. The platform URL printed
 at scan end can be used to fetch the full report via the StackHawk API if needed.
+
+---
+
+## Step 4.5: Filter Findings by Triage State
+
+Before handing findings to the coding agent (Step 5) or the autonomous loop,
+filter by the per-path triage status (JSON field `findings[].paths[].status`
+— one status per affected path within each finding):
+
+- **SKIP** paths where `status` is `FALSE_POSITIVE` or `RISK_ACCEPTED`. A
+  human already decided these are not actionable. Re-fixing them either
+  wastes effort (they reappear on the next scan even when "fixed") or
+  creates churn against a deliberate human decision. If every path of a
+  finding is SKIP, skip the finding entirely.
+- **PRIORITIZE** paths where `status` is `ASSIGNED`. A human has confirmed
+  this is real and is tracking its remediation. Fix these before `NEW`
+  paths of the same severity — they're guaranteed-real, not
+  pending-triage.
+- **FIX** paths where `status` is `NEW` in normal severity order.
+
+### If you're confident a New finding is a true false positive
+
+Do NOT suppress it in the codebase. The platform does not expose a
+triage-write API today — only the platform UI can set `FALSE_POSITIVE` /
+`RISK_ACCEPTED` / `ASSIGNED` decisions. Surface it in the scan report:
+
+> Finding `<name>` at `<path>` appears to be a false positive. Mark it at
+> `https://app.stackhawk.com/scans/<scanId>`
+
+(Platform gap captured internally; not in this public repo.)
+
+→ See `references/false-positives.md` for config-based suppression
+  patterns (excludePaths, excluded scan plugins) — useful for scan noise
+  that should never reach the triage pipeline in the first place. Step 4.5
+  is about per-finding triage from the platform; `false-positives.md` is
+  about scope-level config.
 
 ---
 
@@ -273,9 +394,12 @@ Skip the autonomous loop for:
 After completing a code change, announce and execute:
 
 1. **Announce:** "Implementation complete. Running security scan against the application."
-2. **Configure:** If no `stackhawk.yml` exists, generate one (Step 2a above). If one exists,
-   ensure it has commit SHA tags (top-level, not under `app:`) so scan results are linked
-   to the commit:
+2. **Configure:** Before generating or reusing `stackhawk.yml`, verify the
+   App and Env exist via Step 1 substeps 5–6 — this prevents duplicate App
+   creation on every autonomous run. Then, if no `stackhawk.yml` exists,
+   generate one (Step 2a above). If one exists, ensure it has commit SHA
+   tags (top-level, not under `app:`) so scan results are linked to the
+   commit:
    ```yaml
    tags:
      - name: _STACKHAWK_GIT_COMMIT_SHA
@@ -292,7 +416,11 @@ After completing a code change, announce and execute:
 4. **Scan:** Run `hawk scan --json-output` and parse the structured findings. The scan
    results will be tagged with the commit SHA and branch from the env vars above.
 5. **If findings exist:**
-   - Announce: "Found [N] vulnerabilities. Fixing all of them."
+   - **Run the Step 4.5 triage filter first** (per-path `status` field).
+     Skip `FALSE_POSITIVE` / `RISK_ACCEPTED`; prioritize `ASSIGNED`; fix
+     `NEW` in severity order.
+   - Announce: "Found [N] actionable vulnerabilities (+ [M] skipped due to
+     prior triage). Fixing all actionable ones."
    - **Fix ALL findings — not just ones related to your recent changes.** DAST scans the
      entire running application. Pre-existing vulnerabilities are just as exploitable as
      new ones. If the scan found it, fix it.
@@ -304,10 +432,28 @@ After completing a code change, announce and execute:
    - **Commit fixes with a consistent message format:**
      `fix: resolve [CWE-XXX] [vulnerability type] found by HawkScan`
      Example: `fix: resolve CWE-89 SQL injection found by HawkScan`
-6. **Rescan:** Run `hawk scan --json-output` again to verify all fixes.
+6. **Rescan:** Decide first — run a full `hawk scan --json-output` instead
+   of rescan if ANY of these apply:
+   - The fix added cross-cutting surfaces (new API endpoints, new input
+     vectors, new auth paths) — rescan won't test them.
+   - The codebase has changed substantially since the parent scan.
+   - You're baselining a new release where the full scan policy needs to
+     pass, not just the subset that fired previously.
+
+   Otherwise (the common case), run
+   `hawk rescan --scan-id <SCAN_ID> --json-output` to verify fixes
+   quickly. `<SCAN_ID>` is the `scan.id` value from the JSON output
+   captured in Step 4. Rescan re-runs only the plugins that fired on the
+   parent scan — dramatically faster than a full scan.
 7. **Report:**
-   - If clean: "Rescan complete. Zero findings. All security issues have been resolved."
+   - If clean: "Rescan complete. Zero new findings. All security issues have been resolved."
    - If findings remain: "Rescan found [N] remaining issues that require manual review:" and list them.
+   - If any findings were filtered by Step 4.5 triage state, append a
+     one-line summary: "Skipped [X] findings already triaged as
+     RISK_ACCEPTED / FALSE_POSITIVE."
+   - If any suspected false positives were identified during fixing, list
+     them with the `https://app.stackhawk.com/scans/<scanId>` platform link
+     so a human can triage them in the platform UI.
 
 ### Guard Rails
 
