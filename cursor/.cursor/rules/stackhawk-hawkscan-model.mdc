@@ -110,9 +110,9 @@ concern in its proper layer.
 
 ## The Finding Lifecycle (Triage State Machine)
 
-Every finding in the JSON output (`hawk scan --json-output` or
-`hawkop scan get --detail full --format json`) carries a `triageStatus`.
-The states and transitions:
+Every affected path in the JSON output (`hawk scan --json-output` or
+`hawkop scan get --detail full --format json`) carries a triage `status`
+field (`findings[].paths[].status`). The states and transitions:
 
 ```
         New ───── (human fixes, gone next scan) ─────► (removed)
