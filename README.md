@@ -4,7 +4,7 @@
 
 StackHawk agent skills teach your AI coding agent to find security vulnerabilities as you build, report your security posture across applications, and help you fix what it finds — all without leaving your workflow. No context switching, no tickets to another team. Your agent scans, reports, and remediates.
 
-Works with **Claude Code**, **Codex**, **Gemini CLI**, **GitHub Copilot**, **Cursor**, and anywhere the [Agent Skills standard](https://agentskills.io) is supported.
+Works with **Claude Code**, **Codex**, **Gemini CLI**, **GitHub Copilot**, **OpenCode**, **Cursor**, and anywhere the [Agent Skills standard](https://agentskills.io) is supported.
 
 ---
 
@@ -76,6 +76,22 @@ mkdir -p .agents/skills
 cp -r path/to/stackhawk-agent-skills/skills/* .agents/skills/
 
 # Option B: If you have the Claude plugin installed, Copilot reads .claude/skills/ automatically
+```
+
+#### OpenCode
+
+Skills are auto-discovered from `.opencode/skills/`, `.claude/skills/`, or `.agents/skills/`. Add to your project or user config:
+
+```bash
+# Per-project: copy into your project's .opencode/skills/
+mkdir -p .opencode/skills
+cp -r path/to/stackhawk-agent-skills/.opencode/skills/* .opencode/skills/
+
+# Global: install for all projects
+mkdir -p ~/.config/opencode/skills
+cp -r path/to/stackhawk-agent-skills/.opencode/skills/* ~/.config/opencode/skills/
+
+# If the Claude plugin is already installed, opencode reads .claude/skills/ automatically
 ```
 
 #### Cursor
@@ -165,6 +181,7 @@ cursor/                          Generated Cursor .mdc rules
 | Codex | `/plugin install` | Agent Skills standard (SKILL.md) |
 | Gemini CLI | `gemini extensions install` | Agent Skills standard (SKILL.md) |
 | GitHub Copilot | Copy to `.agents/skills/` | Agent Skills standard (SKILL.md) |
+| OpenCode | Copy to `.opencode/skills/` | Agent Skills standard (SKILL.md) |
 | Cursor | Copy `.mdc` rules | Generated from canonical source |
 
 ---
