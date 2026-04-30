@@ -49,15 +49,21 @@ app:
     - /assets
 ```
 
-### Set failure threshold to ignore Low-severity findings
+### Control which severity triggers exit code 42
+
+`failureThreshold` belongs under `hawk:` — **never under `app:`**.
 
 ```yaml
 hawk:
-  failureThreshold: MEDIUM
+  failureThreshold: MEDIUM   # LOW | MEDIUM | HIGH
 ```
 
-This means the scan still reports Low findings but exits with code `0` instead of
-`42` — they won't trigger the fix loop.
+The scan always reports all findings regardless of this setting. `failureThreshold`
+only controls the exit code: the scan exits `42` (triggering the fix loop) when a
+finding at or above the threshold is found; otherwise it exits `0`.
+
+Use this to gate CI pipelines by severity — for example, allow Low findings to pass
+without triggering the fix loop while still recording them in the platform.
 
 ### Exclude specific scan plugins
 
