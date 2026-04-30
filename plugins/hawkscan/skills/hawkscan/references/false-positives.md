@@ -82,7 +82,7 @@ hawkop scan triage \
   --scan <SCAN_UUID> \
   --hash <FINDING_HASH> \
   --status false-positive \
-  --note "<reason — be specific: endpoint, finding name, why it's wrong>"
+  --note "<reason — explain specifically why the scanner is wrong>"
 ```
 
 Example notes:
