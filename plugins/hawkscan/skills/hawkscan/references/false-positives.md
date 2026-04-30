@@ -72,9 +72,8 @@ false positive — it creates an auditable, human-reviewable record.
 | Scenario | Action |
 |----------|--------|
 | Scanner is definitively wrong about this endpoint | **API triage** → `false-positive` with note |
-| Path should permanently be excluded from scanning | **Config** → `excludePaths` in `stackhawk.yml` |
+| Finding is real but uncertain — needs more review | **API triage** → `add-comment` with context |
 | Finding is noisy but not clearly wrong | **Fix it** — when in doubt, fix |
-| Both apply (wrong AND should never scan) | Do both: triage existing finding + add to `excludePaths` |
 
 ### Single finding
 
@@ -152,9 +151,7 @@ When you encounter a finding that is a known false positive:
    to require auth will break monitoring.
 2. **Triage via the API** using `hawkop scan triage` (see section above) so the decision
    is recorded and auditable.
-3. **Optionally add the path to `excludePaths`** in `stackhawk.yml` to prevent it from
-   appearing on future scans — useful for paths that should never be scanned.
-4. **Report it clearly:** "Finding X on path Y is a false positive because [reason].
+3. **Report it clearly:** "Finding X on path Y is a false positive because [reason].
    Marked via API triage with note: [note]."
 
 ## When in Doubt
