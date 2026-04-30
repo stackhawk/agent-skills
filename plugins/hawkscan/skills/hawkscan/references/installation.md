@@ -11,10 +11,39 @@ brew install hawk
 
 ### Package Installers (All Platforms)
 
-Download platform-specific installers from https://docs.stackhawk.com/downloads/:
-- **macOS:** `.pkg` installer or `.zip` (includes bundled Java)
-- **Windows:** Windows installer (includes bundled Java)
-- **Linux:** `.zip` package (may require Java 17+ installed separately)
+Downloads page: https://docs.stackhawk.com/downloads/
+
+Check the current version:
+```bash
+curl -s https://api.stackhawk.com/hawkscan/version
+# → 5.5.0
+```
+
+**macOS — PKG installer (includes bundled Java, recommended):**
+```bash
+HAWK_VERSION=$(curl -s https://api.stackhawk.com/hawkscan/version)
+curl -Lo hawk.pkg "https://download.stackhawk.com/hawk/pkg/hawk-${HAWK_VERSION}.pkg"
+sudo installer -pkg hawk.pkg -target /Applications
+```
+
+**Windows — MSI installer (includes bundled Java):**
+```powershell
+$version = Invoke-RestMethod https://api.stackhawk.com/hawkscan/version
+msiexec.exe /i "https://download.stackhawk.com/hawk/msi/hawk-${version}.msi" /passive
+```
+
+**Linux / All Platforms — ZIP (requires Java 17+ installed separately):**
+```bash
+HAWK_VERSION=$(curl -s https://api.stackhawk.com/hawkscan/version)
+curl -Lo hawk.zip "https://download.stackhawk.com/hawk/cli/hawk-${HAWK_VERSION}.zip"
+unzip hawk.zip
+echo "export PATH=\$HOME/hawk-${HAWK_VERSION}:\$PATH" >> ~/.zshrc && source ~/.zshrc
+```
+
+Direct download URL patterns (substitute version):
+- macOS PKG: `https://download.stackhawk.com/hawk/pkg/hawk-{VERSION}.pkg`
+- Windows MSI: `https://download.stackhawk.com/hawk/msi/hawk-{VERSION}.msi`
+- ZIP (all): `https://download.stackhawk.com/hawk/cli/hawk-{VERSION}.zip`
 
 ### Prerequisites
 
