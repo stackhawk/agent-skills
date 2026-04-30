@@ -132,17 +132,42 @@ on a later scan, the platform continues to report its current triage
 value (`FALSE_POSITIVE` / `RISK_ACCEPTED` stays sticky unless a human
 changes it).
 
-### The agent cannot write triage
+### What the agent can write via `hawkop scan triage`
 
-There is no API today for setting `FALSE_POSITIVE` / `RISK_ACCEPTED` /
-`ASSIGNED` programmatically. If the agent is confident a `NEW` finding is
-a true false positive, the right behavior is to **report** it in the scan
-summary with a link to `https://app.stackhawk.com/scans/<scanId>` so a
-human can triage it in the platform UI. Do NOT suppress it in the
-codebase — that would make future scans invisible.
+The `hawkop` CLI exposes triage writes. Use these in Step 4.5 of the scan
+loop when the agent identifies clear false positives.
 
-(Tracked internally as a platform-team ask; not documented in this public
-repo.)
+```bash
+# Mark a single finding path as a false positive (--note required)
+hawkop scan triage \
+  --scan <SCAN_UUID> \
+  --hash <FINDING_HASH> \
+  --status false-positive \
+  --note "CSP finding on JSON endpoint /api/health; never serves HTML"
+
+# Add a comment without changing status
+hawkop scan triage \
+  --scan <SCAN_UUID> \
+  --hash <FINDING_HASH> \
+  --status add-comment \
+  --note "Reviewed; confirmed false positive pattern"
+
+# Bulk triage from file (up to 100 actions per call)
+hawkop scan triage --scan <SCAN_UUID> --from-file triage.yaml
+```
+
+**Agent constraints:**
+- ✅ May mark `FALSE_POSITIVE` autonomously — must include a detailed `--note`
+- ✅ May use `ADD_COMMENT` to annotate findings
+- ❌ Must NOT mark `RISK_ACCEPTED` — human decision only
+- ❌ Must NOT mark `ASSIGNED` — human decision only
+- ❌ Do NOT suppress findings in code — do not change code to hide scanner results
+
+The `--note` is required for `FALSE_POSITIVE` and `ADD_COMMENT`.
+It must explain the reasoning clearly enough for a human to review and reverse if wrong.
+
+→ Bulk triage file format and false-positive heuristics:
+  [`references/false-positives.md`](false-positives.md)
 
 ### Exact JSON serialization
 
@@ -216,15 +241,27 @@ https://app.stackhawk.com/applications/<applicationId>/details/settings
 (config); tech flags tell HawkScan *which rules are relevant*. Different
 concerns.
 
-### Setting them today — no API
+### Setting tech flags via `hawkop`
 
-There is no public API for reading or writing tech flags. Setting them is
-a human action in the platform UI. This is a known platform-team gap
-tracked internally.
+Tech flags are set via the `hawkop` CLI during Phase 0 of the scan workflow
+(app onboarding). The process is: disable-all first (to clear the platform's
+all-true default), then enable only what codebase evidence supports.
 
-Until the API exists, the skill does NOT prompt users to set tech flags
-during every scan — that's noise without an API to act on. When the API
-lands, Step 1 of `SKILL.md` will gain a tech-flag reconciliation substep.
+```bash
+# 1. Fetch canonical flag list — API is source of truth for valid names
+hawkop app tech-flags get --app <APP_NAME> --format json
+
+# 2. Disable all (--yes required for non-interactive/agent use)
+hawkop app tech-flags disable-all --app <APP_NAME> --yes
+
+# 3. Enable only detected flags
+hawkop app tech-flags set --app <APP_NAME> Language.Java=true Language.Java.Spring=true
+```
+
+Phase 0 runs once at app onboarding, not on every scan.
+
+→ Full detection heuristics, matching algorithm, and edge cases:
+  [`references/tech-flags.md`](tech-flags.md)
 
 ### Detecting the right flags for a codebase
 
