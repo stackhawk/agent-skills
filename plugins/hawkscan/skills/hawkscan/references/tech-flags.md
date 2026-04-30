@@ -23,6 +23,8 @@ Flag names are **dot-namespaced** (e.g., `Language.Java.Spring`), **case-sensiti
 hawkop app tech-flags get --app <APP_NAME> --format json
 ```
 
+`--app <APP_NAME>` accepts the application name. The `hawkop` CLI also accepts `--app-id <UUID>` if you prefer to use the application ID directly.
+
 Returns a JSON object with all available flags and their current true/false state:
 
 ```json
@@ -89,32 +91,20 @@ Shows what would change without applying the update.
 ## Phase 0c Detection Algorithm
 
 ```
-1. Call: hawkop app tech-flags get --app <APP_NAME> --format json
-   → Store result as CANONICAL_FLAGS (a dict of all valid flag keys and current states)
-   → If CANONICAL_FLAGS is empty, skip step 2 and proceed to step 3
-
-2. If CANONICAL_FLAGS is not empty:
-   Call: hawkop app tech-flags disable-all --app <APP_NAME> --yes
-   → Reset all flags to false
-
-3. Scan codebase for evidence (files, config, dependencies)
-   → Produce DETECTED_TECHS[] (list of technology identifiers: "Java", "Spring", "PostgreSQL", etc.)
-
-4. For each tech in DETECTED_TECHS:
-   a. Find all canonical keys matching the tech (case-insensitive substring match on each dot-separated segment)
-   b. From matches, select the most specific (deepest namespace wins)
-   c. If the selected flag has a parent namespace that exists in CANONICAL_FLAGS, also include parent in enabled list
-   d. If no canonical key matches, skip silently
-
-5. If any flags were selected in step 4:
-   Call: hawkop app tech-flags set --app <APP_NAME> <KEY1>=true <KEY2>=true ...
-   → Enable only the detected flags
-
-6. If no flags were detected in step 3 or no matches in step 4:
-   → Do not call set; leave flags at current state
-   → Report: "No technology evidence found; tech flags unchanged."
-
-7. Report results: list which flags were enabled and what codebase evidence triggered each
+1. hawkop app tech-flags get --app <APP_NAME> --format json → CANONICAL_FLAGS{}
+   If CANONICAL_FLAGS is empty, skip to step 5 with no flags to set.
+2. Scan codebase for evidence files → DETECTED_TECHS[]
+   (Check package.json, pom.xml, go.mod, requirements.txt, docker-compose.yml, Gemfile, *.csproj/*.sln)
+3. Map DETECTED_TECHS to flag keys in CANONICAL_FLAGS → ENABLED_FLAGS[]
+   (See heuristics and matching rules below)
+4. If ENABLED_FLAGS is empty:
+     Do NOT call disable-all or set
+     Report: "No technology evidence found; tech flags unchanged."
+     DONE
+5. hawkop app tech-flags disable-all --app <APP_NAME> --yes
+   (The --yes flag is required; agents must not use the interactive form without it)
+6. hawkop app tech-flags set --app <APP_NAME> <KEY>=true ... (one entry per flag in ENABLED_FLAGS)
+7. Report: which flags were enabled and what evidence triggered each
 ```
 
 ---
@@ -161,21 +151,33 @@ Shows what would change without applying the update.
 
 ## Matching Detected Techs to Canonical Flag Keys
 
-The detection heuristics produce friendly tech names (e.g., "Spring Boot", "PostgreSQL"). The `set` command requires exact canonical flag keys from the API.
+The detection heuristics produce friendly tech names (e.g., "Spring", "PostgreSQL"). The `set` command requires exact canonical flag keys from the API.
 
-**Matching algorithm:**
+**Primary rule: use explicit heuristic mappings first.** The detection heuristics table already maps specific evidence directly to expected canonical key names (e.g., "pom.xml or build.gradle → `Language.Java`"). Use those explicit mappings directly before falling back to terminal-segment fuzzy matching.
 
-1. **Perform substring match (case-insensitive)** on each dot-separated segment of the canonical key.
-   - Detected tech "Spring" matches canonical keys containing "spring" (case-insensitive): `Language.Java.Spring`, `Framework.Spring`
-   - Detected tech "PostgreSQL" matches: `Db.PostgreSQL`, `Database.PostgreSQL`
+**Additionally:** If Phase 0a (repo linking) completed and returned `frameworkNames` from `hawkop repo list`, treat those as additional tech evidence — match each framework name against canonical flags using the terminal-segment rule below.
 
-2. **From all matches, select the most specific** (deepest namespace wins).
-   - Detected "Spring" with matches `[Language.Java.Spring, Framework.Spring]`: choose `Language.Java.Spring` (deeper)
-   - Detected "Java" with matches `[Language.Java, Language.Java.Spring]`: choose `Language.Java.Spring` if both are in canonical; if only `Language.Java` exists, choose that
+**Terminal-segment matching algorithm:**
 
-3. **When enabling a child flag, also enable parents** that exist in CANONICAL_FLAGS.
-   - If enabling `Language.Java.Spring`, also check if `Language.Java` exists in CANONICAL_FLAGS and enable it too
-   - If a parent does not exist in CANONICAL_FLAGS, do not try to enable it
+The correct rule is **terminal segment matching**: a detected technology matches a canonical key only when the technology term matches the *last* (terminal) segment of the dot-namespaced key.
+
+Example:
+- Detected "Java" → matches `Language.Java` (terminal segment is "Java") ✓
+- Detected "Java" → does NOT match `Language.Java.Spring` (terminal segment is "Spring") ✗
+- Detected "Spring" → matches `Language.Java.Spring` ✓
+
+Steps:
+
+1. For each detected technology term:
+   - Find canonical keys where the terminal segment (everything after the last `.`) matches the tech term (case-insensitive)
+   - If multiple keys match (e.g., `Language.Java` and `Framework.Java`), prefer the one under the most relevant namespace
+   - Add the matched key to ENABLED_FLAGS
+
+2. For each key added to ENABLED_FLAGS, also add all parent namespace keys that exist in CANONICAL_FLAGS:
+   - `Language.Java.Spring` is enabled → also add `Language.Java` if it exists
+   - `Language.Java` is enabled → also add `Language` if it exists
+
+3. Deduplicate ENABLED_FLAGS before calling `set`
 
 4. **If no canonical key matches a detected tech, skip silently** and continue to the next detected tech.
 
@@ -201,12 +203,7 @@ hawkop app tech-flags get --app myapp --format json
 }
 ```
 
-**Step 2: Disable all**
-```bash
-hawkop app tech-flags disable-all --app myapp --yes
-```
-
-**Step 3: Detect from codebase**
+**Step 2: Detect from codebase**
 - `package.json` → JavaScript
 - `package.json` contains `"react"` → React
 - `package.json` contains `"express"` → Node
@@ -214,20 +211,24 @@ hawkop app tech-flags disable-all --app myapp --yes
 
 DETECTED_TECHS = ["JavaScript", "React", "Node", "PostgreSQL"]
 
-**Step 4: Match to canonical keys**
-- JavaScript → `Language.JavaScript`
-- React → `Language.JavaScript.React` (more specific than `Language.JavaScript`)
-- Node → `Language.JavaScript.Node` (more specific)
-- PostgreSQL → `Db.PostgreSQL`
+**Step 3: Match to canonical keys**
+- JavaScript → `Language.JavaScript` (explicit heuristic mapping)
+- React → `Language.JavaScript.React` (terminal segment "React" matches)
+- Node → `Language.JavaScript.Node` (terminal segment "Node" matches)
+- PostgreSQL → `Db.PostgreSQL` (explicit heuristic mapping)
 
 **Parent inclusion:**
-- `Language.JavaScript.React` has parent `Language.JavaScript` (exists in canonical) → include both
-- `Language.JavaScript.Node` has parent `Language.JavaScript` (already included)
-- `Db.PostgreSQL` has no parent namespace
+- `Language.JavaScript.React` → also add `Language.JavaScript` (exists in canonical)
+- `Language.JavaScript.Node` → `Language.JavaScript` already included
+- `Db.PostgreSQL` has no parent namespace in canonical
 
-**Flags to enable:** `Language.JavaScript=true`, `Language.JavaScript.React=true`, `Language.JavaScript.Node=true`, `Db.PostgreSQL=true`
+ENABLED_FLAGS = [`Language.JavaScript`, `Language.JavaScript.React`, `Language.JavaScript.Node`, `Db.PostgreSQL`]
 
-**Step 5: Enable flags**
+**Step 4: Disable all, then enable detected flags**
+```bash
+hawkop app tech-flags disable-all --app myapp --yes
+```
+
 ```bash
 hawkop app tech-flags set --app myapp \
   Language.JavaScript=true \
@@ -236,7 +237,7 @@ hawkop app tech-flags set --app myapp \
   Db.PostgreSQL=true
 ```
 
-**Step 6: Report**
+**Step 5: Report**
 ```
 Tech flags configured:
   - Language.JavaScript: enabled (detected package.json)
@@ -251,7 +252,7 @@ Tech flags configured:
 
 If codebase scanning finds **no evidence of any technology**, or all detected techs have no canonical key match:
 
-1. **Do not call `disable-all`** (or call it, then proceed without calling `set`)
+1. **Do not call `disable-all`** — detection runs before the reset, so if no flags are found there is nothing to reset to
 2. **Do not call `set`**
 3. **Report:** "No technology evidence found; tech flags unchanged."
 
@@ -282,7 +283,7 @@ No flags have been initialized yet. **Skip `disable-all` and proceed directly to
 
 ### `hawkop app tech-flags disable-all` hangs
 
-This is a known issue in `hawk` CLI 5.4.0. Upgrade to 5.5.0+, or skip the `disable-all` step and manually list all canonical keys in the `set` command (e.g., `set Language.JavaScript=false Language.JavaScript.React=false ...`).
+If `disable-all` hangs without the `--yes` flag, it is waiting for interactive confirmation — always use `--yes` in agentic contexts. If the hang persists even with `--yes`, skip the `disable-all` step and manually list all canonical keys in the `set` command instead (e.g., `set Language.JavaScript=false Language.JavaScript.React=false ...`).
 
 ### Detection found no techs
 
