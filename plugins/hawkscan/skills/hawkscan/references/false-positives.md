@@ -29,6 +29,15 @@ scenarios:
 
 ### Exclude specific paths from scanning
 
+The scanner is pinned to the `host:` value in `stackhawk.yml` and will not
+traverse to other hosts. You do **not** need to add external domains or CDN
+URLs to `excludePaths` — the scanner won't follow them.
+
+Use `excludePaths` for same-host paths that generate noise without security
+value: static assets (images, CSS, JavaScript bundles), health endpoints,
+API docs, and similar paths that are either not user-controllable or not
+relevant to security testing.
+
 ```yaml
 app:
   excludePaths:
@@ -36,6 +45,8 @@ app:
     - /actuator/info
     - /swagger-ui
     - /api-docs
+    - /static
+    - /assets
 ```
 
 ### Set failure threshold to ignore Low-severity findings
