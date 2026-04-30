@@ -51,9 +51,8 @@ preserved. `set-apps` replaces the entire list.
    3. Strip trailing `/`
    4. Strip protocol+host prefix to obtain the bare `owner/repo` path:
       - HTTPS: strip `https://github.com/` (or equivalent host prefix)
-      - SSH `git@host:path` form: strip everything up to and including `:`
-      - SSH URL form (`ssh://git@github.com/org/repo`): strip `ssh://` first, then
-        treat as the `git@` form
+      - SSH SCP-like form (`git@host:path`): strip everything up to and including `:`
+      - SSH URL form (`ssh://git@github.com/org/repo`): strip the entire `ssh://git@host/` prefix (everything through the first `/` after the host)
       - Embedded credentials (`https://token@github.com/org/repo`): strip
         credentials before stripping the host (i.e. treat as plain HTTPS)
       - The result is just `org/repo`
