@@ -24,11 +24,18 @@ coding loop. The core workflow is:
 The `api` skill wraps read-only StackHawk platform lookups via the `hawkop`
 CLI. Read-only lookups this skill relies on:
 
-| Purpose                  | Command                                                    |
-|--------------------------|------------------------------------------------------------|
-| Check if App exists      | `hawkop app list --format json`                            |
-| Check if Env exists      | `hawkop env list --app <APP_ID> --format json`             |
-| Get findings with triage | `hawkop scan get --app <NAME> --detail full --format json` |
+| Purpose                       | Command                                                                          |
+|-------------------------------|----------------------------------------------------------------------------------|
+| Check if App exists           | `hawkop app list --format json`                                                  |
+| Check if Env exists           | `hawkop env list --app <APP_ID> --format json`                                   |
+| Get findings with triage      | `hawkop scan get --app <NAME> --detail full --format json`                       |
+| List ASM repos                | `hawkop repo list --format json`                                                 |
+| Link app to ASM repo          | `hawkop repo link --repo-id <ID> --app-id <ID>`                                  |
+| Get tech flags                | `hawkop app tech-flags get --app <NAME> --format json`                           |
+| Disable all tech flags        | `hawkop app tech-flags disable-all --app <NAME> --yes`                           |
+| Set specific tech flags       | `hawkop app tech-flags set --app <NAME> Key=true`                                |
+| Triage a finding              | `hawkop scan triage --scan <ID> --hash <HASH> --status false-positive --note ""` |
+| Bulk triage from file         | `hawkop scan triage --scan <ID> --from-file triage.yaml`                         |
 
 If `hawkop` is not installed, the api skill documents raw REST fallbacks.
 Prefer `hawkop`; fall back only if unavailable.
@@ -62,6 +69,83 @@ Before running a scan, the agent must understand four layered objects:
   Step 4.5.
 
 → Deep reference: [`references/platform-model.md`](references/platform-model.md)
+
+---
+
+## Phase 0: App Setup & Verification
+
+Run Phase 0 **once** when onboarding a new application — i.e., when `stackhawk.yml`
+is being created for the first time, or when the user explicitly requests
+setup/verification. Do NOT run on every scan.
+
+Phase 0 has three sub-steps. Run them in order.
+
+---
+
+### Phase 0a: Repo Linking
+
+Associates the StackHawk application with its code repository in Attack Surface
+Management (ASM). Enables API Discovery tracking and SCM-driven automapping.
+
+```bash
+# 1. Get the git remote URL
+git remote get-url origin
+# If this fails (no git repo, no origin remote): skip Phase 0a, proceed to Phase 0b
+
+# 2. List ASM repos and normalize URLs to find a match
+hawkop repo list --format json
+
+# 3a. If a repo URL matches (normalize: lowercase, strip .git, strip trailing /,
+#     strip host prefix to compare org/repo path segment):
+hawkop repo link --repo-id <REPO_UUID> --app-id <APP_UUID>
+# Report: "Ensured link: app <APP_NAME> ↔ ASM repo <REPO_NAME>"
+
+# 3b. If no match: inject git_origin tag into stackhawk.yml tags block
+#   tags:
+#     - name: git_origin
+#       value: <bare-org/repo-path>    # bare path after normalization
+# Report: "No ASM repo match — added git_origin tag for future automapping"
+```
+
+→ Full normalization rules, SSH/HTTPS edge cases, and examples:
+  [`references/repo-linking.md`](references/repo-linking.md)
+
+---
+
+### Phase 0b: Agent Tagging
+
+Writes a `_STACKHAWK_AGENT` tag placeholder into `stackhawk.yml` once. At scan
+time (Step 3), the agent detects its platform and exports `HAWK_AGENT` — the
+placeholder interpolates automatically.
+
+Add to `stackhawk.yml` tags block if not already present:
+
+```yaml
+tags:
+  - name: _STACKHAWK_AGENT
+    value: ${HAWK_AGENT:none}
+```
+
+The `:none` default means scans where `HAWK_AGENT` is not set record `none`
+rather than failing interpolation.
+
+---
+
+### Phase 0c: Tech Flag Detection
+
+Configures which scan rule families run for this application. The platform
+defaults all flags to `true`; Phase 0c starts clean and enables only detected techs.
+
+**Algorithm (abbreviated):**
+1. Detect codebase evidence first (package.json, pom.xml, go.mod, requirements.txt,
+   docker-compose.yml, Gemfile, *.csproj)
+2. If no evidence found: skip — do not touch flags
+3. Fetch canonical flag names: `hawkop app tech-flags get --app <APP_NAME> --format json`
+4. Disable all: `hawkop app tech-flags disable-all --app <APP_NAME> --yes`
+5. Enable detected: `hawkop app tech-flags set --app <APP_NAME> Language.Java=true ...`
+
+→ Full detection heuristics, terminal-segment matching, and edge cases:
+  [`references/tech-flags.md`](references/tech-flags.md)
 
 ---
 
