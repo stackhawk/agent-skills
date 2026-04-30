@@ -61,17 +61,101 @@ hawk:
 
 Use this sparingly. Prefer path exclusions over disabling entire plugins.
 
+## Triaging via the API
+
+Use `hawkop scan triage` to record false-positive decisions on the platform.
+This is the preferred action over config suppression when the finding is a true
+false positive — it creates an auditable, human-reviewable record.
+
+### When to use API triage vs. config suppression
+
+| Scenario | Action |
+|----------|--------|
+| Scanner is definitively wrong about this endpoint | **API triage** → `false-positive` with note |
+| Path should permanently be excluded from scanning | **Config** → `excludePaths` in `stackhawk.yml` |
+| Finding is noisy but not clearly wrong | **Fix it** — when in doubt, fix |
+| Both apply (wrong AND should never scan) | Do both: triage existing finding + add to `excludePaths` |
+
+### Single finding
+
+```bash
+hawkop scan triage \
+  --scan <SCAN_UUID> \
+  --hash <FINDING_HASH> \
+  --status false-positive \
+  --note "<reason — be specific: endpoint, finding name, why it's wrong>"
+```
+
+Example notes:
+- `"CSP finding on JSON endpoint /api/health which never serves HTML; header inapplicable"`
+- `"CORS wildcard on public read-only metrics API; no auth, no sensitive data"`
+- `"Rate-limit finding on /api/events; rate limiting enforced at API gateway layer"`
+
+### Bulk (multiple findings in one scan)
+
+Write a `triage.yaml`:
+```yaml
+- finding_hash: "sha256hash1"
+  status: FALSE_POSITIVE
+  note: "Health endpoint — intentional server info exposure for monitoring"
+- finding_hash: "sha256hash2"
+  status: FALSE_POSITIVE
+  note: "CORS permissive by design; public read-only API"
+```
+
+Then apply:
+```bash
+hawkop scan triage --scan <SCAN_UUID> --from-file triage.yaml
+```
+
+JSON format is also accepted (leading `[` is auto-detected). Max 100 actions per call — split into batches if needed.
+
+### Agent rules for API triage
+
+- ✅ Mark `FALSE_POSITIVE` autonomously — note must explain clearly why
+- ✅ Use `ADD_COMMENT` to annotate without changing status
+- ❌ **Never mark `RISK_ACCEPTED`** — human decision only
+- ❌ **Never mark `ASSIGNED`** — human decision only
+- ❌ Never suppress a finding by changing code to hide it from the scanner
+
+```bash
+# ADD_COMMENT example — for findings under review but not yet confirmed FP
+hawkop scan triage \
+  --scan <SCAN_UUID> \
+  --hash <FINDING_HASH> \
+  --status add-comment \
+  --note "Reviewing with team; suspected false positive on /actuator/info"
+```
+
+### How to get the finding hash
+
+The finding hash (`--hash`) comes from the scan JSON output:
+```bash
+hawk scan --json-output | jq '.findings[].hash'
+```
+
+Or from `hawkop scan get`:
+```bash
+hawkop scan get --app <APP_NAME> --detail full --format json | jq '.data.findings[].hash'
+```
+
+The scan UUID (`--scan`) comes from:
+```bash
+hawk scan --json-output | jq -r '.scan.id'
+```
+
 ## Reporting Accepted Risk
 
-When you encounter a finding that is a known false positive or accepted risk:
+When you encounter a finding that is a known false positive:
 
 1. **Do not "fix" intentional behavior.** Changing a deliberately open health endpoint
    to require auth will break monitoring.
-2. **Add the path to `excludePaths`** in `stackhawk.yml` so it doesn't trigger again.
-3. **Report it clearly:** "Finding X on path Y is an accepted risk because [reason].
-   Added to excludePaths to prevent future false positives."
-4. **If the StackHawk platform is available**, triage the finding as "Accepted Risk"
-   with a note explaining why.
+2. **Triage via the API** using `hawkop scan triage` (see section above) so the decision
+   is recorded and auditable.
+3. **Optionally add the path to `excludePaths`** in `stackhawk.yml` to prevent it from
+   appearing on future scans — useful for paths that should never be scanned.
+4. **Report it clearly:** "Finding X on path Y is a false positive because [reason].
+   Marked via API triage with note: [note]."
 
 ## When in Doubt
 
