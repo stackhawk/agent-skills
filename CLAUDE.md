@@ -21,9 +21,20 @@ bash scripts/generate-cursor-rules.sh
 bash scripts/generate-cursor-rules.sh && git diff cursor/
 ```
 
+## PR Workflow
+
+Before creating every PR, bump the patch version and include it in the commit:
+
+```bash
+bash scripts/bump-version.sh --patch
+```
+
+Use `--minor` for new skills or significant capability additions, `--major` for breaking changes.
+The script updates `VERSION` and all platform manifests in one pass.
+
 ## Manifests
 
-All platform manifests share the version in `VERSION` (currently 1.0.0).
+All platform manifests share the version in `VERSION` (single source of truth).
 
 | Platform | Manifest |
 |----------|----------|
