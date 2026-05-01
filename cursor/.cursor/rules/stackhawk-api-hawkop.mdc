@@ -14,13 +14,54 @@ See `SKILL.md` for the workflow that decides when to use `hawkop` vs raw REST.
 
 ## Setup (once)
 
+**Homebrew (macOS/Linux — recommended):**
 ```bash
-# Install (macOS / Linux)
 brew tap stackhawk/hawkop && brew install hawkop
+```
 
-# Or download signed artifacts directly from https://download.stackhawk.com/hawkop/
-# See https://docs.stackhawk.com/hawkop/#installation
+**Direct downloads:** `https://download.stackhawk.com/hawkop/`
+Downloads page: `https://docs.stackhawk.com/downloads/hawkop/`
 
+Check the current version:
+```bash
+curl -s https://download.stackhawk.com/hawkop/latest-version.txt
+```
+
+**macOS — PKG installer (universal, includes all architectures):**
+```bash
+VERSION=$(curl -s https://download.stackhawk.com/hawkop/latest-version.txt)
+curl -Lo hawkop.pkg "https://download.stackhawk.com/hawkop/pkg/hawkop-v${VERSION}-macos-universal.pkg"
+open hawkop.pkg
+```
+
+**Windows — MSI installer:**
+```powershell
+$Version = (Invoke-WebRequest https://download.stackhawk.com/hawkop/latest-version.txt).Content.Trim()
+Invoke-WebRequest "https://download.stackhawk.com/hawkop/msi/hawkop-v$Version-windows-x64.msi" -OutFile hawkop.msi
+Start-Process msiexec.exe -ArgumentList "/i hawkop.msi /passive" -Wait
+```
+
+**Linux / archive installs** (base: `https://download.stackhawk.com/hawkop/cli/`):
+
+| Platform | Filename |
+|----------|----------|
+| macOS Intel | `hawkop-v{VERSION}-x86_64-apple-darwin.tar.gz` |
+| macOS Apple Silicon | `hawkop-v{VERSION}-aarch64-apple-darwin.tar.gz` |
+| Linux x86_64 | `hawkop-v{VERSION}-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux ARM64 | `hawkop-v{VERSION}-aarch64-unknown-linux-gnu.tar.gz` |
+| Windows x86_64 | `hawkop-v{VERSION}-x86_64-pc-windows-msvc.zip` |
+
+Each archive has a matching `.sha256` checksum file at the same URL path.
+
+```bash
+# No runtime dependencies — native binary, just extract and run
+VERSION=$(curl -s https://download.stackhawk.com/hawkop/latest-version.txt)
+curl -Lo hawkop.tar.gz "https://download.stackhawk.com/hawkop/cli/hawkop-v${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+tar -xzf hawkop.tar.gz
+sudo mv hawkop /usr/local/bin/
+```
+
+```bash
 hawkop init            # Interactive — prompts for API key and default org
 hawkop status          # Confirm auth
 ```

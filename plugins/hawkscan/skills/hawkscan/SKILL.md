@@ -24,11 +24,18 @@ coding loop. The core workflow is:
 The `api` skill wraps read-only StackHawk platform lookups via the `hawkop`
 CLI. Read-only lookups this skill relies on:
 
-| Purpose                  | Command                                                    |
-|--------------------------|------------------------------------------------------------|
-| Check if App exists      | `hawkop app list --format json`                            |
-| Check if Env exists      | `hawkop env list --app <APP_ID> --format json`             |
-| Get findings with triage | `hawkop scan get --app <NAME> --detail full --format json` |
+| Purpose                       | Command                                                                          |
+|-------------------------------|----------------------------------------------------------------------------------|
+| Check if App exists           | `hawkop app list --format json`                                                  |
+| Check if Env exists           | `hawkop env list --app <APP_ID> --format json`                                   |
+| Get findings with triage      | `hawkop scan get --app <NAME> --detail full --format json`                       |
+| List ASM repos                | `hawkop repo list --format json`                                                 |
+| Link app to ASM repo          | `hawkop repo link --repo-id <ID> --app-id <ID>`                                  |
+| Get tech flags                | `hawkop app tech-flags get --app <NAME> --format json`                           |
+| Disable all tech flags        | `hawkop app tech-flags disable-all --app <NAME> --yes`                           |
+| Set specific tech flags       | `hawkop app tech-flags set --app <NAME> Key=true`                                |
+| Triage a finding              | `hawkop scan triage --scan <ID> --hash <HASH> --status false-positive --note ""` |
+| Bulk triage from file         | `hawkop scan triage --scan <ID> --from-file triage.yaml`                         |
 
 If `hawkop` is not installed, the api skill documents raw REST fallbacks.
 Prefer `hawkop`; fall back only if unavailable.
@@ -62,6 +69,83 @@ Before running a scan, the agent must understand four layered objects:
   Step 4.5.
 
 → Deep reference: [`references/platform-model.md`](references/platform-model.md)
+
+---
+
+## Phase 0: App Setup & Verification
+
+Run Phase 0 **once** when onboarding a new application — i.e., when `stackhawk.yml`
+is being created for the first time, or when the user explicitly requests
+setup/verification. Do NOT run on every scan.
+
+Phase 0 has three sub-steps. Run them in order.
+
+---
+
+### Phase 0a: Repo Linking
+
+Associates the StackHawk application with its code repository in Attack Surface
+Management (ASM). Enables API Discovery tracking and SCM-driven automapping.
+
+```bash
+# 1. Get the git remote URL
+git remote get-url origin
+# If this fails (no git repo, no origin remote): skip Phase 0a, proceed to Phase 0b
+
+# 2. List ASM repos and normalize URLs to find a match
+hawkop repo list --format json
+
+# 3a. If a repo URL matches (normalize: lowercase, strip .git, strip trailing /,
+#     strip host prefix to compare org/repo path segment):
+hawkop repo link --repo-id <REPO_UUID> --app-id <APP_UUID>
+# Report: "Ensured link: app <APP_NAME> ↔ ASM repo <REPO_NAME>"
+
+# 3b. If no match: inject git_origin tag into stackhawk.yml tags block
+#   tags:
+#     - name: git_origin
+#       value: <bare-org/repo-path>    # bare path after normalization
+# Report: "No ASM repo match — added git_origin tag for future automapping"
+```
+
+→ Full normalization rules, SSH/HTTPS edge cases, and examples:
+  [`references/repo-linking.md`](references/repo-linking.md)
+
+---
+
+### Phase 0b: Agent Tagging
+
+Writes a `_STACKHAWK_AGENT` tag placeholder into `stackhawk.yml` once. At scan
+time (Step 3), the agent detects its platform and exports `HAWK_AGENT` — the
+placeholder interpolates automatically.
+
+Add to `stackhawk.yml` tags block if not already present:
+
+```yaml
+tags:
+  - name: _STACKHAWK_AGENT
+    value: ${HAWK_AGENT:none}
+```
+
+The `:none` default means scans where `HAWK_AGENT` is not set record `none`
+rather than failing interpolation.
+
+---
+
+### Phase 0c: Tech Flag Detection
+
+Configures which scan rule families run for this application. The platform
+defaults all flags to `true`; Phase 0c starts clean and enables only detected techs.
+
+**Algorithm (abbreviated):**
+1. Detect codebase evidence first (package.json, pom.xml, go.mod, requirements.txt,
+   docker-compose.yml, Gemfile, *.csproj)
+2. If no evidence found: skip — do not touch flags
+3. Fetch canonical flag names: `hawkop app tech-flags get --app <APP_NAME> --format json`
+4. Disable all: `hawkop app tech-flags disable-all --app <APP_NAME> --yes`
+5. Enable detected: `hawkop app tech-flags set --app <APP_NAME> Language.Java=true ...`
+
+→ Full detection heuristics, terminal-segment matching, and edge cases:
+  [`references/tech-flags.md`](references/tech-flags.md)
 
 ---
 
@@ -184,7 +268,27 @@ Always validate config before scanning — it's fast and catches problems withou
 burning a full scan run.
 
 ```bash
-# Validate stackhawk.yml structure and required fields
+export COMMIT_SHA=$(git rev-parse HEAD)
+export BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
+
+# Detect agent platform for _STACKHAWK_AGENT tag interpolation
+# Skip detection if HAWK_AGENT is already set (allows CI/CD override)
+if [ -z "${HAWK_AGENT}" ]; then
+  if [ -n "${CLAUDE_CODE}" ] || [ -d ".claude" ]; then
+    export HAWK_AGENT=claude-code
+  elif [ -n "${CURSOR_TRACE_ID}" ] || [ -d ".cursor" ]; then
+    export HAWK_AGENT=cursor
+  elif [ -f "GEMINI.md" ] || [ -n "${GEMINI_API_KEY}" ]; then
+    export HAWK_AGENT=gemini
+  elif [ -d ".codex" ]; then
+    export HAWK_AGENT=codex
+  elif [ -f ".github/copilot-instructions.md" ]; then
+    export HAWK_AGENT=copilot
+  else
+    export HAWK_AGENT=unknown
+  fi
+fi
+
 hawk validate config stackhawk.yml
 
 # Validate OpenAPI specification referenced in stackhawk.yml
@@ -323,22 +427,49 @@ filter by the per-path triage status (JSON field `findings[].paths[].status`
   pending-triage.
 - **FIX** paths where `status` is `NEW` in normal severity order.
 
-### If you're confident a New finding is a true false positive
+### Marking false positives via `hawkop scan triage`
 
-Do NOT suppress it in the codebase. The platform does not expose a
-triage-write API today — only the platform UI can set `FALSE_POSITIVE` /
-`RISK_ACCEPTED` / `ASSIGNED` decisions. Surface it in the scan report:
+If a `NEW` finding is clearly a false positive, mark it via the platform API
+**before** routing remaining findings to the fix loop.
 
-> Finding `<name>` at `<path>` appears to be a false positive. Mark it at
-> `https://app.stackhawk.com/scans/<scanId>`
+**Common false-positive patterns:**
+- Security headers (CSP, X-Frame-Options) on endpoints that only serve non-HTML responses (JSON, binary)
+- Health / status / actuator endpoints that intentionally expose server info
+- CORS permissiveness on intentionally public APIs with no sensitive data
+- Rate-limit findings on endpoints already enforced by an upstream API gateway
+- Auth findings on intentionally unauthenticated endpoints (login page, public docs)
 
-(Platform gap captured internally; not in this public repo.)
+**Single finding:**
+```bash
+hawkop scan triage \
+  --scan <SCAN_UUID> \
+  --hash <FINDING_HASH> \
+  --status false-positive \
+  --note "CSP finding on JSON endpoint /api/health which never serves HTML; inapplicable"
+```
 
-→ See `references/false-positives.md` for config-based suppression
-  patterns (excludePaths, excluded scan plugins) — useful for scan noise
-  that should never reach the triage pipeline in the first place. Step 4.5
-  is about per-finding triage from the platform; `false-positives.md` is
-  about scope-level config.
+**Batch (multiple FPs in one scan):**
+```bash
+# Write a triage.yaml with one entry per false positive, then:
+hawkop scan triage --scan <SCAN_UUID> --from-file triage.yaml
+```
+
+**Rules:**
+- ✅ Mark `FALSE_POSITIVE` autonomously — note must clearly explain why
+- ✅ Use `ADD_COMMENT` to annotate without changing status
+- ❌ **Never mark `RISK_ACCEPTED`** — human decision only
+- ❌ **Never mark `ASSIGNED`** — human decision only
+- ❌ Do NOT suppress findings in the codebase — don't change code to hide scanner results
+
+**When uncertain:** route to the fix loop. A false negative is worse than a false positive.
+
+After Step 4.5 triage completes, report before the fix loop:
+> "Marked [N] findings as false positive. Routing [M] remaining NEW findings to fix loop."
+> "Platform: https://app.stackhawk.com/scans/<scanId>"
+
+→ See `references/false-positives.md` for config-based suppression patterns
+  (`excludePaths`, `excludePlugins`) — use those for structural noise that should
+  never enter the triage pipeline. Step 4.5 handles per-finding triage decisions.
 
 ---
 
@@ -397,9 +528,11 @@ After completing a code change, announce and execute:
 2. **Configure:** Before generating or reusing `stackhawk.yml`, verify the
    App and Env exist via Step 1 substeps 5–6 — this prevents duplicate App
    creation on every autonomous run. Then, if no `stackhawk.yml` exists,
-   generate one (Step 2a above). If one exists, ensure it has commit SHA
-   tags (top-level, not under `app:`) so scan results are linked to the
-   commit:
+   generate one (Step 2a above) and **immediately run Phase 0** (repo linking,
+   agent tagging, tech flag detection) — this is app onboarding. If one exists,
+   ensure it has commit SHA tags (top-level, not under `app:`) so scan results
+   are linked to the commit, and also ensure the `_STACKHAWK_AGENT` tag (using
+   `${HAWK_AGENT:none}`) is present alongside the commit SHA tags:
    ```yaml
    tags:
      - name: _STACKHAWK_GIT_COMMIT_SHA
@@ -411,6 +544,25 @@ After completing a code change, announce and execute:
    ```bash
    export COMMIT_SHA=$(git rev-parse HEAD)
    export BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
+
+   # Detect agent platform for _STACKHAWK_AGENT tag interpolation
+   # Skip detection if HAWK_AGENT is already set (allows CI/CD override)
+   if [ -z "${HAWK_AGENT}" ]; then
+     if [ -n "${CLAUDE_CODE}" ] || [ -d ".claude" ]; then
+       export HAWK_AGENT=claude-code
+     elif [ -n "${CURSOR_TRACE_ID}" ] || [ -d ".cursor" ]; then
+       export HAWK_AGENT=cursor
+     elif [ -f "GEMINI.md" ] || [ -n "${GEMINI_API_KEY}" ]; then
+       export HAWK_AGENT=gemini
+     elif [ -d ".codex" ]; then
+       export HAWK_AGENT=codex
+     elif [ -f ".github/copilot-instructions.md" ]; then
+       export HAWK_AGENT=copilot
+     else
+       export HAWK_AGENT=unknown
+     fi
+   fi
+
    hawk validate config stackhawk.yml
    ```
 4. **Scan:** Run `hawk scan --json-output` and parse the structured findings. The scan
@@ -451,9 +603,9 @@ After completing a code change, announce and execute:
    - If any findings were filtered by Step 4.5 triage state, append a
      one-line summary: "Skipped [X] findings already triaged as
      RISK_ACCEPTED / FALSE_POSITIVE."
-   - If any suspected false positives were identified during fixing, list
-     them with the `https://app.stackhawk.com/scans/<scanId>` platform link
-     so a human can triage them in the platform UI.
+   - If any findings were marked `FALSE_POSITIVE` in Step 4.5, summarize:
+     "Marked [N] findings as false positive — review at
+     https://app.stackhawk.com/scans/<scanId>".
 
 ### Guard Rails
 
