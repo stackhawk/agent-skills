@@ -3,18 +3,30 @@ set -euo pipefail
 
 # ─── Version Bump Script ───
 # Updates VERSION file and all platform manifests in one pass.
-# Usage: ./scripts/bump-version.sh <new-version>
-# Example: ./scripts/bump-version.sh 1.1.0
+# Usage: ./scripts/bump-version.sh --patch|--minor|--major
+#        ./scripts/bump-version.sh <new-version>
+# Examples:
+#   ./scripts/bump-version.sh --patch   # 1.3.0 → 1.3.1
+#   ./scripts/bump-version.sh --minor   # 1.3.0 → 1.4.0
+#   ./scripts/bump-version.sh --major   # 1.3.0 → 2.0.0
+#   ./scripts/bump-version.sh 1.5.0     # explicit version
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 if [ $# -ne 1 ]; then
-  echo "Usage: $0 <new-version>" >&2
-  echo "Example: $0 1.1.0" >&2
+  echo "Usage: $0 --patch|--minor|--major|<new-version>" >&2
   exit 1
 fi
 
-new_version="$1"
+current_version=$(cat "${REPO_ROOT}/VERSION")
+IFS='.' read -r major minor patch <<< "$current_version"
+
+case "$1" in
+  --patch) new_version="${major}.${minor}.$((patch + 1))" ;;
+  --minor) new_version="${major}.$((minor + 1)).0" ;;
+  --major) new_version="$((major + 1)).0.0" ;;
+  *)       new_version="$1" ;;
+esac
 
 # Validate version format (semver-ish: X.Y.Z)
 if ! printf '%s' "$new_version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
