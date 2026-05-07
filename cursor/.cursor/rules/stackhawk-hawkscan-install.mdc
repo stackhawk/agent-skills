@@ -1,6 +1,6 @@
 ---
 description: >
-  HawkScan installation: Homebrew (macOS), package installers (all platforms), prerequisites (Java 17+), verification (hawk --version).
+  HawkScan installation: Homebrew (macOS), package installers (all platforms), prerequisites (Java 17+), verification (hawk version).
 globs:
 alwaysApply: false
 ---
@@ -60,7 +60,7 @@ Direct download URL patterns (substitute version):
 ### Verify Installation
 
 ```bash
-hawk --version
+hawk version
 ```
 
 ---
