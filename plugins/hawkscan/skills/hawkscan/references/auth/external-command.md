@@ -36,6 +36,43 @@ app:
       success: ".*200.*"
 ```
 
+## Cross-domain login (auth on a separate service)
+
+Use this pattern when the login endpoint is on a **different host** than the scanned app.
+`usernamePassword` cannot reach external hosts — `externalCommand` is the only credential
+type that can.
+
+```yaml
+app:
+  host: http://localhost:5000        # the app being scanned
+  authentication:
+    externalCommand:
+      command: "sh"
+      parameters:
+        - "-c"
+        - |
+          TOKEN=$(curl -sk -X POST https://auth.company.com/api/login \
+            -H "Content-Type: application/json" \
+            -d "{\"Username\":\"${SCAN_USERNAME}\",\"Password\":\"${SCAN_PASSWORD}\"}" \
+            | jq -r '.token')
+          echo "{\"headers\": [{\"Authorization\": \"Bearer $TOKEN\"}]}"
+    tokenAuthorization:
+      type: HEADER
+      value: "Bearer {token}"
+    loggedInIndicator: "HTTP/[0-9]+.[0-9]+\\s+([2-3][0-9][0-9])"
+    loggedOutIndicator: "HTTP/[0-9]+.[0-9]+\\s+(4[0-9][0-9])"
+    testPath:
+      path: /api/me
+      success: ".*200.*"
+```
+
+Key points:
+- `app.host` is the scanned app — NOT the auth service
+- The `externalCommand` curl hits the auth service at its full URL
+- `testPath.path` must be a route on the scanned app that returns 401/403 without auth and 200 with it
+- Use `${SCAN_USERNAME}` and `${SCAN_PASSWORD}` env vars — never hardcode credentials
+- Set these before scanning: `export SCAN_USERNAME=youruser && export SCAN_PASSWORD=yourpass`
+
 ## Output format
 
 The command must print JSON to stdout, with `headers` and/or `cookies` as **arrays of single-key objects**:
