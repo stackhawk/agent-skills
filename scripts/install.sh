@@ -72,11 +72,11 @@ case "$platform" in
     dest="${target}/.agents/skills"
     source="${REPO_ROOT}/plugins"
 
-    if [ -d "${dest}/hawkscan" ] || [ -d "${dest}/api" ]; then
+    if [ -d "${dest}/hawkscan" ] || [ -d "${dest}/stackhawk-api" ]; then
       echo "WARNING: StackHawk skills already exist in ${dest}/"
       echo "Directories that will be overwritten:"
       [ -d "${dest}/hawkscan" ] && echo "  hawkscan/"
-      [ -d "${dest}/api" ] && echo "  api/"
+      [ -d "${dest}/stackhawk-api" ] && echo "  stackhawk-api/"
       echo ""
       read -rp "Overwrite? [y/N] " confirm
       if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
@@ -85,12 +85,12 @@ case "$platform" in
       fi
     fi
 
-    mkdir -p "${dest}/hawkscan" "${dest}/api"
+    mkdir -p "${dest}/hawkscan" "${dest}/stackhawk-api"
     cp -r "${source}/hawkscan/skills/hawkscan/"* "${dest}/hawkscan/"
-    cp -r "${source}/api/skills/api/"* "${dest}/api/"
+    cp -r "${source}/api/skills/api/"* "${dest}/stackhawk-api/"
     echo "Installed StackHawk skills to ${dest}/"
-    echo "  hawkscan/ — DAST scanning skill"
-    echo "  api/      — API reporting skill"
+    echo "  hawkscan/       — DAST scanning skill"
+    echo "  stackhawk-api/  — API reporting skill"
     ;;
 
   *)
