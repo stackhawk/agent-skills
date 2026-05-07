@@ -4,6 +4,17 @@ How to pick an auth pattern and configure it in `stackhawk.yml`. For per-pattern
 
 ## Decision tree
 
+**Before the decision tree — check login host:**
+
+Is the login endpoint on a **different host** than the application you're scanning?
+For example: login is at `https://auth.company.com/login` but the app is at `http://localhost:5000`.
+
+If yes → **skip the decision tree below and go directly to [`external-command.md`](external-command.md).**
+
+`usernamePassword`, `oauth`, and `script` credential types operate within the scanned
+app's host. They cannot reach an external auth service. Only `externalCommand` (and
+`external`) can call out to a separate host.
+
 1. Do you have a token/cookie from outside the scan (CI secret, SSO pre-flight)? → [`external.md`](external.md)
 2. Does the app accept a username/password POST? → [`username-password.md`](username-password.md)
 3. Does it authenticate via an OAuth2 IdP (Auth0, Okta, Cognito)? → [`oauth.md`](oauth.md)

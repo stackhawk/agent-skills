@@ -111,8 +111,15 @@ See the main SKILL.md Step 3 for config file path rules and common agent mistake
 hawk version                             # print CLI version
 hawk list plugin                         # list available custom scan plugins
 hawk download log                        # download the scan log from the last scan
-hawk create app                          # create a new application in the StackHawk platform
+# Interactive (human use - prompts for name)
+hawk create app
+
+# Non-interactive (agent/script use - required for autonomous operation)
+hawk create app --name "My App" --env Development
 ```
+
+**Important for agents:** Always use the non-interactive form. The interactive prompt
+blocks execution and cannot be answered programmatically.
 
 ---
 
