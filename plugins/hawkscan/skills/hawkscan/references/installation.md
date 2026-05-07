@@ -54,7 +54,7 @@ Direct download URL patterns (substitute version):
 ### Verify Installation
 
 ```bash
-hawk --version
+hawk version
 ```
 
 ---
