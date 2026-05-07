@@ -111,10 +111,10 @@ See the main SKILL.md Step 3 for config file path rules and common agent mistake
 hawk version                             # print CLI version
 hawk list plugin                         # list available custom scan plugins
 hawk download log                        # download the scan log from the last scan
-# Interactive (human use — prompts for name)
+# Interactive (human use - prompts for name)
 hawk create app
 
-# Non-interactive (agent/script use — required for autonomous operation)
+# Non-interactive (agent/script use - required for autonomous operation)
 hawk create app --name "My App" --env Development
 ```
 
