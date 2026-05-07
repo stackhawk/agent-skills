@@ -150,6 +150,61 @@ defaults all flags to `true`; Phase 0c starts clean and enables only detected te
 
 Before configuring or running a scan, gather:
 
+**Sub-step 0: Profile the application**
+
+Before all other checks, build a minimal app profile so config generation is correct
+on the first attempt. Collect three things:
+
+**API type** — run these to detect signals:
+```bash
+# OpenAPI/Swagger specs
+find . -name "openapi*.yaml" -o -name "openapi*.json" -o -name "swagger*.yaml" -o -name "swagger*.json" 2>/dev/null | head -5
+# gRPC
+find . -name "*.proto" 2>/dev/null | head -5
+# GraphQL
+find . -name "*.graphql" -o -name "schema.graphql" 2>/dev/null | head -5
+# .NET ASP.NET Core
+find . -name "*.csproj" -o -name "Program.cs" 2>/dev/null | head -5
+```
+Interpret results:
+- OpenAPI/Swagger file found → REST API; use `openApiConf` in config
+- `.proto` files → gRPC
+- `.graphql` → GraphQL; use `graphqlConf`
+- `.csproj` / `Program.cs` → ASP.NET Core REST API
+- None of the above → standard web app (no API-type-specific config needed)
+
+**Auth requirement** — run these to detect signals:
+```bash
+# C# / ASP.NET
+grep -r "\[Authorize\]" --include="*.cs" . 2>/dev/null | head -3
+grep -r "JwtBearer\|AddAuthentication\|Bearer" --include="*.cs" --include="appsettings*.json" . 2>/dev/null | head -3
+# Java Spring Security
+grep -r "@PreAuthorize\|SecurityConfig\|@Secured" --include="*.java" . 2>/dev/null | head -3
+# Node / Express
+grep -r "passport\|requireAuth\|authenticate\|jwt" --include="*.js" --include="*.ts" . 2>/dev/null | head -3
+```
+If any auth signal is found: authentication config is required. Proceed to
+`references/auth/README.md` before generating `stackhawk.yml`.
+
+**Startup pattern and host** — check for:
+```bash
+# ASP.NET launch settings (has port/host)
+find . -name "launchSettings.json" -path "*/Properties/*" 2>/dev/null | xargs cat 2>/dev/null
+# Docker Compose (has service ports)
+find . -name "docker-compose*.yml" 2>/dev/null | head -3
+# Node start scripts
+cat package.json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('scripts',{}))" 2>/dev/null
+```
+
+**When file access is limited** (single-file context, restricted workspace, or the above
+commands return no useful output): ask the user directly before proceeding:
+> "I need a few details to configure the scan correctly:
+> 1. What type of API is this? (REST, GraphQL, gRPC, or standard web app)
+> 2. Do any endpoints require authentication? If yes, where is the login endpoint and what service handles it?
+> 3. What command starts the application, and what host/port does it listen on?"
+
+Do not generate `stackhawk.yml` based on assumptions when context is absent.
+
 1. **Is the app/api running?** HawkScan requires a live target. If not running, instruct
    the agent to start it first and confirm the host/port.
 2. **Do we have a `stackhawk.yml`?** Check the project root. If missing, go to Step 2a (generate).
@@ -168,7 +223,13 @@ Before configuring or running a scan, gather:
      Still ambiguous → surface candidates to the user briefly.
    - **No name match:** do NOT fall back to host-only matching — different
      apps can share hosts in CI. Proceed to create.
-   - **Create path:** run `hawk create app` with the repo name as default.
+   - **Create path:** run:
+     ```bash
+     hawk create app --name "<repo-name>" --env <env-name>
+     ```
+     Where `<env-name>` follows the same resolution logic in substep 6 (Development for
+     feature branches, Production for main/master, CI when `CI=true`, etc.).
+     The bare `hawk create app` form is interactive and will hang an agent.
      Announce: "Created application <name> (ID: <applicationId>) — verify
      at https://app.stackhawk.com/applications/<applicationId>/details/settings".
      No user prompt (autonomy default).
