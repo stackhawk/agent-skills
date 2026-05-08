@@ -94,8 +94,11 @@ echo '$env:HAWK_API_KEY="hawk.xxxxxxxxxx.xxxxxxxxxx"' > $HOME\.hawk\hawk.ps1
 ```
 
 Either method works — `hawk init` writes to `~/.hawk/hawk.properties`, while the env
-var approach uses shell config. The CLI resolves keys in this order:
-`--api-key` flag → `HAWK_API_KEY` env var → `~/.hawk/hawk.properties`
+var approach uses shell config. The CLI itself reads the `API_KEY` env var (not
+`HAWK_API_KEY`); these skills standardize on `HAWK_API_KEY` as the user-facing
+name and bridge it inline at every CLI invocation (e.g.
+`API_KEY=$HAWK_API_KEY hawk scan`). The CLI resolves keys in this order:
+`--api-key` flag → `API_KEY` env var → `~/.hawk/hawk.properties`.
 
 ---
 

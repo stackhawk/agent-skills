@@ -22,7 +22,7 @@ Claude will automatically:
 - A [StackHawk account](https://app.stackhawk.com) (free tier available)
 - A StackHawk API key — generate one at **Settings → API Keys**
 - HawkScan CLI (`hawk`) or Docker installed
-- `HAWK_API_KEY` set as an environment variable
+- `HAWK_API_KEY` set as an environment variable (the skill bridges this to the CLI's native `API_KEY` env var per-invocation)
 
 ## Installation
 

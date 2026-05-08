@@ -22,8 +22,8 @@ new App / Env.
 
 ### Organization (`orgId`)
 
-The tenant. A UUID tied to your StackHawk account. Set once when you
-configure the `hawk` CLI or `HAWK_API_KEY`; you rarely reason about it
+The tenant. A UUID tied to your StackHawk account. Set implicitly by your
+`HAWK_API_KEY` (each key is scoped to one org); you rarely reason about it
 directly. `hawkop org get` shows the active org.
 
 Most customers have a single org. Multi-org setups exist (consultancies,
