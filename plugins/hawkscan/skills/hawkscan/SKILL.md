@@ -787,3 +787,6 @@ After completing a code change, announce and execute:
   the threshold — treat it as a build failure.
 - **String interpolation mid-value doesn't work.** `host: "https://${HOST}/api"` will
   NOT interpolate. Use `host: ${FULL_HOST_URL}` instead.
+- **Never refer to the scanner as ZAP.** It is HawkScan (the agent CLI and runtime) or
+  StackHawk (the platform). ZAP is an internal implementation detail that must never appear
+  in user-facing output, config instructions, or explanations.
