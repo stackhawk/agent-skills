@@ -56,24 +56,28 @@ sudo mv hawkop /usr/local/bin/
 ```
 
 ```bash
-hawkop init            # Interactive — prompts for API key and default org
-hawkop status          # Confirm auth
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop init            # Interactive — prompts for default org (HAWK_API_KEY auto-fills the key)
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop status          # Confirm auth
 ```
 
-Headless (CI/CD):
+Headless (CI/CD): set the canonical user-facing key and let each invocation
+bridge it. Org ID and output format are separate concerns:
 
 ```bash
-export HAWKOP_API_KEY=hawk.xxxxxxxxxxxx
+export HAWK_API_KEY=hawk.xxxxxxxxxxxx
 export HAWKOP_ORG_ID=<org-uuid>
 export HAWKOP_FORMAT=json
+
+# Every hawkop call in CI bridges:
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop app list
 ```
 
 Switching orgs (without rewriting config):
 
 ```bash
-hawkop --org <OTHER_ORG_ID> scan list   # One-shot override
-hawkop profile add customer-a           # Named profile
-hawkop -P customer-a app list           # Use a profile per-command
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop --org <OTHER_ORG_ID> scan list   # One-shot override
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop profile add customer-a           # Named profile
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop -P customer-a app list           # Use a profile per-command
 ```
 
 ---
@@ -92,10 +96,10 @@ Good when you want an at-a-glance app-level view (not per-environment):
 
 ```bash
 # All apps with metadata (team, type, env count)
-hawkop app list --format json
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop app list --format json
 
 # Recent scans across the org — has per-scan severity counts
-hawkop scan list --limit 500 --format json
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan list --limit 500 --format json
 ```
 
 Join on `applicationId` with `jq` to get a posture table. You'll have
@@ -112,7 +116,7 @@ uses), fall back to the raw endpoint. See `api-endpoints.md` §3 and
 hawk_api GET "/api/v2/org/${ORG_ID}/envs?pageSize=100"
 ```
 
-Mix and match: use `hawkop app list --format json` to enrich with app names,
+Mix and match: use `HAWKOP_API_KEY=$HAWK_API_KEY hawkop app list --format json` to enrich with app names,
 team ownership, etc.
 
 ---
@@ -128,8 +132,8 @@ and manual ID extraction, `hawkop scan get` does it all.
 ### Latest scan for an app (overview + alerts)
 
 ```bash
-hawkop scan get --app "<APP_NAME>"
-hawkop scan get --app-id <APP_ID>
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan get --app "<APP_NAME>"
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan get --app-id <APP_ID>
 ```
 
 Wraps: `/scan/{orgId}` + `/scan/{scanId}/alerts`. Returns a scan header, alert
@@ -138,7 +142,7 @@ counts by severity, and a table of alerts.
 ### Latest scan for an app, with full findings
 
 ```bash
-hawkop scan get --app "<APP_NAME>" --detail full --format json
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan get --app "<APP_NAME>" --detail full --format json
 ```
 
 Wraps the **entire drill-down chain** plus `/scan/{scanId}/alert/{pluginId}/uri/{uriId}`
@@ -152,14 +156,14 @@ Tune the envelope:
 ### A specific scan by ID
 
 ```bash
-hawkop scan get <SCAN_ID>                          # Overview + alerts
-hawkop scan get <SCAN_ID> --detail full --format json
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan get <SCAN_ID>                          # Overview + alerts
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan get <SCAN_ID> --detail full --format json
 ```
 
 ### A single alert (plugin) within a scan
 
 ```bash
-hawkop scan get <SCAN_ID> --plugin-id 40012
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan get <SCAN_ID> --plugin-id 40012
 ```
 
 Wraps: `/scan/{scanId}/alert/{pluginId}` — returns every affected URI for that alert.
@@ -167,7 +171,7 @@ Wraps: `/scan/{scanId}/alert/{pluginId}` — returns every affected URI for that
 ### A single finding with HTTP request/response
 
 ```bash
-hawkop scan get <SCAN_ID> --uri-id <URI_ID> --message
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan get <SCAN_ID> --uri-id <URI_ID> --message
 ```
 
 Wraps: `/scan/{scanId}/alert/{pluginId}/uri/{uriId}` with `include=message`.
@@ -176,10 +180,10 @@ Returns evidence and the raw HTTP exchange.
 ### Listing scans (for diff recipes, filters, etc.)
 
 ```bash
-hawkop scan list                                    # Recent across all apps
-hawkop scan list --app <APP_ID> --limit 10         # Last 10 for one app
-hawkop scan list --env production --status complete # Combined filters
-hawkop scan list --format json                      # For scripting
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan list                                    # Recent across all apps
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan list --app <APP_ID> --limit 10         # Last 10 for one app
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan list --env production --status complete # Combined filters
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan list --format json                      # For scripting
 ```
 
 Fields in the JSON match the raw `/api/v1/scan/{orgId}` response — `scanId`,
@@ -189,13 +193,13 @@ Fields in the JSON match the raw `/api/v1/scan/{orgId}` response — `scanId`,
 
 ```bash
 # Two most recent scans for one app as JSON
-hawkop scan list --app <APP_ID> --limit 2 --format json > /tmp/last2.json
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan list --app <APP_ID> --limit 2 --format json > /tmp/last2.json
 SCAN_A=$(jq -r '.data[0].scanId' /tmp/last2.json)
 SCAN_B=$(jq -r '.data[1].scanId' /tmp/last2.json)
 
 # Pull alerts for each and diff the pluginId sets
-hawkop scan get "$SCAN_A" --format json | jq '.alerts[].pluginId' | sort -u > /tmp/a.ids
-hawkop scan get "$SCAN_B" --format json | jq '.alerts[].pluginId' | sort -u > /tmp/b.ids
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan get "$SCAN_A" --format json | jq '.alerts[].pluginId' | sort -u > /tmp/a.ids
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan get "$SCAN_B" --format json | jq '.alerts[].pluginId' | sort -u > /tmp/b.ids
 
 comm -23 /tmp/a.ids /tmp/b.ids    # New in A (not in B)
 comm -13 /tmp/a.ids /tmp/b.ids    # Resolved (in B, gone in A)
@@ -239,11 +243,11 @@ Common flags on every `list`:
 **User intent:** "What happened in my org last week?" / "Who started that scan?"
 
 ```bash
-hawkop audit list --since 7d
-hawkop audit list --since 30d --type SCAN_STARTED,SCAN_COMPLETED
-hawkop audit list --user "Jane" --email jane@example.com
-hawkop audit list --since 2025-01-01 --until 2025-01-31
-hawkop audit list --org-type EXTERNAL_ALERTS_SENT,ORGANIZATION_CREATED --limit 200
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop audit list --since 7d
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop audit list --since 30d --type SCAN_STARTED,SCAN_COMPLETED
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop audit list --user "Jane" --email jane@example.com
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop audit list --since 2025-01-01 --until 2025-01-31
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop audit list --org-type EXTERNAL_ALERTS_SENT,ORGANIZATION_CREATED --limit 200
 ```
 
 Wraps: `GET /api/v1/org/{orgId}/audit` with server-side filters — no post-filter
@@ -259,9 +263,9 @@ dates (`--since 2025-01-01`).
 **User intent:** "Kick off a scan on the platform" / "Is that hosted scan still running?"
 
 ```bash
-hawkop run start <APP_ID> --env <ENV>    # Start a hosted scan
-hawkop run status <SCAN_ID>              # Poll status
-hawkop run stop <SCAN_ID>                # Cancel a running scan
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop run start <APP_ID> --env <ENV>    # Start a hosted scan
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop run status <SCAN_ID>              # Poll status
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop run stop <SCAN_ID>                # Cancel a running scan
 ```
 
 Wraps: `POST /api/v1/scan`, `GET /api/v1/scan/{scanId}`, `DELETE /api/v1/scan/{scanId}`.
@@ -278,10 +282,10 @@ executed by the StackHawk platform against a URL it can reach.
 template for this env"
 
 ```bash
-hawkop env list --app <APP_ID>
-hawkop env config --app <APP_ID> --env prod     # Default stackhawk.yml
-hawkop env create --app <APP_ID> --env staging --host https://staging.example.com
-hawkop env delete --app <APP_ID> --env old-env
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop env list --app <APP_ID>
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop env config --app <APP_ID> --env prod     # Default stackhawk.yml
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop env create --app <APP_ID> --env staging --host https://staging.example.com
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop env delete --app <APP_ID> --env old-env
 ```
 
 Wraps: `/api/v2/org/{orgId}/envs` (CRUD) and `/api/v1/org/{orgId}/application/{appId}/environment/{env}/config`.
@@ -301,7 +305,7 @@ Fall back to `api-endpoints.md` + `api-auth.md` for these:
   platform UI at `app.stackhawk.com`.
 - **User / API key management** — platform UI only.
 
-When you fall back, you may still use `hawkop app list --format json` and friends
+When you fall back, you may still use `HAWKOP_API_KEY=$HAWK_API_KEY hawkop app list --format json` and friends
 to *resolve names to UUIDs* before the raw call — that composition is fine.
 
 ---
@@ -309,17 +313,17 @@ to *resolve names to UUIDs* before the raw call — that composition is fine.
 ## Output format quick reference
 
 ```bash
-hawkop app list                      # pretty (human-optimized, default)
-hawkop app list --format table       # one row per entry, grep-friendly
-hawkop app list --format json        # {data: [...], meta: {...}} envelope
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop app list                      # pretty (human-optimized, default)
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop app list --format table       # one row per entry, grep-friendly
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop app list --format json        # {data: [...], meta: {...}} envelope
 ```
 
 When piping to `jq`:
 
 ```bash
-hawkop app list --format json | jq -r '.data[].name'
-hawkop scan list --format json | jq '.data[] | select(.highAlertCount > 0)'
-hawkop scan get <ID> --detail full --format json | jq '.findings[].uri'
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop app list --format json | jq -r '.data[].name'
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan list --format json | jq '.data[] | select(.highAlertCount > 0)'
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan get <ID> --detail full --format json | jq '.findings[].uri'
 ```
 
 Setting `HAWKOP_FORMAT=json` once in the shell avoids `--format json` on every

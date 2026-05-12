@@ -9,7 +9,7 @@ alwaysApply: false
 The `hawk` CLI is preferred for local/agentic use — lower overhead than Docker,
 faster iteration on config, and better localhost networking.
 
-**Option resolution order:** CLI flag → Environment Variable → `~/.hawk/hawk.properties`
+**Option resolution order:** CLI flag → `API_KEY` environment variable → `~/.hawk/hawk.properties`. These docs use `HAWK_API_KEY` as the canonical user-facing name and bridge it per-invocation (`API_KEY=$HAWK_API_KEY hawk ...`).
 
 ---
 
@@ -18,7 +18,7 @@ faster iteration on config, and better localhost networking.
 These go **before** the command (`hawk [options] <command>`):
 
 ```bash
-hawk --api-key=${HAWK_API_KEY} scan      # supply API key inline (alternative to hawk init)
+API_KEY=$HAWK_API_KEY hawk scan          # bridge HAWK_API_KEY into API_KEY for this invocation (alternative to hawk init)
 hawk --no-color scan                     # strip ANSI escape codes (required for log parsing)
 hawk --num-stored-sessions=4 scan        # number of sessions to keep (default: 4)
 hawk --log-roll-size=100MB scan          # log file roll size (default: 100MB)
@@ -31,7 +31,7 @@ hawk --log-files-count=10 scan           # max rolled log files to upload (defau
 
 ```bash
 hawk init                                # first-time: prompts for API key, saves to ~/.hawk/hawk.properties
-hawk --api-key=${HAWK_API_KEY} scan      # or supply key inline without init
+API_KEY=$HAWK_API_KEY hawk scan          # or bridge HAWK_API_KEY into API_KEY without init
 ```
 
 ---

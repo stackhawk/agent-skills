@@ -43,8 +43,8 @@ Prefer `hawkop`; fall back only if unavailable.
 
 Before running a scan, the agent must understand four layered objects:
 
-- **Organization** (`orgId`): the tenant. Set once via `HAWK_API_KEY`. Most
-  customers have only one — you rarely think about it.
+- **Organization** (`orgId`): the tenant. Implicit via `HAWK_API_KEY` (each key
+  is scoped to one org). Most customers have only one — you rarely think about it.
 - **Application** (`applicationId`, UUID): long-lived; holds tech flags, team
   ownership, metadata. One App is scanned across many Environments.
 - **Environment** (`env`, string name): a scan context under an App. Findings
@@ -90,11 +90,11 @@ git remote get-url origin
 # If this fails (no git repo, no origin remote): skip Phase 0a, proceed to Phase 0b
 
 # 2. List ASM repos and normalize URLs to find a match
-hawkop repo list --format json
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop repo list --format json
 
 # 3a. If a repo URL matches (normalize: lowercase, strip .git, strip trailing /,
 #     strip host prefix to compare org/repo path segment):
-hawkop repo link --repo-id <REPO_UUID> --app-id <APP_UUID>
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop repo link --repo-id <REPO_UUID> --app-id <APP_UUID>
 # Report: "Ensured link: app <APP_NAME> ↔ ASM repo <REPO_NAME>"
 
 # 3b. If no match: inject git_origin tag into stackhawk.yml tags block
@@ -261,12 +261,19 @@ count to add the Ajax Spider after the fact.
    the agent to start it first and confirm the host/port.
 2. **Do we have a `stackhawk.yml`?** Check the project root. If missing, go to Step 2a (generate).
    If present, go to Step 2b (tune).
-3. **Do we have credentials?** Check in the CLI's resolution order:
-   1. `HAWK_API_KEY` env var set → use it, proceed.
+3. **Do we have credentials?** Check in the CLI's resolution order. The `hawk` CLI itself
+   reads the `API_KEY` env var (not `HAWK_API_KEY`); this skill standardizes on
+   `HAWK_API_KEY` as the canonical user-facing name and bridges it inline at every CLI
+   invocation (`API_KEY=$HAWK_API_KEY hawk <cmd>`).
+   1. `HAWK_API_KEY` env var set → use it; every example below bridges automatically.
    2. `~/.hawk/hawk.properties` exists (written by a prior `hawk init`) → treat as
       authenticated, proceed.
    3. Neither present → instruct the user to run `hawk init` (interactive, saves key to
       `~/.hawk/hawk.properties`) or export `HAWK_API_KEY` directly.
+
+   Every `hawk` and `hawkop` invocation in this skill bridges `HAWK_API_KEY` into the env
+   var the underlying tool actually reads. You don't need to set `API_KEY` or
+   `HAWKOP_API_KEY` yourself.
 
    If a later command returns 401/403, the stored credential is stale — re-run `hawk init`
    or refresh `HAWK_API_KEY`.
@@ -290,7 +297,7 @@ count to add the Ajax Spider after the fact.
      apps can share hosts in CI. Proceed to create.
    - **Create path:** run:
      ```bash
-     hawk create app --name "<repo-name>" --env <env-name>
+     API_KEY=$HAWK_API_KEY hawk create app --name "<repo-name>" --env <env-name>
      ```
      Resolve `<env-name>` using this order (first match wins):
      1. `STACKHAWK_ENV` env var if set → use it exactly
@@ -358,7 +365,7 @@ bash form `${VAR:-default}` is NOT supported. The entire YAML value must be the 
 **Validate after generating:**
 After writing `stackhawk.yml`, always run:
 ```bash
-timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
+API_KEY=$HAWK_API_KEY timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
 ```
 Do not proceed to Step 3 until validation passes. If validation fails, fix the reported
 errors and re-validate before scanning.
@@ -411,7 +418,7 @@ Review the existing config against the current app state:
 After modifying `stackhawk.yml` — whether tuning spider settings, adding auth, adding tags,
 or any Phase 0 edit — run:
 ```bash
-timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
+API_KEY=$HAWK_API_KEY timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
 ```
 Fix reported errors before proceeding to Step 3.
 
@@ -446,23 +453,23 @@ if [ -z "${HAWK_AGENT}" ]; then
   fi
 fi
 
-hawk validate config stackhawk.yml
+API_KEY=$HAWK_API_KEY hawk validate config stackhawk.yml
 
 # Validate OpenAPI specification referenced in stackhawk.yml
-hawk validate api stackhawk.yml
+API_KEY=$HAWK_API_KEY hawk validate api stackhawk.yml
 
 # Validate authentication config (requires perch daemon — see below)
-hawk perch start
-hawk validate auth stackhawk.yml
-hawk perch stop
+API_KEY=$HAWK_API_KEY hawk perch start
+API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml
+API_KEY=$HAWK_API_KEY hawk perch stop
 ```
 
-Run `hawk validate config stackhawk.yml` every time the config changes.
-Run `hawk validate api stackhawk.yml` when adding or modifying OpenAPI spec references.
-Run `hawk validate auth` when the `authentication` block is new or modified — but note
+Run `API_KEY=$HAWK_API_KEY hawk validate config stackhawk.yml` every time the config changes.
+Run `API_KEY=$HAWK_API_KEY hawk validate api stackhawk.yml` when adding or modifying OpenAPI spec references.
+Run `API_KEY=$HAWK_API_KEY hawk validate auth` when the `authentication` block is new or modified — but note
 that **`validate auth` requires perch (daemon mode) to be running first**. Start perch,
 run the validation, then stop perch when done.
-If any validation fails, fix it before proceeding to `hawk scan`.
+If any validation fails, fix it before proceeding to `API_KEY=$HAWK_API_KEY hawk scan`.
 
 #### Config File Path Rules (Important — Common Agent Mistake)
 
@@ -503,14 +510,14 @@ For Docker-based scanning (CI environments or when CLI isn't installed), see:
 
 **Quick reference for agentic scanning:**
 ```bash
-hawk scan                                          # scan using stackhawk.yml in current directory
-hawk scan --json-output                            # output findings as JSON (best for agentic parsing, requires Dev Release v5.3.41+)
-hawk rescan                                        # re-run plugins that fired on the most recent scan
-hawk rescan --scan-id <SCAN_ID> --json-output      # re-run plugins against a specific prior scan — fast fix verification
+API_KEY=$HAWK_API_KEY hawk scan                                          # scan using stackhawk.yml in current directory
+API_KEY=$HAWK_API_KEY hawk scan --json-output                            # output findings as JSON (best for agentic parsing, requires Dev Release v5.3.41+)
+API_KEY=$HAWK_API_KEY hawk rescan                                        # re-run plugins that fired on the most recent scan
+API_KEY=$HAWK_API_KEY hawk rescan --scan-id <SCAN_ID> --json-output      # re-run plugins against a specific prior scan — fast fix verification
 ```
 
 **Rescan is the agentic fix-loop's best friend.** After fixing findings
-from scan `<SCAN_ID>`, `hawk rescan --scan-id <SCAN_ID>` re-runs only the
+from scan `<SCAN_ID>`, `API_KEY=$HAWK_API_KEY hawk rescan --scan-id <SCAN_ID>` re-runs only the
 plugins that previously produced findings — seconds vs. minutes. Use it
 in the Autonomous Loop's rescan step (Step 6). Capture the `scan.id`
 field from the initial scan's JSON output.
@@ -539,10 +546,10 @@ Use `--json-output` to get structured scan results for agentic consumption
 
 ```bash
 # CLI — json output to file
-hawk scan --json-output > findings.json
+API_KEY=$HAWK_API_KEY hawk scan --json-output > findings.json
 
 # CLI — json output piped directly
-hawk scan --json-output
+API_KEY=$HAWK_API_KEY hawk scan --json-output
 ```
 
 `--json-output` suppresses all other stdout (progress, banners, etc.), so you do NOT
@@ -561,7 +568,7 @@ see:
 ### Stdout Parsing (Fallback)
 
 If `--json-output` is not available (requires at least Dev Release v5.3.41), fall back to capturing
-stdout with `hawk --no-color scan --verbose` and parse the terminal output. Look for lines
+stdout with `API_KEY=$HAWK_API_KEY hawk --no-color scan --verbose` and parse the terminal output. Look for lines
 containing finding names, severity levels, and affected paths. The platform URL printed
 at scan end can be used to fetch the full report via the StackHawk API if needed.
 
@@ -598,7 +605,7 @@ If a `NEW` finding is clearly a false positive, mark it via the platform API
 
 **Single finding:**
 ```bash
-hawkop scan triage \
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan triage \
   --scan <SCAN_UUID> \
   --hash <FINDING_HASH> \
   --status false-positive \
@@ -608,7 +615,7 @@ hawkop scan triage \
 **Batch (multiple FPs in one scan):**
 ```bash
 # Write a triage.yaml with one entry per false positive, then:
-hawkop scan triage --scan <SCAN_UUID> --from-file triage.yaml
+HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan triage --scan <SCAN_UUID> --from-file triage.yaml
 ```
 
 **Rules:**
@@ -643,8 +650,8 @@ After generating fix tasks, instruct the agent:
   to confirm remediation. Repeat until exit 0 or only accepted-risk findings remain.
 - **Exit code 1**: Do NOT hand fix tasks. Run validation commands to diagnose first:
   ```bash
-  hawk validate config stackhawk.yml   # catches malformed YAML, missing required fields
-  hawk validate api stackhawk.yml      # validates OpenAPI spec references in config
+  API_KEY=$HAWK_API_KEY hawk validate config stackhawk.yml   # catches malformed YAML, missing required fields
+  API_KEY=$HAWK_API_KEY hawk validate api stackhawk.yml      # validates OpenAPI spec references in config
   ```
   Common causes:
   - App not reachable → confirm it's running and `host` in config is correct
@@ -720,9 +727,9 @@ After completing a code change, announce and execute:
      fi
    fi
 
-   timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
+   API_KEY=$HAWK_API_KEY API_KEY=$HAWK_API_KEY timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
    ```
-4. **Scan:** Run `hawk scan --json-output` and parse the structured findings. The scan
+4. **Scan:** Run `API_KEY=$HAWK_API_KEY hawk scan --json-output` and parse the structured findings. The scan
    results will be tagged with the commit SHA and branch from the env vars above.
 5. **If findings exist:**
    - **Run the Step 4.5 triage filter first** (per-path `status` field).
@@ -741,7 +748,7 @@ After completing a code change, announce and execute:
    - **Commit fixes with a consistent message format:**
      `fix: resolve [CWE-XXX] [vulnerability type] found by HawkScan`
      Example: `fix: resolve CWE-89 SQL injection found by HawkScan`
-6. **Rescan:** Decide first — run a full `hawk scan --json-output` instead
+6. **Rescan:** Decide first — run a full `API_KEY=$HAWK_API_KEY hawk scan --json-output` instead
    of rescan if ANY of these apply:
    - The fix added cross-cutting surfaces (new API endpoints, new input
      vectors, new auth paths) — rescan won't test them.
@@ -750,7 +757,7 @@ After completing a code change, announce and execute:
      pass, not just the subset that fired previously.
 
    Otherwise (the common case), run
-   `hawk rescan --scan-id <SCAN_ID> --json-output` to verify fixes
+   `API_KEY=$HAWK_API_KEY hawk rescan --scan-id <SCAN_ID> --json-output` to verify fixes
    quickly. `<SCAN_ID>` is the `scan.id` value from the JSON output
    captured in Step 4. Rescan re-runs only the plugins that fired on the
    parent scan — dramatically faster than a full scan.
