@@ -156,10 +156,34 @@ For authentication, see [`auth/README.md`](auth/README.md) for strategy selectio
 
 ## Multi-Environment Config
 
-Layer config files to avoid duplication. Base config holds shared settings; env-specific
-files override just what's different:
+### Preferred: Host interpolation (one file, works everywhere)
 
-**`stackhawk.yml`** (base):
+Use `${VAR:default}` interpolation for host-only differences. Never create a second YAML
+file just to change the host.
+
+```yaml
+# stackhawk.yml — one file, works everywhere
+app:
+  applicationId: ${APP_ID}
+  env: ${APP_ENV:Development}
+  host: ${APP_HOST:https://your-default-host.com}
+```
+
+Override the host at runtime without touching the file:
+```bash
+# Scan locally
+APP_HOST=http://localhost:3000 hawk scan
+
+# Scan staging
+APP_HOST=https://staging.example.com hawk scan
+```
+
+### Multi-file layering (for structurally different scan settings)
+
+Use file layering only when environments need meaningfully different settings — different
+`env` name, different `failureThreshold`, or CI-only tags. Not for host-only differences.
+
+**`stackhawk.yml`** (base — shared settings):
 ```yaml
 app:
   applicationId: ${APP_ID}
@@ -167,7 +191,7 @@ app:
     filePath: openapi.yaml
 ```
 
-**`stackhawk-ci.yml`** (CI override):
+**`stackhawk-ci.yml`** (CI override — structurally different settings):
 ```yaml
 app:
   env: CI
