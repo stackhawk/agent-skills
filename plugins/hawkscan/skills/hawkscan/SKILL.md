@@ -374,9 +374,14 @@ For authentication (strategy selection, per-pattern configs), see:
 
 Review the existing config against the current app state:
 
-- **Low path count on last scan?** → Add API spec references (openapi, introspection,
-  reflection), enable the AJAX spider, or add `seedPaths`. See spider tuning in
-  `references/config-patterns.md`
+- **Low path count on last scan?** → Check in this order before adding anything:
+  1. **SPA/JS app?** Enable `hawk.spider.ajax: true` — Ajax Spider finds JS-rendered routes.
+  2. **API spec available?** Wire `openApiConf`, `graphqlConf`, etc. — spec drives route discovery.
+  3. **No spec, no Ajax Spider, known deep paths not reachable from root?** Add `seedPaths`
+     for only those specific known-deep paths.
+  **Rule:** Omit `seedPaths` unless there is a specific identified reason. Adding them
+  speculatively creates noise and is rarely needed when Ajax Spider or an API spec is configured.
+  See spider tuning in `references/config-patterns.md`.
 - **Auth failing?** → Verify `authentication` block; check `app.authentication.testPath`. See `references/auth/README.md#common-mistakes`.
 - **Too noisy / too slow?** → Add `app.excludePaths` or `app.includePaths`, tune
   `hawk.spider.maxDurationMinutes` and `hawk.scan` settings
@@ -400,6 +405,14 @@ Review the existing config against the current app state:
   export COMMIT_SHA=$(git rev-parse HEAD)
   export BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
   ```
+
+**Validate after any modification:**
+After modifying `stackhawk.yml` — whether tuning spider settings, adding auth, adding tags,
+or any Phase 0 edit — run:
+```bash
+hawk validate config stackhawk.yml
+```
+Fix reported errors before proceeding to Step 3.
 
 ---
 
