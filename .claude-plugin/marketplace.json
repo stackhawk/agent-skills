@@ -14,7 +14,7 @@
       "category": "security",
       "source": "./plugins/hawkscan",
       "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/hawkscan",
-      "version": "1.5.2"
+      "version": "1.5.3"
     },
     {
       "name": "api",
@@ -22,7 +22,7 @@
       "category": "security",
       "source": "./plugins/api",
       "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/api",
-      "version": "1.5.2"
+      "version": "1.5.3"
     }
   ]
 }
