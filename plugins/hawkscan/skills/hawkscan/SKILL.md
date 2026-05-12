@@ -217,8 +217,14 @@ Once the three profile facts are established (from files or the user), proceed a
    the agent to start it first and confirm the host/port.
 2. **Do we have a `stackhawk.yml`?** Check the project root. If missing, go to Step 2a (generate).
    If present, go to Step 2b (tune).
-3. **Do we have `HAWK_API_KEY`?** Required. If missing, tell the user to generate one
-   at app.stackhawk.com → Settings → API Keys and set it as an env var.
+3. **Is hawk already authenticated?** Check for existing hawk config files first:
+   ```bash
+   test -f ~/.hawk/config || test -f ~/.hawk/hawk.properties
+   ```
+   If either file exists, authentication is already configured from a prior `hawk init` — skip
+   all API key prompting and proceed. Only if both are absent: check for `HAWK_API_KEY` env
+   var. If that is also missing, instruct the user to run `hawk init` or generate a key at
+   app.stackhawk.com → Settings → API Keys and export it as `HAWK_API_KEY`.
 4. **What runtime is available?** Docker or CLI (`hawk`). If neither is installed, see
    → `references/installation.md`
 
