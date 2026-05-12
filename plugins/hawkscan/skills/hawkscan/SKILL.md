@@ -239,20 +239,20 @@ find . -not -path "*/node_modules/*" \( \
 
 - **SPA framework found AND API routes present** (Next.js API routes, Nuxt server routes,
   SvelteKit endpoints): fullstack app — enable Ajax Spider automatically, wire OpenAPI spec
-  if available.
-- **SPA framework found AND no API routes** (pure frontend calling external API): surface
-  a note before proceeding: *"This appears to be a frontend-only app. The highest-value
-  HawkScan target is the backend API it calls — scanning there will surface injection, auth
-  bypass, and IDOR findings. Scanning the frontend is useful for header and CSP checks
-  only."* Ask the user to confirm whether to scan the frontend, the backend API, or both.
-  See `references/spa-scanning.md` for full strategy.
-- **SPA framework found (either case)**: always auto-enable Ajax Spider in generated config:
+  if available. Always include in generated config:
   ```yaml
   hawk:
     spider:
       ajax: true
       maxDurationMinutes: 2
   ```
+- **SPA framework found AND no API routes** (pure frontend calling external API): auto-enable
+  Ajax Spider (same config as above) and surface a note before proceeding: *"This appears to
+  be a frontend-only app. The highest-value HawkScan target is the backend API it calls —
+  scanning there will surface injection, auth bypass, and IDOR findings. Scanning the
+  frontend is useful for header and CSP checks only."* Ask the user to confirm whether to
+  scan the frontend, the backend API, or both. See `references/spa-scanning.md` for full
+  strategy.
 - **No SPA framework found**: proceed as normal. Do not add Ajax Spider config.
 
 **Rule:** Never scan a SPA app without the Ajax Spider enabled. Never wait for a low path

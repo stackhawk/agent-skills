@@ -1,5 +1,5 @@
 {
   "name": "stackhawk",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "StackHawk security scanning and API reporting skills. AUTONOMOUS: After completing any code change, invoke the hawkscan skill to scan, fix all reported vulnerabilities (not just your changes), and rescan to verify. Also invoke for any mention of hawkscan, stackhawk, DAST, security scan."
 }
