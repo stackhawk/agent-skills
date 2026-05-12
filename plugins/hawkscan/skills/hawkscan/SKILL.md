@@ -338,10 +338,29 @@ app:
   host: ${APP_HOST:http://localhost:8080}
 ```
 
-**Always use env var interpolation** (`${VAR}` or `${VAR:default}`) for sensitive
-values and anything that varies across environments. Note: HawkScan does NOT support
-string interpolation inside larger strings like `"https://${HOST}/api"` — the entire
-value must be the variable.
+**Always use env var interpolation** (`${VAR:default}`) for sensitive values and anything
+that varies across environments.
+
+> **Never create a separate `stackhawk.local.yml` or any second YAML file just to change
+> the host.** Use `${APP_HOST:https://your-default-host.com}` in the primary `stackhawk.yml`.
+> Override at runtime by setting the env var:
+> ```bash
+> APP_HOST=http://localhost:3000 hawk scan
+> ```
+> If a `stackhawk.local.yml` already exists for host overrides, delete it and migrate the
+> host value to interpolation in `stackhawk.yml`.
+
+**Interpolation syntax:** HawkScan uses `${VAR:default}` (single colon, no dash). The
+bash form `${VAR:-default}` is NOT supported. The entire YAML value must be the variable
+— `host: "https://${HOST}/api"` will NOT interpolate; use `host: ${FULL_HOST_URL}` instead.
+
+**Validate after generating:**
+After writing `stackhawk.yml`, always run:
+```bash
+hawk validate config stackhawk.yml
+```
+Do not proceed to Step 3 until validation passes. If validation fails, fix the reported
+errors and re-validate before scanning.
 
 For API-type-specific config, see:
 → `references/config-patterns.md`
