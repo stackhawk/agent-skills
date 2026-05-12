@@ -156,10 +156,34 @@ For authentication, see [`auth/README.md`](auth/README.md) for strategy selectio
 
 ## Multi-Environment Config
 
-Layer config files to avoid duplication. Base config holds shared settings; env-specific
-files override just what's different:
+### Preferred: Host interpolation (one file, works everywhere)
 
-**`stackhawk.yml`** (base):
+Use `${VAR:default}` interpolation for host-only differences. Never create a second YAML
+file just to change the host.
+
+```yaml
+# stackhawk.yml — one file, works everywhere
+app:
+  applicationId: ${APP_ID}
+  env: ${APP_ENV:Development}
+  host: ${APP_HOST:https://your-default-host.com}
+```
+
+Override the host at runtime without touching the file:
+```bash
+# Scan locally
+APP_HOST=http://localhost:3000 hawk scan
+
+# Scan staging
+APP_HOST=https://staging.example.com hawk scan
+```
+
+### Multi-file layering (for structurally different scan settings)
+
+Use file layering only when environments need meaningfully different settings — different
+`env` name, different `failureThreshold`, or CI-only tags. Not for host-only differences.
+
+**`stackhawk.yml`** (base — shared settings):
 ```yaml
 app:
   applicationId: ${APP_ID}
@@ -167,7 +191,7 @@ app:
     filePath: openapi.yaml
 ```
 
-**`stackhawk-ci.yml`** (CI override):
+**`stackhawk-ci.yml`** (CI override — structurally different settings):
 ```yaml
 app:
   env: CI
@@ -224,9 +248,21 @@ hawk:
 ```
 
 **When to tune the spider:**
-- **Low path count?** → Enable `ajax: true` for SPAs, add `seedPaths`, or feed an API spec
+- **Low path count?** → Check this order before adding anything:
+
+  | Situation | Action |
+  |---|---|
+  | SPA/JS app (`react`, `vue`, `next`, etc.) | Enable `ajax: true` — finds JS-rendered routes |
+  | OpenAPI/GraphQL/gRPC spec available | Wire the spec — drives route discovery |
+  | Standard web app, routes reachable from root | No change needed — base spider handles this |
+  | No spec, no Ajax Spider, known deep paths not reachable from root | Add `seedPaths` for only those specific paths |
+
+  **Rule:** Omit `seedPaths` unless you have a specific identified reason. Adding them
+  speculatively creates noise and is rarely needed when Ajax Spider or an API spec is configured.
+
 - **Scan taking too long?** → Reduce `maxDurationMinutes`
-- **Missing authenticated routes?** → Add `seedPaths` for known protected endpoints
+- **Missing authenticated routes?** → Confirm auth is configured correctly first; add
+  `seedPaths` for known protected paths only if auth is working and routes are still missed
 
 ### Scan Runtime Configuration
 

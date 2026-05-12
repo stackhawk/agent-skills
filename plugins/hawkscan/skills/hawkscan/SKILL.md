@@ -213,14 +213,74 @@ commands return no useful output): ask the user directly before proceeding:
 Do not generate `stackhawk.yml` based on assumptions when context is absent.
 Once the three profile facts are established (from files or the user), proceed autonomously through the rest of Step 1.
 
+**Sub-step 0b: SPA Framework Detection**
+
+Check for JavaScript SPA frameworks before generating config — do not wait for a low path
+count to discover this.
+
+```bash
+# Detect SPA frameworks in package.json
+node -e "const p=require('./package.json'); const deps={...p.dependencies,...p.devDependencies}; const spa=['react','next','vue','@angular/core','svelte','gatsby','nuxt']; const found=spa.filter(f=>deps[f]); console.log(found.join(','))" 2>/dev/null
+
+# Detect API routes (distinguishes fullstack from pure frontend)
+find . -not -path "*/node_modules/*" \( \
+  -path "*/pages/api/*" \
+  -o -path "*/app/api/*" \
+  -o -path "*/src/app/api/*" \
+  -o -path "*/server/api/*" \
+  -o -path "*/server/routes/*" \
+  -o -path "*/src/routes/*" \
+  -o -path "*/app/routes/*" \
+  -o -name "server.js" -o -name "server.ts" \
+\) 2>/dev/null | head -5
+```
+
+**Outcomes:**
+
+- **SPA framework found AND API routes present** (Next.js API routes, Nuxt server routes,
+  SvelteKit endpoints): fullstack app — enable Ajax Spider automatically, wire OpenAPI spec
+  if available. Always include in generated config:
+  ```yaml
+  hawk:
+    spider:
+      ajax: true
+      maxDurationMinutes: 2
+  ```
+- **SPA framework found AND no API routes** (pure frontend calling external API): auto-enable
+  Ajax Spider (same config as above) and surface a note before proceeding: *"This appears to
+  be a frontend-only app. The highest-value HawkScan target is the backend API it calls —
+  scanning there will surface injection, auth bypass, and IDOR findings. Scanning the
+  frontend is useful for header and CSP checks only."* Ask the user to confirm whether to
+  scan the frontend, the backend API, or both. See `references/spa-scanning.md` for full
+  strategy.
+- **No SPA framework found**: proceed as normal. Do not add Ajax Spider config.
+
+**Rule:** Never scan a SPA app without the Ajax Spider enabled. Never wait for a low path
+count to add the Ajax Spider after the fact.
+
+→ Deep reference: [`references/spa-scanning.md`](references/spa-scanning.md)
+
 1. **Is the app/api running?** HawkScan requires a live target. If not running, instruct
    the agent to start it first and confirm the host/port.
 2. **Do we have a `stackhawk.yml`?** Check the project root. If missing, go to Step 2a (generate).
    If present, go to Step 2b (tune).
-3. **Do we have `HAWK_API_KEY`?** Required. If missing, tell the user to generate one
-   at app.stackhawk.com → Settings → API Keys and set it as an env var.
-4. **What runtime is available?** Docker or CLI (`hawk`). If neither is installed, see
-   → `references/installation.md`
+3. **Do we have credentials?** Check in the CLI's resolution order:
+   1. `HAWK_API_KEY` env var set → use it, proceed.
+   2. `~/.hawk/hawk.properties` exists (written by a prior `hawk init`) → treat as
+      authenticated, proceed.
+   3. Neither present → instruct the user to run `hawk init` (interactive, saves key to
+      `~/.hawk/hawk.properties`) or export `HAWK_API_KEY` directly.
+
+   If a later command returns 401/403, the stored credential is stale — re-run `hawk init`
+   or refresh `HAWK_API_KEY`.
+4. **What runtime is available?** Check for the `hawk` CLI first:
+   ```bash
+   which hawk
+   ```
+   - **CLI found** (or `~/.hawk/hawk.properties` exists): use the CLI. Do not mention or
+     check for Docker.
+   - **CLI not found**: check for Docker (`docker --version`). If Docker is also absent,
+     refer to → `references/installation.md`
 
 5. **Does the App exist?** Run `hawkop app list --format json`.
    - **Primary match:** app name equals the repo name (normalized: lowercased,
@@ -282,10 +342,29 @@ app:
   host: ${APP_HOST:http://localhost:8080}
 ```
 
-**Always use env var interpolation** (`${VAR}` or `${VAR:default}`) for sensitive
-values and anything that varies across environments. Note: HawkScan does NOT support
-string interpolation inside larger strings like `"https://${HOST}/api"` — the entire
-value must be the variable.
+**Always use env var interpolation** (`${VAR:default}`) for sensitive values and anything
+that varies across environments.
+
+> **Never create a separate `stackhawk.local.yml` or any second YAML file just to change
+> the host.** Use `${APP_HOST:https://your-default-host.com}` in the primary `stackhawk.yml`.
+> Override at runtime by setting the env var:
+> ```bash
+> APP_HOST=http://localhost:3000 hawk scan
+> ```
+> If a `stackhawk.local.yml` already exists for host overrides, delete it and migrate the
+> host value to interpolation in `stackhawk.yml`.
+
+**Interpolation syntax:** HawkScan uses `${VAR:default}` (single colon, no dash). The
+bash form `${VAR:-default}` is NOT supported. The entire YAML value must be the variable
+— `host: "https://${HOST}/api"` will NOT interpolate; use `host: ${FULL_HOST_URL}` instead.
+
+**Validate after generating:**
+After writing `stackhawk.yml`, always run:
+```bash
+timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
+```
+Do not proceed to Step 3 until validation passes. If validation fails, fix the reported
+errors and re-validate before scanning.
 
 For API-type-specific config, see:
 → `references/config-patterns.md`
@@ -299,9 +378,14 @@ For authentication (strategy selection, per-pattern configs), see:
 
 Review the existing config against the current app state:
 
-- **Low path count on last scan?** → Add API spec references (openapi, introspection,
-  reflection), enable the AJAX spider, or add `seedPaths`. See spider tuning in
-  `references/config-patterns.md`
+- **Low path count on last scan?** → Check in this order before adding anything:
+  1. **SPA/JS app?** Enable `hawk.spider.ajax: true` — Ajax Spider finds JS-rendered routes.
+  2. **API spec available?** Wire `openApiConf`, `graphqlConf`, etc. — spec drives route discovery.
+  3. **No spec, no Ajax Spider, known deep paths not reachable from root?** Add `seedPaths`
+     for only those specific known-deep paths.
+  **Rule:** Omit `seedPaths` unless there is a specific identified reason. Adding them
+  speculatively creates noise and is rarely needed when Ajax Spider or an API spec is configured.
+  See spider tuning in `references/config-patterns.md`.
 - **Auth failing?** → Verify `authentication` block; check `app.authentication.testPath`. See `references/auth/README.md#common-mistakes`.
 - **Too noisy / too slow?** → Add `app.excludePaths` or `app.includePaths`, tune
   `hawk.spider.maxDurationMinutes` and `hawk.scan` settings
@@ -325,6 +409,14 @@ Review the existing config against the current app state:
   export COMMIT_SHA=$(git rev-parse HEAD)
   export BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
   ```
+
+**Validate after any modification:**
+After modifying `stackhawk.yml` — whether tuning spider settings, adding auth, adding tags,
+or any Phase 0 edit — run:
+```bash
+timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
+```
+Fix reported errors before proceeding to Step 3.
 
 ---
 
@@ -631,7 +723,7 @@ After completing a code change, announce and execute:
      fi
    fi
 
-   hawk validate config stackhawk.yml
+   timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
    ```
 4. **Scan:** Run `hawk scan --json-output` and parse the structured findings. The scan
    results will be tagged with the commit SHA and branch from the env vars above.
@@ -699,3 +791,6 @@ After completing a code change, announce and execute:
   the threshold — treat it as a build failure.
 - **String interpolation mid-value doesn't work.** `host: "https://${HOST}/api"` will
   NOT interpolate. Use `host: ${FULL_HOST_URL}` instead.
+- **Never refer to the scanner as ZAP.** It is HawkScan (the agent CLI and runtime) or
+  StackHawk (the platform). ZAP is an internal implementation detail that must never appear
+  in user-facing output, config instructions, or explanations.
