@@ -213,6 +213,49 @@ commands return no useful output): ask the user directly before proceeding:
 Do not generate `stackhawk.yml` based on assumptions when context is absent.
 Once the three profile facts are established (from files or the user), proceed autonomously through the rest of Step 1.
 
+**Sub-step 1: SPA Framework Detection**
+
+Check for JavaScript SPA frameworks before generating config — do not wait for a low path
+count to discover this.
+
+```bash
+# Detect SPA frameworks in package.json
+node -e "const p=require('./package.json'); const deps={...p.dependencies,...p.devDependencies}; const spa=['react','next','vue','@angular/core','svelte','gatsby','nuxt']; const found=spa.filter(f=>deps[f]); console.log(found.join(','))" 2>/dev/null
+
+# Detect API routes (distinguishes fullstack from pure frontend)
+find . -not -path "*/node_modules/*" \( \
+  -path "*/pages/api/*" \
+  -o -path "*/src/routes/*" \
+  -o -name "server.js" -o -name "server.ts" \
+  -o -name "app.js" -o -name "app.ts" \
+\) 2>/dev/null | head -5
+```
+
+**Outcomes:**
+
+- **SPA framework found AND API routes present** (Next.js API routes, Nuxt server routes,
+  SvelteKit endpoints): fullstack app — enable Ajax Spider automatically, wire OpenAPI spec
+  if available.
+- **SPA framework found AND no API routes** (pure frontend calling external API): surface
+  a note before proceeding: *"This appears to be a frontend-only app. The highest-value
+  HawkScan target is the backend API it calls — scanning there will surface injection, auth
+  bypass, and IDOR findings. Scanning the frontend is useful for header and CSP checks
+  only."* Ask the user to confirm whether to scan the frontend, the backend API, or both.
+  See `references/spa-scanning.md` for full strategy.
+- **SPA framework found (either case)**: always auto-enable Ajax Spider in generated config:
+  ```yaml
+  hawk:
+    spider:
+      ajax: true
+      maxDurationMinutes: 2
+  ```
+- **No SPA framework found**: proceed as normal. Do not add Ajax Spider config.
+
+**Rule:** Never scan a SPA app without the Ajax Spider enabled. Never wait for a low path
+count to add the Ajax Spider after the fact.
+
+→ Deep reference: [`references/spa-scanning.md`](references/spa-scanning.md)
+
 1. **Is the app/api running?** HawkScan requires a live target. If not running, instruct
    the agent to start it first and confirm the host/port.
 2. **Do we have a `stackhawk.yml`?** Check the project root. If missing, go to Step 2a (generate).
