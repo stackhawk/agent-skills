@@ -16,9 +16,13 @@ node -e "const p=require('./package.json'); const deps={...p.dependencies,...p.d
 # 2. Check for API routes (indicates fullstack, not pure frontend)
 find . -not -path "*/node_modules/*" \( \
   -path "*/pages/api/*" \
+  -o -path "*/app/api/*" \
+  -o -path "*/src/app/api/*" \
+  -o -path "*/server/api/*" \
+  -o -path "*/server/routes/*" \
   -o -path "*/src/routes/*" \
+  -o -path "*/app/routes/*" \
   -o -name "server.js" -o -name "server.ts" \
-  -o -name "app.js" -o -name "app.ts" \
 \) 2>/dev/null | head -5
 ```
 

@@ -213,7 +213,7 @@ commands return no useful output): ask the user directly before proceeding:
 Do not generate `stackhawk.yml` based on assumptions when context is absent.
 Once the three profile facts are established (from files or the user), proceed autonomously through the rest of Step 1.
 
-**Sub-step 1: SPA Framework Detection**
+**Sub-step 0b: SPA Framework Detection**
 
 Check for JavaScript SPA frameworks before generating config — do not wait for a low path
 count to discover this.
@@ -225,9 +225,13 @@ node -e "const p=require('./package.json'); const deps={...p.dependencies,...p.d
 # Detect API routes (distinguishes fullstack from pure frontend)
 find . -not -path "*/node_modules/*" \( \
   -path "*/pages/api/*" \
+  -o -path "*/app/api/*" \
+  -o -path "*/src/app/api/*" \
+  -o -path "*/server/api/*" \
+  -o -path "*/server/routes/*" \
   -o -path "*/src/routes/*" \
+  -o -path "*/app/routes/*" \
   -o -name "server.js" -o -name "server.ts" \
-  -o -name "app.js" -o -name "app.ts" \
 \) 2>/dev/null | head -5
 ```
 
@@ -357,7 +361,7 @@ bash form `${VAR:-default}` is NOT supported. The entire YAML value must be the 
 **Validate after generating:**
 After writing `stackhawk.yml`, always run:
 ```bash
-hawk validate config stackhawk.yml
+timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
 ```
 Do not proceed to Step 3 until validation passes. If validation fails, fix the reported
 errors and re-validate before scanning.
@@ -410,7 +414,7 @@ Review the existing config against the current app state:
 After modifying `stackhawk.yml` — whether tuning spider settings, adding auth, adding tags,
 or any Phase 0 edit — run:
 ```bash
-hawk validate config stackhawk.yml
+timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
 ```
 Fix reported errors before proceeding to Step 3.
 
@@ -719,7 +723,7 @@ After completing a code change, announce and execute:
      fi
    fi
 
-   hawk validate config stackhawk.yml
+   timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
    ```
 4. **Scan:** Run `hawk scan --json-output` and parse the structured findings. The scan
    results will be tagged with the commit SHA and branch from the env vars above.
