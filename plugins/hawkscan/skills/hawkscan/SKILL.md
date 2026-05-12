@@ -226,8 +226,14 @@ Once the three profile facts are established (from files or the user), proceed a
 
    If a later command returns 401/403, the stored credential is stale — re-run `hawk init`
    or refresh `HAWK_API_KEY`.
-4. **What runtime is available?** Docker or CLI (`hawk`). If neither is installed, see
-   → `references/installation.md`
+4. **What runtime is available?** Check for the `hawk` CLI first:
+   ```bash
+   which hawk
+   ```
+   - **CLI found** (or `~/.hawk/hawk.properties` exists): use the CLI. Do not mention or
+     check for Docker.
+   - **CLI not found**: check for Docker (`docker --version`). If Docker is also absent,
+     refer to → `references/installation.md`
 
 5. **Does the App exist?** Run `hawkop app list --format json`.
    - **Primary match:** app name equals the repo name (normalized: lowercased,
