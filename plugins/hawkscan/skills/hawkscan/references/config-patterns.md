@@ -248,9 +248,21 @@ hawk:
 ```
 
 **When to tune the spider:**
-- **Low path count?** → Enable `ajax: true` for SPAs, add `seedPaths`, or feed an API spec
+- **Low path count?** → Check this order before adding anything:
+
+  | Situation | Action |
+  |---|---|
+  | SPA/JS app (`react`, `vue`, `next`, etc.) | Enable `ajax: true` — finds JS-rendered routes |
+  | OpenAPI/GraphQL/gRPC spec available | Wire the spec — drives route discovery |
+  | Standard web app, routes reachable from root | No change needed — base spider handles this |
+  | No spec, no Ajax Spider, known deep paths not reachable from root | Add `seedPaths` for only those specific paths |
+
+  **Rule:** Omit `seedPaths` unless you have a specific identified reason. Adding them
+  speculatively creates noise and is rarely needed when Ajax Spider or an API spec is configured.
+
 - **Scan taking too long?** → Reduce `maxDurationMinutes`
-- **Missing authenticated routes?** → Add `seedPaths` for known protected endpoints
+- **Missing authenticated routes?** → Confirm auth is configured correctly first; add
+  `seedPaths` for known protected paths only if auth is working and routes are still missed
 
 ### Scan Runtime Configuration
 
