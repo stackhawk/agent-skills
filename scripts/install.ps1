@@ -18,6 +18,12 @@ switch ($Platform) {
             exit 1
         }
 
+        $sourceFiles = @(Get-ChildItem -Path (Join-Path $source "stackhawk-*.mdc") -ErrorAction SilentlyContinue)
+        if ($sourceFiles.Count -eq 0) {
+            Write-Error "No stackhawk-*.mdc files found in '$source'. Run 'bash scripts/generate-cursor-rules.sh' first."
+            exit 1
+        }
+
         $existing = Get-Item (Join-Path $dest "stackhawk-*.mdc") -ErrorAction SilentlyContinue
         if ($existing) {
             Write-Host "WARNING: StackHawk Cursor rules already exist in ${dest}\"
@@ -33,7 +39,7 @@ switch ($Platform) {
 
         New-Item -ItemType Directory -Force $dest | Out-Null
         Copy-Item (Join-Path $source "stackhawk-*.mdc") $dest -Force
-        $count = (Get-Item (Join-Path $dest "stackhawk-*.mdc")).Count
+        $count = @(Get-ChildItem -Path (Join-Path $dest "stackhawk-*.mdc") -ErrorAction SilentlyContinue).Count
         Write-Host "Installed $count Cursor rules to ${dest}\"
     }
 
@@ -43,6 +49,15 @@ switch ($Platform) {
         $dest        = Join-Path $HOME ".agents\skills"
         $hawkscanDst = Join-Path $dest "hawkscan"
         $apiDst      = Join-Path $dest "stackhawk-api"
+
+        if (-not (Test-Path $hawkscanSrc)) {
+            Write-Error "Copilot skill source not found at '$hawkscanSrc'. Is the repo fully checked out?"
+            exit 1
+        }
+        if (-not (Test-Path $apiSrc)) {
+            Write-Error "Copilot skill source not found at '$apiSrc'. Is the repo fully checked out?"
+            exit 1
+        }
 
         $existingDirs = @()
         if (Test-Path $hawkscanDst) { $existingDirs += "hawkscan\" }
