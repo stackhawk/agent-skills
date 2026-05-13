@@ -21,6 +21,20 @@ bash scripts/generate-cursor-rules.sh
 bash scripts/generate-cursor-rules.sh && git diff cursor/
 ```
 
+## Install
+
+```powershell
+# Windows: install skills to user-level config (PowerShell)
+.\scripts\install.ps1 -Platform cursor   # installs to $HOME\.cursor\rules\
+.\scripts\install.ps1 -Platform copilot  # installs to $HOME\.agents\skills\
+```
+
+```bash
+# macOS/Linux: install skills to user-level config
+bash scripts/install.sh --platform cursor  --target ~
+bash scripts/install.sh --platform copilot --target ~
+```
+
 ## PR Workflow
 
 Before creating every PR, bump the patch version and include it in the commit:
