@@ -1,6 +1,6 @@
 # HawkScan Config Patterns Reference
 
-Reference for API-type `stackhawk.yml` configuration patterns. For authentication, see `references/auth/`. Read specific sections as needed — don't load the whole file for simple configs.
+Reference for API-type `stackhawk.yml` configuration patterns. For authentication, follow Phase 1c in `SKILL.md` (uses `hawk config show <section> --text`). Read specific sections as needed — don't load the whole file for simple configs.
 
 ## Table of Contents
 1. [OpenAPI / REST](#openapi--rest)

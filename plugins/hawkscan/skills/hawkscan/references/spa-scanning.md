@@ -66,7 +66,7 @@ hawk:
 - Enable Ajax Spider.
 - Wire OpenAPI spec if available (Next.js: `next-swagger-doc`; others: check for `openapi.json`
   or `/api-docs` endpoint).
-- Configure auth if API routes require it (see `references/auth/README.md`).
+- Configure auth if API routes require it (follow Phase 1c in `SKILL.md` — use `hawk config show <section> --text` to fetch the right recipe).
 
 ```yaml
 app:
