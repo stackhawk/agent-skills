@@ -473,6 +473,8 @@ Fix reported errors before proceeding to Step 3.
 
 ## Step 3: Validate and Run
 
+> **Pre-flight:** Run `hawk scan` and `hawk rescan` synchronously — never with `&` or `nohup`. Wait for the exit code. Do not start a new scan or rescan while one is already running for this app/env.
+
 ### Validate Before You Scan (Agentic Best Practice)
 
 Always validate config before scanning — it's fast and catches problems without
