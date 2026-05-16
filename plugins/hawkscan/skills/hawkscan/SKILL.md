@@ -188,8 +188,7 @@ grep -rn --include="*.java" --exclude-dir=target --exclude-dir=build \
 grep -rn --include="*.js" --include="*.ts" --exclude-dir=node_modules --exclude-dir=dist \
   -E "(require|from)\s*['\"].*?(passport|express-jwt|jsonwebtoken|@auth0)" . 2>/dev/null | head -3
 ```
-If two or more independent signals are found (or one clear framework-level signal like `AddAuthentication(` or `class SecurityConfig`): authentication config is required. Proceed to
-`references/auth/README.md` before generating `stackhawk.yml`.
+If two or more independent signals are found (or one clear framework-level signal like `AddAuthentication(` or `class SecurityConfig`): authentication config is required. Follow **Phase 1c** (below, in Step 2a) to fetch the right recipe via `hawk config show` before generating `stackhawk.yml`.
 
 Note: Python, Ruby, and Go auth signals are not listed above — the limited-context fallback covers those ecosystems.
 
@@ -376,8 +375,53 @@ errors and re-validate before scanning.
 For API-type-specific config, see:
 → `references/config-patterns.md`
 
-For authentication (strategy selection, per-pattern configs), see:
-→ `references/auth/README.md`
+### Phase 1c: Authentication configuration
+
+Use `hawk config` to retrieve the canonical recipe for whichever auth pattern fits the app.
+The recipe content lives in nest and is the same content the hosted-scanner auth-analyzer reads — there is one source of truth.
+
+**Step 1 — List available auth methods:**
+
+```bash
+hawk config show app.authentication --text
+```
+
+This returns the overview plus a list of authentication sub-types.
+
+**Step 2 — Pick one by name based on observed app behavior:**
+
+| Observed pattern                                          | Sections to fetch                                                                                       |
+|-----------------------------------------------------------|---------------------------------------------------------------------------------------------------------|
+| Form POST → Set-Cookie with session                       | `app.authentication.usernamePassword`<br>`app.authentication.cookieAuthorization`                       |
+| OAuth client-credentials / password / authorization-code  | `app.authentication.oauth`<br>`app.authentication.tokenAuthorization`                                   |
+| JSON POST returning a JWT                                 | `app.authentication.usernamePassword`<br>`app.authentication.tokenExtraction`<br>`app.authentication.tokenAuthorization` |
+| Pre-issued token from env var                             | `app.authentication.external`<br>`app.authentication.tokenAuthorization`                                |
+| Multi-step flow not expressible in config                 | `app.authentication.script`                                                                             |
+| Bash + curl last resort                                   | `app.authentication.externalCommand`                                                                    |
+
+**Step 3 — Fetch each relevant section:**
+
+```bash
+hawk config show <section> --text
+```
+
+Use the returned markdown's YAML example as the template; substitute observed values.
+
+**Step 4 — Always include a testPath:**
+
+```bash
+hawk config show app.authentication.testPath --text
+```
+
+The `testPath` must return 401/403 without auth and 200 with auth.
+
+**Step 5 — Validate before scanning:**
+
+```bash
+hawk validate stackhawk.yml
+```
+
+If validation fails, re-fetch the relevant recipe(s) and adjust.
 
 ---
 
@@ -393,7 +437,7 @@ Review the existing config against the current app state:
   **Rule:** Omit `seedPaths` unless there is a specific identified reason. Adding them
   speculatively creates noise and is rarely needed when Ajax Spider or an API spec is configured.
   See spider tuning in `references/config-patterns.md`.
-- **Auth failing?** → Verify `authentication` block; check `app.authentication.testPath`. See `references/auth/README.md#common-mistakes`.
+- **Auth failing?** → Verify `authentication` block; check `app.authentication.testPath`. Re-fetch the relevant recipe via `hawk config show <section> --text` (see Phase 1c in Step 2a).
 - **Too noisy / too slow?** → Add `app.excludePaths` or `app.includePaths`, tune
   `hawk.spider.maxDurationMinutes` and `hawk.scan` settings
 - **New API type added?** → Add corresponding `graphqlConf`, `openApiConf`, etc.
@@ -659,7 +703,7 @@ After generating fix tasks, instruct the agent:
   Common causes:
   - App not reachable → confirm it's running and `host` in config is correct
   - Auth failure → run `hawk validate auth` (requires `hawk perch start` first);
-    see `references/auth/README.md`
+    re-check the relevant recipe via `hawk config show <section> --text` (Phase 1c, Step 2a)
   - Invalid `applicationId` → verify UUID matches an app in the StackHawk platform
   - Config parse error → `hawk validate config` will show the specific line
 
