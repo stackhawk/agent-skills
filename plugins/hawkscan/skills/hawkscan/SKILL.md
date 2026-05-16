@@ -831,6 +831,10 @@ After completing a code change, announce and execute:
 
 ### Guard Rails
 
+- **One scan at a time per app/env.** Never dispatch a second `hawk scan` or `hawk rescan`
+  while one is still running. Always run scan commands synchronously — never with `&` or
+  `nohup`. Wait for the exit code before proceeding to the next step. Since you started
+  the scan, you know its status.
 - **Max one fix-rescan cycle per task.** If the rescan still has findings after fixing,
   report the remaining issues rather than looping indefinitely. The user can ask you to
   fix the remaining issues in a follow-up.
