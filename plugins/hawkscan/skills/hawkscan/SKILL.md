@@ -797,19 +797,28 @@ After completing a code change, announce and execute:
    - **Commit fixes with a consistent message format:**
      `fix: resolve [CWE-XXX] [vulnerability type] found by HawkScan`
      Example: `fix: resolve CWE-89 SQL injection found by HawkScan`
-6. **Rescan:** Decide first — run a full `API_KEY=$HAWK_API_KEY hawk scan --json-output` instead
-   of rescan if ANY of these apply:
+6. **Rescan:** **Rescan is the default for all fix-verify cycles.** After fixing findings,
+   run `API_KEY=$HAWK_API_KEY hawk rescan --scan-id <SCAN_ID> --json-output`. Rescans are
+   fast — multiple iterations are acceptable. `<SCAN_ID>` is the `scan.id` value from the
+   JSON output captured in Step 4. Rescan re-runs only the plugins that fired on the
+   parent scan — more targeted, not less.
+
+   Run a full `API_KEY=$HAWK_API_KEY hawk scan --json-output` only if one of these
+   specific conditions applies:
    - The fix added cross-cutting surfaces (new API endpoints, new input
      vectors, new auth paths) — rescan won't test them.
    - The codebase has changed substantially since the parent scan.
    - You're baselining a new release where the full scan policy needs to
      pass, not just the subset that fired previously.
 
-   Otherwise (the common case), run
-   `API_KEY=$HAWK_API_KEY hawk rescan --scan-id <SCAN_ID> --json-output` to verify fixes
-   quickly. `<SCAN_ID>` is the `scan.id` value from the JSON output
-   captured in Step 4. Rescan re-runs only the plugins that fired on the
-   parent scan — dramatically faster than a full scan.
+   **If you're tempted to skip rescan, check the table:**
+
+   | If you're thinking... | Reality |
+   |---|---|
+   | "My fix was architectural, so I need a full scan" | Rescan re-runs all plugins that previously fired — change scope doesn't matter. Use rescan. |
+   | "I want to check for new issues I might have introduced" | Valid — run rescan first to confirm existing findings are closed, then run a separate full scan if wanted. Don't skip rescan. |
+   | "Rescan might miss something" | Rescan re-runs exactly the plugins that fired on the parent scan. It's more targeted, not less. |
+   | "The fix added new endpoints that need scanning" | This IS a full-scan condition — it's on the list above. Use full scan. |
 7. **Report:**
    - If clean: "Rescan complete. Zero new findings. All security issues have been resolved."
    - If findings remain: "Rescan found [N] remaining issues that require manual review:" and list them.
