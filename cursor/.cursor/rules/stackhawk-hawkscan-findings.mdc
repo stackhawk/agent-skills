@@ -143,3 +143,15 @@ Transform parsed findings into structured fix tasks for the coding agent:
 | Path Traversal | Unvalidated file path input | Allowlist paths; strip `../` sequences |
 | Broken Auth | Session/token misconfig | Review token validation, expiry, scope |
 | Information Disclosure | Verbose error messages | Sanitize error responses in production |
+
+---
+
+## High-Iteration Findings
+
+For findings that commonly trap agents in long fix loops — CSP, CORS, Auth (unprotected
+endpoint), and Missing Security Headers — see the dedicated reference:
+
+→ [`references/high-iteration-findings.md`](high-iteration-findings.md)
+
+Each entry defines what "done" looks like, provides a shell command to verify the fix before
+rescanning, and gives a concrete escalation threshold.
