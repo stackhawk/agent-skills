@@ -1,156 +1,38 @@
 # HawkScan Config Patterns Reference
 
-Reference for API-type `stackhawk.yml` configuration patterns. For authentication, follow Phase 1c in `SKILL.md` (uses `hawk config show <section> --text`). Read specific sections as needed — don't load the whole file for simple configs.
+> **Looking for per-field syntax?** Use `hawk config show <field-path> --text` for the canonical reference (e.g. `hawk config show hawk.spider --text`). This file documents *patterns* — env var interpolation, multi-env composition, common config-time gotchas — not individual field reference.
+
+For authentication, follow Phase 1c in `SKILL.md` (uses `hawk config show <section> --text`).
 
 ## Table of Contents
-1. [OpenAPI / REST](#openapi--rest)
-2. [GraphQL](#graphql)
-3. [gRPC](#grpc)
-4. [SOAP](#soap)
-5. [JSON-RPC](#json-rpc)
-6. [Authentication](#authentication)
-7. [Multi-Environment Config](#multi-environment-config)
-8. [Failure Threshold & CI Config](#failure-threshold--ci-config)
-9. [Excluding Paths](#excluding-paths)
+1. [Env Var Interpolation](#env-var-interpolation)
+2. [Multi-Environment Config](#multi-environment-config)
+3. [Common Config-Time Gotchas](#common-config-time-gotchas)
 
 ---
 
-## OpenAPI / REST
+## Env Var Interpolation
+
+**Always use env var interpolation** (`${VAR:default}`) for sensitive values and anything that varies across environments.
+
+**Syntax:** HawkScan uses `${VAR:default}` — single colon, no dash. The bash form `${VAR:-default}` is NOT supported.
+
+**Whole-value rule:** The entire YAML value must be the variable. Mid-string interpolation does NOT work:
 
 ```yaml
-app:
-  applicationId: ${APP_ID}
-  env: ${APP_ENV:Development}
-  host: ${APP_HOST:http://localhost:8080}
-  openApiConf:
-    filePath: openapi.yaml          # local file relative to stackhawk.yml
-    # path: /v3/api-docs            # OR URL path on the host serving the spec
-    # filePaths:                    # OR multiple spec files
-    #   - frontend/openapi-app.json
-    #   - backend/openapi-auth.json
+# WRONG — will NOT interpolate
+host: "https://${HOST}/api"
+
+# RIGHT — interpolate the entire value
+host: ${FULL_HOST_URL}
 ```
 
-If the spec lives at a URL your app serves (e.g., `/swagger.json`, `/v3/api-docs`),
-use `path`. If it's a local file, use `filePath`. Use `filePaths` for multiple specs.
-HawkScan uses the spec to discover routes the spider might miss.
+If you need a composed value, compose it in the shell first and export a single env var:
 
-**Custom variables for spec parameters:**
-```yaml
-  openApiConf:
-    filePath: openapi.yaml
-    fakerEnabled: true              # generate realistic test values with $faker: prefix
-    includedMethods:                # methods to inject custom variables for
-      - POST
-      - PUT
-    customVariables:
-      - field: userId
-        values:
-          - "42"
-      - field: orgId
-        values:
-          - ${TEST_ORG_ID}
+```bash
+export FULL_HOST_URL="https://${HOST}/api"
+hawk scan
 ```
-
----
-
-## GraphQL
-
-```yaml
-app:
-  applicationId: ${APP_ID}
-  env: ${APP_ENV:Development}
-  host: ${APP_HOST:http://localhost:4000}
-  graphqlConf:
-    enabled: true
-    schemaPath: /graphql              # introspection endpoint path on the host
-    # filePath: schema.json           # OR local schema file
-    requestMethod: POST               # POST (default) or GET
-    operation: ALL                    # QUERY, MUTATION, or ALL (default: both)
-    fakerEnabled: true
-    excludeOperations:
-      - name: deleteUser
-        type: MUTATION                # QUERY, MUTATION, or ALL
-    customVariables:
-      - field: userId
-        values:
-          - "42"
-        operationName: getUser        # optional: filter by operation
-        operationType: QUERY          # optional: QUERY or MUTATION
-```
-
-**Note:** Either `schemaPath` (introspection endpoint) or `filePath` (local schema
-file) is required. If both are set, the file is loaded first, then `schemaPath` is
-used for API requests.
-
----
-
-## gRPC
-
-```yaml
-app:
-  applicationId: ${APP_ID}
-  env: ${APP_ENV:Development}
-  host: ${APP_HOST:http://localhost:50051}
-  grpcConf:
-    path: 'localhost:9001'            # gRPC reflection endpoint
-    # filePath: descriptor_set.pb    # OR path to descriptor set file
-    customVariables:
-      - field: customerEmail
-        values:
-          - $faker:email
-```
-
-**Note:** Use `path` when the gRPC server supports reflection. Use `filePath` when
-reflection isn't available and you have a pre-compiled descriptor set. TLS/auth is
-not currently supported for gRPC scanning.
-
----
-
-## SOAP
-
-```yaml
-app:
-  applicationId: ${APP_ID}
-  env: ${APP_ENV:Development}
-  host: ${APP_HOST:http://localhost:8080}
-  soapConf:
-    path: /ws/features.wsdl           # WSDL endpoint path on the host
-    # filePath: features.xsd          # OR local schema definition file
-```
-
-Use `path` for a published WSDL endpoint, or `filePath` for a local XSD file.
-HawkScan uses the schema to generate SOAP-specific payloads during scanning.
-
----
-
-## JSON-RPC
-
-```yaml
-app:
-  applicationId: ${APP_ID}
-  env: ${APP_ENV:Development}
-  host: ${APP_HOST:http://localhost:8080}
-  jsonRpcConf:
-    enabled: true
-    endpoint: /jsonrpc                # JSON-RPC endpoint path
-    filePath: openrpc.json            # local OpenRPC spec file
-    # path: /openrpc.json            # OR hosted OpenRPC spec path
-    maxDepth: 3                       # nested object generation depth (default: 3)
-    fakerEnabled: true
-    requestTimeout: 30000             # HTTP timeout in ms (default: 30000)
-    excludeMethods:
-      - "admin\\..*"                  # regex patterns for methods to skip
-    customVariables:
-      - field: userId
-        values:
-          - user-123
-```
-
----
-
-## Authentication
-
-For authentication, see [`auth/README.md`](auth/README.md) for strategy selection (decision tree, escalation ladder, common mistakes) and the per-pattern files in [`auth/`](auth/) for individual configs: `username-password.md`, `oauth.md`, `external.md`, `external-command.md`, `custom-script.md`, plus the authorization blocks `cookie-authorization.md` and `token-authorization.md` / `token-extraction.md`, and `test-path.md`.
 
 ---
 
@@ -158,8 +40,7 @@ For authentication, see [`auth/README.md`](auth/README.md) for strategy selectio
 
 ### Preferred: Host interpolation (one file, works everywhere)
 
-Use `${VAR:default}` interpolation for host-only differences. Never create a second YAML
-file just to change the host.
+Use `${VAR:default}` interpolation for host-only differences. **Never** create a second YAML file just to change the host.
 
 ```yaml
 # stackhawk.yml — one file, works everywhere
@@ -180,8 +61,7 @@ APP_HOST=https://staging.example.com hawk scan
 
 ### Multi-file layering (for structurally different scan settings)
 
-Use file layering only when environments need meaningfully different settings — different
-`env` name, different `failureThreshold`, or CI-only tags. Not for host-only differences.
+Use file layering only when environments need meaningfully different settings — different `env` name, different `failureThreshold`, or CI-only tags. **Not** for host-only differences.
 
 **`stackhawk.yml`** (base — shared settings):
 ```yaml
@@ -205,192 +85,35 @@ hawk:
   failureThreshold: high
 ```
 
-Run with both files (later file takes precedence):
+Run with both files — later file takes precedence:
 ```bash
 hawk scan stackhawk.yml stackhawk-ci.yml
 ```
 
----
-
-## Failure Threshold & CI Config
-
-```yaml
-hawk:
-  failureThreshold: high    # high | medium | low
-                            # scan exits 42 if findings at this level or above are found
+For the syntax of any individual field above (e.g. `tags`, `hawk.failureThreshold`, `app.openApiConf`), use:
+```bash
+hawk config show <field-path> --text
 ```
-
-**Recommended CI strategy:**
-- Feature branches: `failureThreshold: high` — fail only on critical issues
-- Main/release branches: `failureThreshold: medium` — stricter gate
 
 ---
 
-## Spider & Scan Tuning
+## Common Config-Time Gotchas
 
-### Spider Configuration
+- **Never create a separate `stackhawk.local.yml`** just to change the host. Use `${APP_HOST:...}` interpolation in the primary `stackhawk.yml`. If a `stackhawk.local.yml` already exists for host overrides, delete it and migrate to interpolation.
 
-Controls how HawkScan discovers routes before active scanning:
+- **`${VAR:-default}` (bash form) silently fails.** HawkScan uses `${VAR:default}` (no dash). A config file written with `:-` will not interpolate, and the default will not apply.
 
-```yaml
-hawk:
-  spider:
-    base: true                    # enable basic web crawler (default: true)
-    ajax: false                   # enable AJAX spider for SPAs (default: false)
-    ajaxBrowser: CHROME_HEADLESS  # browser for AJAX spider
-    maxDurationMinutes: 2         # crawl duration limit (default: 2)
-    seedPaths:                    # additional starting points for the spider
-      - /api/v1
-      - /api/v2
-      - /dashboard
-    har:
-      filePath: traffic.har       # import HAR file for route discovery
-```
+- **Mid-string interpolation does NOT work.** `host: "https://${HOST}/api"` is a literal string. Always make the entire YAML value the variable: `host: ${FULL_HOST_URL}`.
 
-**When to tune the spider:**
-- **Low path count?** → Check this order before adding anything:
+- **Don't hardcode credentials in `stackhawk.yml`.** Use env vars and reference them. `${HAWK_API_KEY}` for the platform key, app credentials via the `authentication` block (see Phase 1c in `SKILL.md`).
 
-  | Situation | Action |
-  |---|---|
-  | SPA/JS app (`react`, `vue`, `next`, etc.) | Enable `ajax: true` — finds JS-rendered routes |
-  | OpenAPI/GraphQL/gRPC spec available | Wire the spec — drives route discovery |
-  | Standard web app, routes reachable from root | No change needed — base spider handles this |
-  | No spec, no Ajax Spider, known deep paths not reachable from root | Add `seedPaths` for only those specific paths |
+- **Tags live at the top level**, not under `app:`:
+  ```yaml
+  app:
+    applicationId: ${APP_ID}
+  tags:                                # ← top-level, NOT under app:
+    - name: _STACKHAWK_GIT_COMMIT_SHA
+      value: ${COMMIT_SHA}
+  ```
 
-  **Rule:** Omit `seedPaths` unless you have a specific identified reason. Adding them
-  speculatively creates noise and is rarely needed when Ajax Spider or an API spec is configured.
-
-- **Scan taking too long?** → Reduce `maxDurationMinutes`
-- **Missing authenticated routes?** → Confirm auth is configured correctly first; add
-  `seedPaths` for known protected paths only if auth is working and routes are still missed
-
-### Scan Runtime Configuration
-
-Controls active scanning behavior:
-
-```yaml
-hawk:
-  scan:
-    maxDurationMinutes: 30        # total scan time limit
-    maxRuleDurationMinutes: 5     # per-rule time limit
-    requestDelayMillis: 0         # delay between requests (rate limiting)
-    concurrentRequests: 20        # thread count (default: 20)
-    policyName: "API-Scan"        # named scan policy
-```
-
-**When to tune:**
-- **App rate-limited?** → Add `requestDelayMillis` and reduce `concurrentRequests`
-- **Scan timing out?** → Increase `maxDurationMinutes`
-- **Too many false positives?** → Use a named `policyName` to select specific scan rules
-
----
-
-## Path Scope Control
-
-### Excluding Paths
-
-Prevent HawkScan from testing destructive or sensitive endpoints:
-
-```yaml
-app:
-  excludePaths:
-    - /admin/delete.*
-    - /api/v1/users/.*/delete
-    - /logout
-    - /api/internal.*
-```
-
-### Including Paths
-
-Restrict scanning to only specific paths (useful for focused scans):
-
-```yaml
-app:
-  includePaths:
-    - /api/v1/.*
-    - /api/v2/.*
-```
-
-Paths are matched as regex. Both `excludePaths` and `includePaths` apply to the spider
-and active scanning. When both are set, `includePaths` is applied first, then
-`excludePaths` filters out matches.
-
-**When to exclude:**
-- Destructive operations (delete all, reset, nuke) that would break test state
-- Third-party redirect endpoints not under your control
-- Health check / metrics endpoints that generate noise
-
-**When to include:**
-- Scanning only a specific API version or service
-- Focusing a scan after a targeted code change
-- Reducing scan time by limiting scope
-
----
-
-## Auto Policy & Input Vectors
-
-### Auto Policy
-
-Automatically optimize the scan policy based on your API type configuration:
-
-```yaml
-app:
-  autoPolicy: true                # default: true
-```
-
-When enabled, HawkScan selects scan rules appropriate for your configured API type
-(OpenAPI, GraphQL, gRPC, etc.). Leave this on unless you need fine-grained control
-via `hawk.scan.policyName`.
-
-### Auto Input Vectors
-
-Automatically enable injectable parameter types based on your API:
-
-```yaml
-app:
-  autoInputVectors: true          # default: true
-```
-
-When enabled, HawkScan determines which input types to test (query params, headers,
-JSON body, etc.) based on your API configuration. Disable only if you need manual
-control via `inputVectors`.
-
----
-
-## CSRF Protection
-
-If your app uses CSRF tokens, tell HawkScan the parameter name so it can extract
-and include the token in requests:
-
-```yaml
-app:
-  antiCsrfParam: _csrf            # name of the CSRF token parameter
-```
-
-This is particularly important for form-based authentication where login forms include
-a CSRF token field.
-
----
-
-## Header Injection (Replacer)
-
-Use `hawkAddOn.replacer` to inject custom headers into every request. Useful for
-tenant headers, API versioning, or custom `X-` headers your app requires:
-
-```yaml
-hawkAddOn:
-  replacer:
-    rules:
-      - matchString: "x-requested-with"
-        replacement: "HawkScan"
-        replaceOnly: false          # false = add if missing, true = only replace existing
-        isRegex: false
-      - matchString: "x-tenant-id"
-        replacement: ${TENANT_ID}
-        replaceOnly: false
-```
-
-**Common uses:**
-- `X-Requested-With` header for AJAX-expecting backends
-- Custom tenant/org headers for multi-tenant apps
-- API version headers (`Accept: application/vnd.api+json;version=2`)
+- **Validate after every change.** Run `API_KEY=$HAWK_API_KEY hawk validate config stackhawk.yml` after any edit. Cheap; catches syntax and schema errors before a wasted scan run.
