@@ -105,6 +105,33 @@ See the main SKILL.md Step 3 for config file path rules and common agent mistake
 
 ---
 
+## `hawk config`
+
+Look up HawkScan configuration reference and recipes. Reads the canonical knowledge artifact bundled with hawk (shared with the hosted-scanner auth-analyzer flow).
+
+```bash
+# Show docs for one section (JSON by default; --text for raw markdown)
+hawk config show <path> [--text]
+
+# Enumerate available sections (JSON array; --prefix to filter; --text for newline-separated)
+hawk config list [--prefix <path>] [--text]
+
+# Alias for `show` on curated recipe paths
+hawk config recipe <path> [--text]
+```
+
+**Examples:**
+
+```bash
+hawk config show app.authentication.oauth --text
+hawk config list --prefix app.authentication --text
+hawk config show hawk.spider --text
+```
+
+This skill calls `hawk config show <section> --text` during Phase 1c to fetch auth recipes from the canonical source instead of carrying duplicates.
+
+---
+
 ## Diagnostic Commands
 
 ```bash

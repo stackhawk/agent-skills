@@ -1,5 +1,14 @@
 # HawkScan Installation Reference
 
+**Minimum hawk version:** This skill calls `hawk config show <section>` for live config documentation. You need hawk **v5.5.11** or later. Verify with:
+
+```bash
+hawk --version
+hawk config --help
+```
+
+If `hawk config` is unrecognized, upgrade hawk before running this skill.
+
 ## CLI Installation
 
 ### Homebrew (macOS — Recommended)
