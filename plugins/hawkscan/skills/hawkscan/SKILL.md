@@ -19,6 +19,25 @@ coding loop. The core workflow is:
 
 ---
 
+## Prerequisites (preflight — run before anything else)
+
+This skill calls `hawk config show <section>` to fetch the canonical config recipes at runtime. That subcommand requires **hawk v5.5.11 or newer**. Older hawk versions will fail with `Error: no such command 'config'`, and Phase 1c will not be recoverable. Verify before doing anything else:
+
+```bash
+hawk --version
+hawk config --help >/dev/null 2>&1 || echo "MISSING: hawk config — upgrade hawk to v5.5.11+"
+```
+
+If `hawk --version` reports a version older than `5.5.11`, OR `hawk config --help` does not return cleanly, **STOP** and tell the user:
+
+> "This skill requires hawk v5.5.11 or newer (your version is `<X.Y.Z>`). Upgrade hawk (`brew upgrade stackhawk/cli/hawk`, or download from https://download.stackhawk.com/hawk) and re-invoke."
+
+Do not attempt to proceed by inlining old auth recipes from memory — those are stale by design (they live in `hawk config show` now). The skill cannot work without the newer hawk.
+
+See `references/installation.md` for upgrade instructions.
+
+---
+
 ## Companion Skills
 
 The `api` skill wraps read-only StackHawk platform lookups via the `hawkop`

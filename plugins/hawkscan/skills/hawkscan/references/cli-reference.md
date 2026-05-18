@@ -107,6 +107,8 @@ See the main SKILL.md Step 3 for config file path rules and common agent mistake
 
 ## `hawk config`
 
+**Requires hawk v5.5.11 or newer.** Older hawk versions don't have the `config` subcommand. The skill's Prerequisites section enforces this with a preflight check; this section just documents the surface.
+
 Look up HawkScan configuration reference and recipes. Reads the canonical knowledge artifact bundled with hawk (shared with the hosted-scanner auth-analyzer flow).
 
 ```bash
