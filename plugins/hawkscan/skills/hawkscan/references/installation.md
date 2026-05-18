@@ -1,6 +1,6 @@
 # HawkScan Installation Reference
 
-**Minimum hawk version:** This skill calls `hawk config show <section>` for live config documentation. You need hawk **vX.Y.Z** or later (TBD once hawkscan #1828 releases). Verify with:
+**Minimum hawk version:** This skill calls `hawk config show <section>` for live config documentation. You need hawk **v5.5.11** or later. Verify with:
 
 ```bash
 hawk --version
