@@ -145,7 +145,7 @@ Transform parsed findings into structured fix tasks for the coding agent:
 For findings that commonly trap agents in long fix loops — CSP, CORS, Auth (unprotected
 endpoint), and Missing Security Headers — see the dedicated reference:
 
-→ [`references/high-iteration-findings.md`](high-iteration-findings.md)
+→ `references/high-iteration-findings.md` (Cursor rule: `stackhawk-hawkscan-high-iteration`)
 
 Each entry defines what "done" looks like, provides a shell command to verify the fix before
 rescanning, and gives a concrete escalation threshold.
