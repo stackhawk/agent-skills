@@ -614,6 +614,10 @@ For the full JSON schema, field reference, fix task format, and common findings 
 see:
 → `references/findings-and-fixes.md`
 
+For per-finding fix guidance on high-iteration findings (CSP, CORS, Auth, Missing Headers)
+— what "done" looks like, how to verify before rescanning, when to escalate — see:
+→ `references/high-iteration-findings.md`
+
 ### Stdout Parsing (Fallback)
 
 If `--json-output` is not available (requires at least Dev Release v5.3.41), fall back to capturing
