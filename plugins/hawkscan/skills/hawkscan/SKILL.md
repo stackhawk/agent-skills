@@ -449,6 +449,21 @@ API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml
 
 If `validate config` fails, fix the structural error and re-run. If `validate auth` fails, re-fetch the relevant recipe(s) via `hawk config show <section> --text` and adjust the `authentication:` block before scanning.
 
+### Phase 1c.5: Auth Analyzer Fallback
+
+When Phase 1c can't produce a working `authentication:` block, fall back to the live auth analyzer — a CLI-driven flow that captures real HTTP traffic via Chrome and iterates on it until validation passes. This is the agent-driven counterpart to the FlightPath / hosted-scanner auth-analyzer, runnable from any LLM tool.
+
+**Trigger this fallback when any of:**
+
+1. Phase 1c sub-step 0 found auth signals but you can't confidently match the pattern against the recipe table above
+2. `API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml` returned non-zero after Phase 1c wrote a config
+3. The user explicitly asked to "set up auth interactively", "use the live analyzer", or equivalent
+
+The fallback opens a Chrome window, asks the user to log in to their app, then drives an iterative loop (`hawk perch auth-signals` → `hawk config show app.authentication.<type>` → write yaml → `hawk perch validate-auth` → repeat) until the analyzer produces a validated `authentication:` block. The iteration logic is owned by the upstream recipe `hawk config show recipe.auth-analyzer-workflow --text` — this skill orchestrates triggers, capture handoff, and cleanup only.
+
+Full flow, prerequisite checks, announcement templates, capture handoff script, error table, and re-run behavior:
+→ [`references/auth-analyzer-fallback.md`](references/auth-analyzer-fallback.md)
+
 ---
 
 ## Step 2b: Tune Existing `stackhawk.yml`
