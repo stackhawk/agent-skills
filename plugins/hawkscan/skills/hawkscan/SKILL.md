@@ -24,11 +24,11 @@ coding loop. The core workflow is:
 This skill calls `hawk config show <section>` to fetch the canonical config recipes at runtime. That subcommand requires **hawk v5.5.11 or newer**. Older hawk versions will fail with `Error: no such command 'config'`, and Phase 1c will not be recoverable. Verify before doing anything else:
 
 ```bash
-hawk --version
+hawk version
 hawk config --help >/dev/null 2>&1 || echo "MISSING: hawk config — upgrade hawk to v5.5.11+"
 ```
 
-If `hawk --version` reports a version older than `5.5.11`, OR `hawk config --help` does not return cleanly, **STOP** and tell the user:
+If `hawk version` reports a version older than `5.5.11`, OR `hawk config --help` does not return cleanly, **STOP** and tell the user:
 
 > "This skill requires hawk v5.5.11 or newer (your version is `<X.Y.Z>`). Upgrade hawk (`brew upgrade stackhawk/cli/hawk`, or download from https://download.stackhawk.com/hawk) and re-invoke."
 
@@ -436,11 +436,17 @@ The `testPath` must return 401/403 without auth and 200 with auth.
 
 **Step 5 — Validate before scanning:**
 
+Run the structural check first, then the live auth check. **Auth validation is mandatory whenever you author or modify the `authentication:` block** — skipping it means you find out auth is broken inside a real scan instead of in seconds.
+
 ```bash
-hawk validate stackhawk.yml
+# Structural validation
+API_KEY=$HAWK_API_KEY hawk validate config stackhawk.yml
+
+# Live auth validation
+API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml
 ```
 
-If validation fails, re-fetch the relevant recipe(s) and adjust.
+If `validate config` fails, fix the structural error and re-run. If `validate auth` fails, re-fetch the relevant recipe(s) via `hawk config show <section> --text` and adjust the `authentication:` block before scanning.
 
 ---
 
@@ -526,17 +532,15 @@ API_KEY=$HAWK_API_KEY hawk validate config stackhawk.yml
 # Validate OpenAPI specification referenced in stackhawk.yml
 API_KEY=$HAWK_API_KEY hawk validate api stackhawk.yml
 
-# Validate authentication config (requires perch daemon — see below)
-API_KEY=$HAWK_API_KEY hawk perch start
-API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml
-API_KEY=$HAWK_API_KEY hawk perch stop
+# Validate authentication config — REQUIRED if `authentication:` exists in stackhawk.yml.
+if grep -qE '^\s*authentication:' stackhawk.yml; then
+  API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml
+fi
 ```
 
 Run `API_KEY=$HAWK_API_KEY hawk validate config stackhawk.yml` every time the config changes.
 Run `API_KEY=$HAWK_API_KEY hawk validate api stackhawk.yml` when adding or modifying OpenAPI spec references.
-Run `API_KEY=$HAWK_API_KEY hawk validate auth` when the `authentication` block is new or modified — but note
-that **`validate auth` requires perch (daemon mode) to be running first**. Start perch,
-run the validation, then stop perch when done.
+Run `API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml` whenever the `authentication:` block is new or modified — **do not skip it**.
 If any validation fails, fix it before proceeding to `API_KEY=$HAWK_API_KEY hawk scan`.
 
 #### Config File Path Rules (Important — Common Agent Mistake)
@@ -727,7 +731,7 @@ After generating fix tasks, instruct the agent:
   ```
   Common causes:
   - App not reachable → confirm it's running and `host` in config is correct
-  - Auth failure → run `hawk validate auth` (requires `hawk perch start` first);
+  - Auth failure → run `API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml`;
     re-check the relevant recipe via `hawk config show <section> --text` (Phase 1c, Step 2a)
   - Invalid `applicationId` → verify UUID matches an app in the StackHawk platform
   - Config parse error → `hawk validate config` will show the specific line
