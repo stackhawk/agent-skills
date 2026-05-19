@@ -98,7 +98,7 @@ available in your version, fall back to `hawk --no-color scan --verbose` and par
 ```bash
 hawk validate config stackhawk.yml       # validate YAML structure and required fields
 hawk validate api stackhawk.yml          # validate OpenAPI spec references
-hawk validate auth stackhawk.yml         # validate auth config (requires perch running)
+hawk validate auth stackhawk.yml         # validate auth config (live login test)
 ```
 
 See the main SKILL.md Step 3 for config file path rules and common agent mistakes.
@@ -154,8 +154,9 @@ blocks execution and cannot be answered programmatically.
 
 ## Perch (Daemon Mode)
 
-Perch runs HawkScan as a background daemon. It is **required for `hawk validate auth`**
-and also useful for recording traffic via a proxied browser.
+Perch runs HawkScan as a background daemon. It is useful for recording traffic via a
+proxied browser. (`hawk validate auth` manages its own daemon lifecycle — you do not
+need to start perch separately for auth validation.)
 
 ```bash
 hawk perch start                         # start background daemon
@@ -163,9 +164,6 @@ hawk perch status                        # check if daemon is running
 hawk perch browser                       # launch Chrome proxied through HawkScan
 hawk perch stop                          # stop daemon
 ```
-
-Perch is NOT needed for standard `hawk scan` runs — but you must start it before
-running `hawk validate auth`, then stop it afterward.
 
 `hawk validate auth` also supports `--watch` to continuously re-test auth as you
 modify the config:
