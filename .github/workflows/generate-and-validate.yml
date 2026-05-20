@@ -15,6 +15,7 @@ jobs:
       - name: Validate SKILL.md frontmatter
         run: |
           errors=0
+          expected_version=$(cat VERSION)
           for skill_file in plugins/*/skills/*/SKILL.md; do
             if ! head -20 "$skill_file" | grep -q '^name:'; then
               echo "ERROR: Missing 'name' in frontmatter: $skill_file"
@@ -23,6 +24,16 @@ jobs:
             if ! head -20 "$skill_file" | grep -q '^description:'; then
               echo "ERROR: Missing 'description' in frontmatter: $skill_file"
               errors=$((errors + 1))
+            fi
+            if ! head -20 "$skill_file" | grep -q '^version:'; then
+              echo "ERROR: Missing 'version' in frontmatter: $skill_file"
+              errors=$((errors + 1))
+            else
+              actual_version=$(head -20 "$skill_file" | grep '^version:' | sed 's/version: //')
+              if [ "$actual_version" != "$expected_version" ]; then
+                echo "ERROR: $skill_file has version '$actual_version', expected '$expected_version'"
+                errors=$((errors + 1))
+              fi
             fi
             echo "OK: $skill_file"
           done
