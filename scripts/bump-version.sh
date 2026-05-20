@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # ─── Version Bump Script ───
-# Updates VERSION file and all platform manifests in one pass.
-# Usage: ./scripts/bump-version.sh --patch|--minor|--major
-#        ./scripts/bump-version.sh <new-version>
+# Reads .version-bump.json to find every file needing a version update.
+# Handles three file types: raw (VERSION), json, yaml-frontmatter.
+# Usage: ./scripts/bump-version.sh --patch|--minor|--major|<new-version>
 # Examples:
 #   ./scripts/bump-version.sh --patch   # 1.3.0 → 1.3.1
 #   ./scripts/bump-version.sh --minor   # 1.3.0 → 1.4.0
@@ -12,25 +12,30 @@ set -euo pipefail
 #   ./scripts/bump-version.sh 1.5.0     # explicit version
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+MANIFEST="${REPO_ROOT}/.version-bump.json"
 
 if [ $# -ne 1 ]; then
   echo "Usage: $0 --patch|--minor|--major|<new-version>" >&2
   exit 1
 fi
 
+if [ ! -f "$MANIFEST" ]; then
+  echo "ERROR: .version-bump.json not found at ${MANIFEST}" >&2
+  exit 1
+fi
+
 current_version=$(cat "${REPO_ROOT}/VERSION")
-IFS='.' read -r major minor patch <<< "$current_version"
+IFS='.' read -r major minor patch_ver <<< "${current_version%%-*}"
 
 case "$1" in
-  --patch) new_version="${major}.${minor}.$((patch + 1))" ;;
+  --patch) new_version="${major}.${minor}.$((patch_ver + 1))" ;;
   --minor) new_version="${major}.$((minor + 1)).0" ;;
   --major) new_version="$((major + 1)).0.0" ;;
   *)       new_version="$1" ;;
 esac
 
-# Validate version format (semver-ish: X.Y.Z)
-if ! printf '%s' "$new_version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-  echo "ERROR: Version must be in X.Y.Z format (e.g., 1.2.3)" >&2
+if ! printf '%s' "$new_version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+  echo "ERROR: Version must be in X.Y.Z or X.Y.Z-prerelease format" >&2
   exit 1
 fi
 
@@ -44,65 +49,70 @@ fi
 echo "Bumping version: ${old_version} → ${new_version}"
 echo ""
 
-# Update VERSION file
-printf '%s' "$new_version" > "${REPO_ROOT}/VERSION"
-echo "  Updated: VERSION"
+python3 - "$REPO_ROOT" "$MANIFEST" "$old_version" "$new_version" <<'PYEOF'
+import json
+import re
+import sys
+import os
 
-# Find and update all JSON manifests containing a "version" field
-manifests=(
-  "${REPO_ROOT}/plugins/hawkscan/.claude-plugin/plugin.json"
-  "${REPO_ROOT}/plugins/hawkscan/.codex-plugin/plugin.json"
-  "${REPO_ROOT}/plugins/api/.claude-plugin/plugin.json"
-  "${REPO_ROOT}/plugins/api/.codex-plugin/plugin.json"
-  "${REPO_ROOT}/.codex-plugin/plugin.json"
-  "${REPO_ROOT}/gemini-extension.json"
-)
+repo_root, manifest_path, old_ver, new_ver = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 
-# Marketplace manifests have version inside plugin entries
-marketplace_manifests=(
-  "${REPO_ROOT}/.claude-plugin/marketplace.json"
-)
+with open(manifest_path) as f:
+    manifest = json.load(f)
 
-updated=0
+updated = 0
 
-for manifest in "${manifests[@]}"; do
-  if [ -f "$manifest" ]; then
-    python3 -c "
-import json, sys
-with open('$manifest', 'r') as f:
-    data = json.load(f)
-if 'version' in data:
-    data['version'] = '$new_version'
-with open('$manifest', 'w') as f:
-    json.dump(data, f, indent=2)
-    f.write('\n')
-"
-    relative="${manifest#"${REPO_ROOT}/"}"
-    echo "  Updated: ${relative}"
-    updated=$((updated + 1))
-  fi
-done
+def update_json_file(path, field, new_ver):
+    with open(path) as f:
+        data = json.load(f)
+    if field in data:
+        data[field] = new_ver
+    with open(path, 'w') as f:
+        json.dump(data, f, indent=2)
+        f.write('\n')
 
-for manifest in "${marketplace_manifests[@]}"; do
-  if [ -f "$manifest" ]; then
-    python3 -c "
-import json, sys
-with open('$manifest', 'r') as f:
-    data = json.load(f)
-if 'plugins' in data:
-    for plugin in data['plugins']:
-        if 'version' in plugin:
-            plugin['version'] = '$new_version'
-with open('$manifest', 'w') as f:
-    json.dump(data, f, indent=2)
-    f.write('\n')
-"
-    relative="${manifest#"${REPO_ROOT}/"}"
-    echo "  Updated: ${relative} (plugin entries)"
-    updated=$((updated + 1))
-  fi
-done
+def update_yaml_frontmatter(path, field, new_ver):
+    with open(path) as f:
+        content = f.read()
+    pattern = rf'^{re.escape(field)}: [^\n]+'
+    new_content = re.sub(pattern, f'{field}: {new_ver}', content, count=1, flags=re.MULTILINE)
+    with open(path, 'w') as f:
+        f.write(new_content)
 
-echo ""
-echo "Done. Updated VERSION + ${updated} manifest(s) from ${old_version} → ${new_version}."
-echo "Run 'git diff' to review changes before committing."
+for entry in manifest.get("files", []):
+    abs_path = os.path.join(repo_root, entry["path"])
+    if not os.path.exists(abs_path):
+        print(f"  SKIP (not found): {entry['path']}")
+        continue
+    file_type = entry.get("type", "json")
+    field = entry["field"]
+    if file_type == "raw":
+        with open(abs_path, 'w') as f:
+            f.write(new_ver)
+    elif file_type == "json":
+        update_json_file(abs_path, field, new_ver)
+    elif file_type == "yaml-frontmatter":
+        update_yaml_frontmatter(abs_path, field, new_ver)
+    print(f"  Updated: {entry['path']}")
+    updated += 1
+
+for entry in manifest.get("marketplace_manifests", []):
+    abs_path = os.path.join(repo_root, entry["path"])
+    if not os.path.exists(abs_path):
+        print(f"  SKIP (not found): {entry['path']}")
+        continue
+    with open(abs_path) as f:
+        data = json.load(f)
+    if "plugins" in data:
+        for plugin in data["plugins"]:
+            if entry["field"] in plugin:
+                plugin[entry["field"]] = new_ver
+    with open(abs_path, 'w') as f:
+        json.dump(data, f, indent=2)
+        f.write('\n')
+    print(f"  Updated: {entry['path']} (plugin entries)")
+    updated += 1
+
+print(f"\nDone. Updated {updated} file(s): {old_ver} → {new_ver}")
+print("Run 'git diff' to review changes before committing.")
+PYEOF
