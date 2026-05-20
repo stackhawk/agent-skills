@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ─── Version Bump Script ───
 # Reads .version-bump.json to find every file needing a version update.
-# Handles three file types: raw (VERSION), json, yaml-frontmatter.
+# Handles four file types: raw (VERSION), json, yaml-frontmatter, json-plugins-array.
 # Usage: ./scripts/bump-version.sh --patch|--minor|--major|<new-version>
 # Examples:
 #   ./scripts/bump-version.sh --patch   # 1.3.0 → 1.3.1
