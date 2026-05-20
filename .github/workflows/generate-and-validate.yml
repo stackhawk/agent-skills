@@ -46,7 +46,7 @@ jobs:
         run: |
           expected=$(cat VERSION)
           errors=0
-          for manifest in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json gemini-extension.json; do
+          for manifest in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json gemini-extension.json .codex-plugin/plugin.json; do
             if [ -f "$manifest" ]; then
               actual=$(python3 -c "import json; print(json.load(open('$manifest')).get('version', 'MISSING'))")
               if [ "$actual" != "$expected" ]; then
@@ -57,6 +57,13 @@ jobs:
               fi
             fi
           done
+          # Validate marketplace plugin versions match VERSION
+          if [ -f ".claude-plugin/marketplace.json" ]; then
+            printf '%s\n' 'import json,sys' 'e=open("VERSION").read().strip()' 'd=json.load(open(".claude-plugin/marketplace.json"))' 'n=0' 'for p in d.get("plugins",[]):' '  v=p.get("version","MISSING")' '  nm=p.get("name","unknown")' '  if v!=e:' '    print(f"ERROR: marketplace.json plugin {nm!r} has {v!r}, expected {e!r}")' '    n+=1' '  else:' '    print(f"OK: marketplace.json {nm!r} (v{v})")' 'sys.exit(n)' > /tmp/_mp_check.py
+            if ! python3 /tmp/_mp_check.py; then
+              errors=$((errors + 1))
+            fi
+          fi
           if [ $errors -gt 0 ]; then
             echo "FAILED: $errors version mismatch(es)"
             exit 1

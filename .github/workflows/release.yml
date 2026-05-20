@@ -53,6 +53,12 @@ jobs:
             exit 1
           fi
 
+      - name: Validate marketplace plugin versions match tag
+        run: |
+          expected="${{ steps.version.outputs.version }}"
+          printf '%s\n' 'import json,sys' "e=sys.argv[1]" 'd=json.load(open(".claude-plugin/marketplace.json"))' 'n=0' 'for p in d.get("plugins",[]):' '  v=p.get("version","MISSING")' '  nm=p.get("name","unknown")' '  if v!=e:' '    print(f"ERROR: .claude-plugin/marketplace.json plugin {nm!r} has {v!r}, expected {e!r}")' '    n+=1' '  else:' '    print(f"OK: .claude-plugin/marketplace.json plugin {nm!r} (v{v})")' 'sys.exit(n)' > /tmp/_mp_release_check.py
+          python3 /tmp/_mp_release_check.py "$expected"
+
       - name: Validate SKILL.md versions match tag
         run: |
           expected="${{ steps.version.outputs.version }}"
