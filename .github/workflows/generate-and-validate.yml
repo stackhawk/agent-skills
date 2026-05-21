@@ -117,6 +117,91 @@ jobs:
             exit 1
           fi
 
+      - name: Validate SKILL.md best practices (Anthropic spec)
+        run: |
+          cat > /tmp/skill_check.py << 'PYEOF'
+          import sys, re
+          path = sys.argv[1]
+          with open(path) as f:
+              content = f.read()
+          errors = 0
+          warnings = 0
+          fm_match = re.match(r'^---\n(.*?)\n---\n', content, re.DOTALL)
+          if not fm_match:
+              print(f"ERROR [{path}]: No YAML frontmatter found")
+              sys.exit(1)
+          fm = fm_match.group(1)
+          body = content[fm_match.end():]
+          name_match = re.search(r'^name:\s*(.+)', fm, re.MULTILINE)
+          if name_match:
+              name = name_match.group(1).strip()
+              if len(name) > 64:
+                  print(f"ERROR [{path}]: name exceeds 64 chars ({len(name)}): '{name}'")
+                  errors += 1
+              if not re.match(r'^[a-z0-9-]+$', name):
+                  print(f"ERROR [{path}]: name must be [a-z0-9-] only: '{name}'")
+                  errors += 1
+              if 'anthropic' in name or 'claude' in name:
+                  print(f"ERROR [{path}]: name contains reserved word ('anthropic'/'claude'): '{name}'")
+                  errors += 1
+          desc_match = re.search(r'^description:(.*?)(?=\n[a-z_]|\Z)', fm, re.MULTILINE | re.DOTALL)
+          if desc_match:
+              raw = desc_match.group(1)
+              desc = ' '.join(l.strip() for l in raw.strip().lstrip('>|').splitlines() if l.strip())
+              if not desc:
+                  print(f"ERROR [{path}]: description is empty")
+                  errors += 1
+              elif len(desc) > 1024:
+                  print(f"ERROR [{path}]: description exceeds 1024 chars ({len(desc)})")
+                  errors += 1
+              if '<' in desc or '>' in desc:
+                  print(f"ERROR [{path}]: description contains XML-style tags")
+                  errors += 1
+              if re.search(r'\bI can\b|\bI will\b|\bI am\b', desc):
+                  print(f"ERROR [{path}]: description uses first-person ('I can/will/am')")
+                  errors += 1
+          body_lines = body.count('\n')
+          if body_lines > 500:
+              print(f"WARN  [{path}]: body is {body_lines} lines (best practice: <=500; split long content into reference files)")
+              warnings += 1
+          if re.search(r'[A-Za-z0-9_\-]\\[A-Za-z0-9_\-]{2,}', body):
+              print(f"ERROR [{path}]: Windows-style path (backslash) found — use forward slashes")
+              errors += 1
+          status = "OK" if errors == 0 else "FAIL"
+          if warnings:
+              status += f" ({warnings} warning(s))"
+          print(f"{status}: {path}")
+          sys.exit(errors)
+          PYEOF
+          errors=0
+          for skill_file in plugins/*/skills/*/SKILL.md; do
+            python3 /tmp/skill_check.py "$skill_file" || errors=$((errors + 1))
+          done
+          if [ $errors -gt 0 ]; then
+            echo "FAILED: $errors SKILL.md file(s) have best-practice violations"
+            exit 1
+          fi
+
+      - name: Check reference file best practices
+        run: |
+          warnings=0
+          while IFS= read -r -d '' ref_file; do
+            lines=$(wc -l < "$ref_file")
+            if [ "$lines" -gt 100 ]; then
+              if ! grep -qi "## contents\|## table of contents\|## toc\|- \[" "$ref_file"; then
+                echo "WARN: ${lines} lines, no table of contents: $ref_file"
+                warnings=$((warnings + 1))
+              else
+                echo "OK: $ref_file (${lines} lines)"
+              fi
+            fi
+          done < <(find plugins/*/skills/*/references -name "*.md" -print0 2>/dev/null)
+          if [ $warnings -gt 0 ]; then
+            echo ""
+            echo "NOTE: $warnings reference file(s) over 100 lines lack a table of contents."
+            echo "Best practice: add a '## Contents' section at the top so Claude can navigate large files."
+          fi
+
   generate-cursor-rules:
     runs-on: ubuntu-latest
     steps:
