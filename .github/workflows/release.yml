@@ -126,3 +126,66 @@ jobs:
       - name: Dry run summary
         if: inputs.dry_run == true
         run: echo "DRY RUN complete — all checks passed for ${{ steps.version.outputs.tag }}"
+
+  update-marketplace:
+    name: Update marketplace pin
+    needs: release
+    if: ${{ inputs.dry_run != true }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+
+      - name: Resolve commit SHA
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Generate GitHub App token
+        id: app_token
+        uses: tibdex/github-app-token@32691ba7c9e7063bd457bd8f2a5703138591fa58  # v1
+        with:
+          app_id: ${{ secrets.GITHUB_APP_ID }}
+          private_key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+
+      - name: Clone agent-skills-marketplace
+        run: |
+          git clone \
+            https://x-access-token:${{ steps.app_token.outputs.token }}@github.com/stackhawk/agent-skills-marketplace.git \
+            /tmp/marketplace
+
+      - name: Update marketplace.json
+        run: |
+          python3 - \
+            "${{ needs.release.outputs.tag }}" \
+            "${{ steps.sha.outputs.sha }}" \
+            /tmp/marketplace/.claude-plugin/marketplace.json \
+            << 'PYEOF'
+          import json, sys
+          tag, sha, path = sys.argv[1], sys.argv[2], sys.argv[3]
+          version = tag.lstrip('v')
+          with open(path) as f:
+              data = json.load(f)
+          for plugin in data['plugins']:
+              plugin['version'] = version
+              plugin['source']['ref'] = tag
+              plugin['source']['sha'] = sha
+          out = json.dumps(data, indent=2)
+          json.loads(out)
+          with open(path, 'w') as f:
+              f.write(out + '\n')
+          print(f"Updated {len(data['plugins'])} plugin(s) to {tag} @ {sha[:7]}")
+          PYEOF
+
+      - name: Commit and push
+        run: |
+          cd /tmp/marketplace
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .claude-plugin/marketplace.json
+          if git diff --cached --quiet; then
+            echo "No changes — marketplace already pinned to ${{ needs.release.outputs.tag }}"
+            exit 0
+          fi
+          git commit -m "chore: pin agent-skills to ${{ needs.release.outputs.tag }}"
+          git push
