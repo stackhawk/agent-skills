@@ -1,0 +1,32 @@
+name: Tag on merge
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Create version tag
+        run: |
+          version=$(cat VERSION)
+          tag="v${version}"
+
+          if git rev-parse --verify "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "Tag '${tag}' already exists — skipping (VERSION was not bumped in this push)"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${tag}" -m "${tag}"
+          git push origin "${tag}"
+          echo "Created tag: ${tag}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
