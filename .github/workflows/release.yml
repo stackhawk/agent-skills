@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Validate only — skip tag and release creation'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -13,22 +20,77 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
 
-      - name: Extract version from tag
-        id: version
+      # ── Manual trigger: validate pre-conditions, create annotated tag ──────
+      - name: Create release tag (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        id: create_tag
+        run: |
+          version=$(cat VERSION)
+          tag="v${version}"
+
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "ERROR: Release must be triggered from the main branch (got '$GITHUB_REF')"
+            exit 1
+          fi
+
+          if git rev-parse --verify "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "ERROR: Tag '${tag}' already exists. Bump VERSION first."
+            exit 1
+          fi
+
+          bash scripts/generate-cursor-rules.sh >/dev/null
+          if ! git diff --quiet cursor/; then
+            echo "ERROR: Cursor rules are out of date. Run 'bash scripts/generate-cursor-rules.sh' locally and commit."
+            exit 1
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "DRY RUN: all pre-release checks passed. Would create tag '${tag}'."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${tag}" -m "${tag}: Release"
+          git push origin "${tag}"
+          echo "Created and pushed tag: ${tag}"
+
+      # ── Tag push trigger: extract version from ref ─────────────────────────
+      - name: Extract version from tag (push trigger)
+        if: github.event_name == 'push'
+        id: tag_version
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           VERSION="${TAG#v}"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
+      # ── Shared: resolve version/tag for downstream steps ──────────────────
+      - name: Resolve version and tag
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ steps.create_tag.outputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "tag=${{ steps.create_tag.outputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ steps.tag_version.outputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "tag=${{ steps.tag_version.outputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Validation runs on all triggers including dry run ─────────────────
       - name: Validate VERSION file matches tag
         run: |
           expected="${{ steps.version.outputs.version }}"
           actual=$(cat VERSION)
           if [ "$actual" != "$expected" ]; then
             echo "ERROR: VERSION file has '${actual}', tag is '${expected}'"
-            echo "Run 'bash scripts/bump-version.sh ${expected}' and commit before tagging."
+            echo "Run 'bash scripts/bump-version.sh ${expected}' and commit before releasing."
             exit 1
           fi
           echo "OK: VERSION matches tag (${expected})"
@@ -94,6 +156,7 @@ jobs:
           echo "notes_file=/tmp/release-notes.txt" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
+        if: "!(github.event_name == 'workflow_dispatch' && inputs.dry_run == true)"
         run: |
           TAG="${{ steps.version.outputs.tag }}"
           gh release create "$TAG" \

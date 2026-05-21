@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2] - 2026-05-21
+
+### Added
+- Windows PowerShell installer (`scripts/install.ps1`) for user-level skill installation on Cursor and Copilot
+- GH tag-based release workflow (`.github/workflows/release.yml`) — validates all version fields match tag, creates GH Release from CHANGELOG section
+- `.version-bump.json` — canonical manifest of all version-bearing files; `bump-version.sh` now reads from it
+- `RELEASING.md` — full release runbook: bump → CHANGELOG → tag → GH Release → marketplace PR
+- `version:` field in SKILL.md frontmatter for all plugins
+- CI best-practices checks: SKILL.md name/description format, 500-line body warning, Windows path detection (Anthropic spec)
+- CI marketplace version validation: `.claude-plugin/marketplace.json` plugin-array versions checked against VERSION
+- hawk v5.5.11+ preflight check with hard stop and upgrade instructions
+- One-scan-at-a-time guard and rescan-as-default in hawkscan skill
+- High-iteration findings reference (CSP, CORS, Auth, Headers)
+- `hawk config show` recipe fetching replaces inline auth config (requires hawk v5.5.11+)
+
+### Fixed
+- `bump-version.sh` now handles JSON, YAML frontmatter, and raw file types atomically
+- Root `.codex-plugin/plugin.json` added to CI manifest validation loop (was missing)
+- Source validation and safe glob count in `install.ps1`
+
+---
+
 ## [1.4.0] - 2026-05-01
 
 ### Added
