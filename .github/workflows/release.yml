@@ -130,7 +130,7 @@ jobs:
   update-marketplace:
     name: Update marketplace pin
     needs: release
-    if: ${{ inputs.dry_run != true }}
+    if: inputs.dry_run != true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -143,6 +143,7 @@ jobs:
 
       - name: Generate GitHub App token
         id: app_token
+        # v1 used intentionally — matches org pattern in hawkop release workflow
         uses: tibdex/github-app-token@32691ba7c9e7063bd457bd8f2a5703138591fa58  # v1
         with:
           app_id: ${{ secrets.GITHUB_APP_ID }}
@@ -150,9 +151,9 @@ jobs:
 
       - name: Clone agent-skills-marketplace
         run: |
-          git clone \
-            https://x-access-token:${{ steps.app_token.outputs.token }}@github.com/stackhawk/agent-skills-marketplace.git \
-            /tmp/marketplace
+          git clone https://github.com/stackhawk/agent-skills-marketplace.git /tmp/marketplace
+          git -C /tmp/marketplace remote set-url origin \
+            https://x-access-token:${{ steps.app_token.outputs.token }}@github.com/stackhawk/agent-skills-marketplace.git
 
       - name: Update marketplace.json
         run: |
@@ -188,4 +189,4 @@ jobs:
             exit 0
           fi
           git commit -m "chore: pin agent-skills to ${{ needs.release.outputs.tag }}"
-          git push
+          git push origin HEAD:main
