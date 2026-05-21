@@ -83,9 +83,8 @@ jobs:
             echo "tag=${{ steps.tag_version.outputs.tag }}" >> "$GITHUB_OUTPUT"
           fi
 
-      # ── Skip remaining steps on dry run ───────────────────────────────────
+      # ── Validation runs on all triggers including dry run ─────────────────
       - name: Validate VERSION file matches tag
-        if: "!(github.event_name == 'workflow_dispatch' && inputs.dry_run == true)"
         run: |
           expected="${{ steps.version.outputs.version }}"
           actual=$(cat VERSION)
@@ -97,7 +96,6 @@ jobs:
           echo "OK: VERSION matches tag (${expected})"
 
       - name: Validate all manifest versions match tag
-        if: "!(github.event_name == 'workflow_dispatch' && inputs.dry_run == true)"
         run: |
           expected="${{ steps.version.outputs.version }}"
           errors=0
@@ -118,14 +116,12 @@ jobs:
           fi
 
       - name: Validate marketplace plugin versions match tag
-        if: "!(github.event_name == 'workflow_dispatch' && inputs.dry_run == true)"
         run: |
           expected="${{ steps.version.outputs.version }}"
           printf '%s\n' 'import json,sys' "e=sys.argv[1]" 'd=json.load(open(".claude-plugin/marketplace.json"))' 'n=0' 'for p in d.get("plugins",[]):' '  v=p.get("version","MISSING")' '  nm=p.get("name","unknown")' '  if v!=e:' '    print(f"ERROR: .claude-plugin/marketplace.json plugin {nm!r} has {v!r}, expected {e!r}")' '    n+=1' '  else:' '    print(f"OK: .claude-plugin/marketplace.json plugin {nm!r} (v{v})")' 'sys.exit(n)' > /tmp/_mp_release_check.py
           python3 /tmp/_mp_release_check.py "$expected"
 
       - name: Validate SKILL.md versions match tag
-        if: "!(github.event_name == 'workflow_dispatch' && inputs.dry_run == true)"
         run: |
           expected="${{ steps.version.outputs.version }}"
           errors=0
@@ -149,7 +145,6 @@ jobs:
           fi
 
       - name: Extract changelog section for this version
-        if: "!(github.event_name == 'workflow_dispatch' && inputs.dry_run == true)"
         id: changelog
         run: |
           VERSION="${{ steps.version.outputs.version }}"
