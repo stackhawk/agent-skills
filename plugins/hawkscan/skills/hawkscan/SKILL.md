@@ -451,7 +451,7 @@ If `validate config` fails, fix the structural error and re-run. If `validate au
 
 ### Phase 1c.5: Auth Analyzer Fallback
 
-When Phase 1c can't produce a working `authentication:` block, fall back to the live auth analyzer — a CLI-driven flow that captures real HTTP traffic via Chrome and iterates on it until validation passes. This is the agent-driven counterpart to the FlightPath / hosted-scanner auth-analyzer, runnable from any LLM tool.
+When Phase 1c can't produce a working `authentication:` block, fall back to the live auth analyzer via `hawk perch onboard` — a single CLI wizard that captures real HTTP traffic via Chrome and iterates `validate-auth` until success. Runnable from any LLM tool; the wizard streams JSONL phase events for skill consumption.
 
 **Trigger this fallback when any of:**
 
@@ -459,9 +459,9 @@ When Phase 1c can't produce a working `authentication:` block, fall back to the 
 2. `API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml` returned non-zero after Phase 1c wrote a config
 3. The user explicitly asked to "set up auth interactively", "use the live analyzer", or equivalent
 
-The fallback opens a Chrome window, asks the user to log in to their app, then drives an iterative loop (`hawk perch auth-signals` → `hawk config show app.authentication.<type>` → write yaml → `hawk perch validate-auth` → repeat) until the analyzer produces a validated `authentication:` block. The iteration logic is owned by the upstream recipe `hawk config show recipe.auth-analyzer-workflow --text` — this skill orchestrates triggers, capture handoff, and cleanup only.
+The fallback runs `hawk perch onboard --events json` (synthesizing `stackhawk.yml` from `--app-host` if needed), opens Chrome, waits for the user to log in, then drives an iterative loop where each `validateAttempt` event carries structured per-field errors with `hint` commands. The skill consults `hawk config show recipe.auth-analyzer-workflow --text` plus `hawk perch traffic` to write `stackhawk-auth.yml`; saving the file auto-triggers the next validation attempt. Onboard owns retry cap, mtime detection, and gRPC plumbing — the skill orchestrates triggers, the YAML write, and cleanup (`hawk perch stop` always).
 
-Full flow, prerequisite checks, announcement templates, capture handoff script, error table, and re-run behavior:
+Full flow, prerequisite checks, JSONL event handler matrix, placeholder-applicationId guard, error table, and re-run behavior:
 → [`references/auth-analyzer-fallback.md`](references/auth-analyzer-fallback.md)
 
 ---
