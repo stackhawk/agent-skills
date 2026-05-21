@@ -3,12 +3,8 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'Tag to release (e.g. v1.6.2) — must already exist'
-        required: true
-        type: string
       dry_run:
-        description: 'Validate only — skip release creation'
+        description: 'Validate only — skip release creation. Run from a tag (e.g. v1.6.2) using the "Use workflow from" picker above.'
         required: false
         type: boolean
         default: false
@@ -20,75 +16,66 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-        with:
-          fetch-depth: 0
-
-      - name: Resolve version from tag input
+      - name: Resolve tag from ref
         id: version
         run: |
-          tag="${{ inputs.tag }}"
+          ref="${GITHUB_REF}"
+          if [[ "$ref" != refs/tags/* ]]; then
+            echo "ERROR: This workflow must be run from a tag, not a branch."
+            echo "Use the 'Use workflow from' picker to select a tag (e.g. v1.6.2)."
+            exit 1
+          fi
+          tag="${ref#refs/tags/}"
           version="${tag#v}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Running release for tag: ${tag}"
 
-      - name: Validate tag exists
-        run: |
-          tag="${{ steps.version.outputs.tag }}"
-          if ! git rev-parse --verify "refs/tags/${tag}" >/dev/null 2>&1; then
-            echo "ERROR: Tag '${tag}' does not exist"
-            echo "Tags are created automatically on every merge to main."
-            echo "Available recent tags:"
-            git tag --sort=-version:refname | head -10
-            exit 1
-          fi
-          echo "OK: tag '${tag}' exists at $(git rev-list -n 1 ${tag})"
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ steps.version.outputs.tag }}
 
       - name: Validate VERSION file matches tag
         run: |
           expected="${{ steps.version.outputs.version }}"
-          actual=$(git show "${{ steps.version.outputs.tag }}:VERSION")
+          actual=$(cat VERSION)
           if [ "$actual" != "$expected" ]; then
-            echo "ERROR: VERSION at tag '${{ steps.version.outputs.tag }}' is '${actual}', expected '${expected}'"
+            echo "ERROR: VERSION file has '${actual}', expected '${expected}'"
             exit 1
           fi
-          echo "OK: VERSION at tag is ${actual}"
+          echo "OK: VERSION = ${actual}"
 
       - name: Validate all manifest versions match tag
         run: |
           expected="${{ steps.version.outputs.version }}"
-          tag="${{ steps.version.outputs.tag }}"
           errors=0
-          for manifest in plugins/hawkscan/.claude-plugin/plugin.json plugins/api/.claude-plugin/plugin.json plugins/hawkscan/.codex-plugin/plugin.json plugins/api/.codex-plugin/plugin.json gemini-extension.json .codex-plugin/plugin.json; do
-            if git show "${tag}:${manifest}" >/dev/null 2>&1; then
-              actual=$(git show "${tag}:${manifest}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('version','MISSING'))")
+          for manifest in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json gemini-extension.json .codex-plugin/plugin.json; do
+            if [ -f "$manifest" ]; then
+              actual=$(python3 -c "import json; print(json.load(open('$manifest')).get('version', 'MISSING'))")
               if [ "$actual" != "$expected" ]; then
-                echo "ERROR: ${manifest} has version '${actual}', expected '${expected}'"
+                echo "ERROR: $manifest has '${actual}', expected '${expected}'"
                 errors=$((errors + 1))
               else
-                echo "OK: ${manifest} (v${actual})"
+                echo "OK: $manifest (v${actual})"
               fi
             fi
           done
-          if [ $errors -gt 0 ]; then
-            echo "FAILED: ${errors} version mismatch(es)"
-            exit 1
-          fi
+          if [ $errors -gt 0 ]; then exit 1; fi
 
       - name: Validate marketplace plugin versions match tag
         run: |
           expected="${{ steps.version.outputs.version }}"
-          tag="${{ steps.version.outputs.tag }}"
-          git show "${tag}:.claude-plugin/marketplace.json" | python3 - "$expected" << 'PYEOF'
+          python3 - "$expected" << 'PYEOF'
           import json, sys
           expected = sys.argv[1]
-          data = json.load(sys.stdin)
+          with open('.claude-plugin/marketplace.json') as f:
+              data = json.load(f)
           errors = 0
           for p in data.get('plugins', []):
               actual = p.get('version', 'MISSING')
               name = p.get('name', 'unknown')
               if actual != expected:
-                  print(f"ERROR: marketplace.json plugin '{name}' has '{actual}', expected '{expected}'")
+                  print(f"ERROR: marketplace.json '{name}' has '{actual}', expected '{expected}'")
                   errors += 1
               else:
                   print(f"OK: marketplace.json '{name}' (v{actual})")
@@ -98,34 +85,29 @@ jobs:
       - name: Validate SKILL.md versions match tag
         run: |
           expected="${{ steps.version.outputs.version }}"
-          tag="${{ steps.version.outputs.tag }}"
           errors=0
-          for skill_file in plugins/hawkscan/skills/hawkscan/SKILL.md plugins/api/skills/api/SKILL.md; do
-            actual=$(git show "${tag}:${skill_file}" | head -20 | grep '^version:' | sed 's/version: //')
-            if [ -z "$actual" ]; then
-              echo "ERROR: Missing version in frontmatter at tag: ${skill_file}"
-              errors=$((errors + 1))
-            elif [ "$actual" != "$expected" ]; then
-              echo "ERROR: ${skill_file} has version '${actual}', expected '${expected}'"
-              errors=$((errors + 1))
-            else
-              echo "OK: ${skill_file} (v${actual})"
+          for skill_file in plugins/*/skills/*/SKILL.md; do
+            if [ -f "$skill_file" ]; then
+              actual=$(head -20 "$skill_file" | grep '^version:' | sed 's/version: //')
+              if [ -z "$actual" ]; then
+                echo "ERROR: Missing version in frontmatter: $skill_file"
+                errors=$((errors + 1))
+              elif [ "$actual" != "$expected" ]; then
+                echo "ERROR: $skill_file has '${actual}', expected '${expected}'"
+                errors=$((errors + 1))
+              else
+                echo "OK: $skill_file (v${actual})"
+              fi
             fi
           done
-          if [ $errors -gt 0 ]; then
-            echo "FAILED: ${errors} SKILL.md version mismatch(es)"
-            exit 1
-          fi
+          if [ $errors -gt 0 ]; then exit 1; fi
 
-      - name: Extract changelog section for this version
+      - name: Extract changelog section
         id: changelog
         run: |
           version="${{ steps.version.outputs.version }}"
-          tag="${{ steps.version.outputs.tag }}"
-          notes=$(git show "${tag}:CHANGELOG.md" | awk "/^## \\[${version}\\]/{found=1; next} /^## \\[/{found=0} found{print}")
-          if [ -z "$notes" ]; then
-            notes="Release ${tag}"
-          fi
+          notes=$(awk "/^## \\[${version}\\]/{found=1; next} /^## \\[/{found=0} found{print}" CHANGELOG.md)
+          if [ -z "$notes" ]; then notes="Release ${{ steps.version.outputs.tag }}"; fi
           printf '%s' "$notes" > /tmp/release-notes.txt
           cat /tmp/release-notes.txt
 
@@ -140,7 +122,4 @@ jobs:
 
       - name: Dry run summary
         if: inputs.dry_run == true
-        run: |
-          echo "DRY RUN: all checks passed for ${{ steps.version.outputs.tag }}"
-          echo "Release notes preview:"
-          cat /tmp/release-notes.txt
+        run: echo "DRY RUN complete — all checks passed for ${{ steps.version.outputs.tag }}"
