@@ -1,0 +1,27 @@
+{
+  "files": [
+    { "path": "VERSION", "field": "version", "type": "raw" },
+    { "path": "plugins/hawkscan/.claude-plugin/plugin.json", "field": "version", "type": "json" },
+    { "path": "plugins/hawkscan/.codex-plugin/plugin.json", "field": "version", "type": "json" },
+    { "path": "plugins/api/.claude-plugin/plugin.json", "field": "version", "type": "json" },
+    { "path": "plugins/api/.codex-plugin/plugin.json", "field": "version", "type": "json" },
+    { "path": ".codex-plugin/plugin.json", "field": "version", "type": "json" },
+    { "path": "gemini-extension.json", "field": "version", "type": "json" },
+    { "path": "plugins/hawkscan/skills/hawkscan/SKILL.md", "field": "version", "type": "yaml-frontmatter" },
+    { "path": "plugins/api/skills/api/SKILL.md", "field": "version", "type": "yaml-frontmatter" }
+  ],
+  "marketplace_manifests": [
+    { "path": ".claude-plugin/marketplace.json", "field": "version", "type": "json-plugins-array" }
+  ],
+  "audit": {
+    "exclude": [
+      "CHANGELOG.md",
+      "RELEASING.md",
+      "node_modules",
+      ".git",
+      ".version-bump.json",
+      "scripts/bump-version.sh",
+      "cursor/"
+    ]
+  }
+}

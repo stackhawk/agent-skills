@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate VERSION file matches tag
+        run: |
+          expected="${{ steps.version.outputs.version }}"
+          actual=$(cat VERSION)
+          if [ "$actual" != "$expected" ]; then
+            echo "ERROR: VERSION file has '${actual}', tag is '${expected}'"
+            echo "Run 'bash scripts/bump-version.sh ${expected}' and commit before tagging."
+            exit 1
+          fi
+          echo "OK: VERSION matches tag (${expected})"
+
+      - name: Validate all manifest versions match tag
+        run: |
+          expected="${{ steps.version.outputs.version }}"
+          errors=0
+          for manifest in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json gemini-extension.json .codex-plugin/plugin.json; do
+            if [ -f "$manifest" ]; then
+              actual=$(python3 -c "import json; print(json.load(open('$manifest')).get('version', 'MISSING'))")
+              if [ "$actual" != "$expected" ]; then
+                echo "ERROR: $manifest has version '${actual}', expected '${expected}'"
+                errors=$((errors + 1))
+              else
+                echo "OK: $manifest (v${actual})"
+              fi
+            fi
+          done
+          if [ $errors -gt 0 ]; then
+            echo "FAILED: ${errors} version mismatch(es)"
+            exit 1
+          fi
+
+      - name: Validate marketplace plugin versions match tag
+        run: |
+          expected="${{ steps.version.outputs.version }}"
+          printf '%s\n' 'import json,sys' "e=sys.argv[1]" 'd=json.load(open(".claude-plugin/marketplace.json"))' 'n=0' 'for p in d.get("plugins",[]):' '  v=p.get("version","MISSING")' '  nm=p.get("name","unknown")' '  if v!=e:' '    print(f"ERROR: .claude-plugin/marketplace.json plugin {nm!r} has {v!r}, expected {e!r}")' '    n+=1' '  else:' '    print(f"OK: .claude-plugin/marketplace.json plugin {nm!r} (v{v})")' 'sys.exit(n)' > /tmp/_mp_release_check.py
+          python3 /tmp/_mp_release_check.py "$expected"
+
+      - name: Validate SKILL.md versions match tag
+        run: |
+          expected="${{ steps.version.outputs.version }}"
+          errors=0
+          for skill_file in plugins/*/skills/*/SKILL.md; do
+            if [ -f "$skill_file" ]; then
+              actual=$(head -20 "$skill_file" | grep '^version:' | sed 's/version: //')
+              if [ -z "$actual" ]; then
+                echo "ERROR: Missing version in frontmatter: $skill_file"
+                errors=$((errors + 1))
+              elif [ "$actual" != "$expected" ]; then
+                echo "ERROR: $skill_file has version '${actual}', expected '${expected}'"
+                errors=$((errors + 1))
+              else
+                echo "OK: $skill_file (v${actual})"
+              fi
+            fi
+          done
+          if [ $errors -gt 0 ]; then
+            echo "FAILED: ${errors} SKILL.md version mismatch(es)"
+            exit 1
+          fi
+
+      - name: Extract changelog section for this version
+        id: changelog
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          notes=$(awk "/^## \\[${VERSION}\\]/{found=1; next} /^## \\[/{found=0} found{print}" CHANGELOG.md)
+          if [ -z "$notes" ]; then
+            notes="Release ${VERSION}"
+          fi
+          printf '%s' "$notes" > /tmp/release-notes.txt
+          echo "notes_file=/tmp/release-notes.txt" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file "${{ steps.changelog.outputs.notes_file }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
