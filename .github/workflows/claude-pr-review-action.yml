@@ -33,7 +33,7 @@ on:
         description: 'GitHub Actions runner label'
         required: false
         type: string
-        default: 'biodome-arm-2cpu'
+        default: 'ubuntu-latest'
     secrets:
       ANTHROPIC_API_KEY:
         required: true
