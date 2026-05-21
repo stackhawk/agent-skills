@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   review:
-    uses: stackhawk/.github-private/.github/workflows/claude-pr-review.yml@main
+    uses: ./.github/workflows/claude-pr-review-action.yml
     with:
       skills: 'bash,yaml,markdown,claude,skills,agent,plugins,marketplace'
     secrets:

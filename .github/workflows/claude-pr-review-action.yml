@@ -1,0 +1,218 @@
+# Shared reusable workflow for automated Claude PR reviews.
+# Called from each repo's .github/workflows/claude-pr-review.yml
+#
+# Usage in caller workflow:
+#   jobs:
+#     review:
+#       uses: stackhawk/.github-private/.github/workflows/claude-pr-review.yml@main
+#       with:
+#         skills: 'kotlin,gradle'
+#       secrets:
+#         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+#
+name: Claude PR Review
+on:
+  workflow_call:
+    inputs:
+      skills:
+        description: 'Technology skills hint (e.g., "kotlin,spring-boot,grpc")'
+        required: false
+        type: string
+        default: ''
+      model:
+        description: 'Claude model to use'
+        required: false
+        type: string
+        default: 'sonnet[1m]'
+      max_turns:
+        description: 'Maximum agent turns'
+        required: false
+        type: number
+        default: 50
+      runner:
+        description: 'GitHub Actions runner label'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+concurrency:
+  group: claude-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-review:
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.merged == false
+    runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install GitHub CLI if missing
+        run: |
+          if command -v gh &>/dev/null; then
+            echo "gh already installed: $(gh --version | head -1)"
+          else
+            echo "Installing GitHub CLI..."
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+            sudo apt-get update -qq && sudo apt-get install -y -qq gh
+            echo "Installed: $(gh --version | head -1)"
+          fi
+
+      - name: Hide previous verdict comments
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # Mark prior top-level "Claude Code Review" verdict comments as
+          # OUTDATED via the GraphQL minimizeComment mutation. The UI collapses
+          # them with an "outdated" badge so a fresh run's verdict isn't
+          # drowned in stale ones, while preserving the comments themselves as
+          # an audit trail.
+          #
+          # We deliberately do NOT touch inline review comments — GitHub
+          # auto-marks those as outdated when their diff position shifts after
+          # a new push, so the UI handles them without our help.
+          #
+          # The sticky tracker (body starts with "**Claude finished") is
+          # managed in place by the action across runs, so we leave it alone.
+          # We target it via the body-pattern filter: bodies starting with
+          # "## " and containing "Claude Code Review" match both "Needs
+          # Attention" and "Looks Good" verdicts but not the sticky tracker.
+          #
+          # Older runs may have posted as github-actions[bot]; the current
+          # Claude action posts as claude[bot]. Match either.
+          #
+          # Already-minimized comments cause the mutation to error, which
+          # `|| true` swallows so reruns stay idempotent.
+          gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
+            --paginate --jq '.[]
+              | select(.user.login == "claude[bot]" or .user.login == "github-actions[bot]")
+              | select((.body | startswith("## ")) and (.body | contains("Claude Code Review")))
+              | .node_id' | \
+          while read -r node_id; do
+            echo "Marking stale verdict comment $node_id as outdated"
+            gh api graphql -F id="$node_id" -f query='
+              mutation($id: ID!) {
+                minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) {
+                  minimizedComment { isMinimized minimizedReason }
+                }
+              }' >/dev/null || true
+          done
+
+      - name: Run Claude PR Review
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        env:
+          SKILLS_HINT: ${{ inputs.skills || 'Check CLAUDE.md for guidance' }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_REPO: ${{ github.repository }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          use_sticky_comment: true
+          track_progress: true
+          claude_args: '--model ${{ inputs.model }} --max-turns ${{ inputs.max_turns }} --disallowedTools "Edit,Write,NotebookEdit" --allowedTools "Bash(gh:*)"'
+          prompt: |
+            <context>
+            You are an automated code reviewer for a StackHawk repository.
+            Your working directory is the repository root — all source code is checked out here.
+            Technology stack hints: check the SKILLS_HINT environment variable.
+            </context>
+
+            <review-process>
+            ## Step 1: Understand the PR
+            Run: gh pr view "$PR_NUMBER" --json title,body,labels,files
+            Read the PR title, description, and any linked issues to understand intent.
+
+            ## Step 2: Get the diff
+            Run: gh pr diff "$PR_NUMBER"
+            This shows the exact changes in the PR. For large diffs, also run:
+            gh pr view "$PR_NUMBER" --json files -q '.files[].path'
+            Then for each changed file, read the FULL file to understand context around the changes.
+
+            ## Step 3: Review each changed file
+            For every file in the diff, evaluate:
+            - **Correctness**: Logic errors, edge cases, null safety, off-by-one
+            - **Security**: Injection, auth bypass, secret exposure, input validation
+            - **Performance**: N+1 queries, unnecessary allocations, missing indexes
+            - **Testing**: Are changes tested? Edge cases covered? Tests meaningful?
+            - **Conventions**: Does it follow the repo's CLAUDE.md conventions?
+            - **API design**: Breaking changes, backward compatibility, naming
+
+            ## Step 4: Post inline comments on specific lines
+            For each finding tied to a specific line of code, post an inline review comment
+            directly on that line so the author sees it in context:
+            ```bash
+            gh api "repos/$GH_REPO/pulls/$PR_NUMBER/comments" \
+              -f body="<comment>" \
+              -f commit_id="$(git rev-parse HEAD)" \
+              -f path="<file_path>" \
+              -F line=<line_number> \
+              -f side="RIGHT"
+            ```
+
+            ## Step 5: Final verdict
+            After reviewing ALL changes, choose ONE action:
+
+            **LOOKS GOOD** — no correctness or security issues found.
+            Include this in your sticky comment summary:
+            ```
+            ## Claude Code Review — Looks Good ✅
+
+            <1-2 sentence summary of what the PR does>
+
+            ### Reviewed
+            - [x] Correctness
+            - [x] Security
+            - [x] Performance
+            - [x] Testing
+            - [x] Conventions
+
+            <any minor non-blocking suggestions>
+            ```
+
+            **NEEDS ATTENTION** — bugs, security issues, or missing critical tests found.
+            Post a PR comment as a persistent record, and include the same content
+            in your sticky comment summary:
+            ```bash
+            gh pr comment "$PR_NUMBER" -b "$(cat <<'VERDICT'
+            ## ⚠️ Claude Code Review — Needs Attention
+
+            <1-2 sentence summary>
+
+            ### 🚨 Issues Found
+            - **[critical]** description (file:line)
+            - **[warning]** description (file:line)
+
+            ### Recommended Before Merge
+            - <specific action items>
+            VERDICT
+            )"
+            ```
+            </review-process>
+
+            <rules>
+            - IMPORTANT: Do NOT use `gh pr review` at all (no --approve, --request-changes, or --comment). Never formally approve or block a PR.
+            - Use `gh pr comment` for overall verdicts, inline `gh api` comments for line-specific feedback, and the sticky comment for the summary.
+            - Use prominent formatting (⚠️, 🚨, bold) to make serious issues visible.
+            - Be constructive, not pedantic. Focus on issues that MATTER.
+            - Do NOT request changes for stylistic preferences that don't violate CLAUDE.md.
+            - For trivial PRs (version bumps, deps, config), post a brief "looks good" note.
+            - Always read full file context before commenting on a diff hunk.
+            - If unsure about a pattern, check if it exists elsewhere in the codebase first.
+            - Severity levels: [critical] must fix, [warning] should fix, [suggestion] consider
+            - Only [critical] and [warning] warrant the "Needs Attention" verdict.
+            </rules>
