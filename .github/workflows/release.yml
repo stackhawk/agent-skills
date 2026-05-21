@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to release (e.g. v1.6.2) — must already exist'
+        description: 'Tag to promote to a GH Release (e.g. v1.6.2). Note: the "Use workflow from" selector above just picks the workflow version — always leave it on main.'
         required: true
         type: string
       dry_run:
@@ -79,10 +79,12 @@ jobs:
         run: |
           expected="${{ steps.version.outputs.version }}"
           tag="${{ steps.version.outputs.tag }}"
-          git show "${tag}:.claude-plugin/marketplace.json" | python3 - "$expected" << 'PYEOF'
+          git show "${tag}:.claude-plugin/marketplace.json" > /tmp/marketplace_at_tag.json
+          python3 - "$expected" << 'PYEOF'
           import json, sys
           expected = sys.argv[1]
-          data = json.load(sys.stdin)
+          with open('/tmp/marketplace_at_tag.json') as f:
+              data = json.load(f)
           errors = 0
           for p in data.get('plugins', []):
               actual = p.get('version', 'MISSING')
