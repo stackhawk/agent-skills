@@ -1,0 +1,19 @@
+name: Claude PR Review
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+  id-token: write
+
+jobs:
+  review:
+    uses: stackhawk/.github-private/.github/workflows/claude-pr-review.yml@main
+    with:
+      skills: 'kotlin,spring-boot,grpc,gradle'
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
