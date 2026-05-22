@@ -206,6 +206,8 @@ grep -rn --include="*.js" --include="*.ts" --exclude-dir=node_modules --exclude-
 ```
 If two or more independent signals are found (or one clear framework-level signal like `AddAuthentication(` or `class SecurityConfig`): authentication config is required. Follow **Phase 1c** (below, in Step 2a) to fetch the right recipe via `hawk config show` before generating `stackhawk.yml`.
 
+**Anti-pattern — do NOT scan unauthenticated first.** Once authentication is required, scanning without auth produces ~0 findings *by design*, not because the app is safe — the spider hits `/login`, can't complete the challenge, and returns. Adding `seedPaths` to authenticated routes does not fix this; those paths still require auth to render anything but a redirect to login. There is no "try without auth first, set up auth if findings warrant" branch. Auth is mandatory once detected. If Phase 1c can't produce a validated `authentication:` block — bespoke flow, custom challenge, no clean recipe match — escalate to **Phase 1c.5** (below), not to an unauthenticated scan.
+
 Note: Python, Ruby, and Go auth signals are not listed above — the limited-context fallback covers those ecosystems.
 
 **Startup pattern and host** — check for:
@@ -415,6 +417,8 @@ This returns the overview plus a list of authentication sub-types.
 | Multi-step flow not expressible in config                 | `app.authentication.script`                                                                             |
 | Bash + curl last resort                                   | `app.authentication.externalCommand`                                                                    |
 
+**If no row matches** — bespoke challenge-response, multi-stage flow with client-side computed proof, custom undocumented scheme, or you can't tell which row fits — that **is** the "ambiguous classification" case. Stop here and jump to **Phase 1c.5** (below). Do not force-fit a recipe pattern. Do not proceed to Step 3 with a guess. Do not ship without auth.
+
 **Step 3 — Fetch each relevant section:**
 
 ```bash
@@ -447,15 +451,13 @@ If `validate config` fails, fix the structural error and re-run. If `validate au
 
 ### Phase 1c.5: Auth Analyzer Fallback
 
-When Phase 1c can't produce a working `authentication:` block, fall back to the live auth analyzer via `hawk perch onboard` — a single CLI wizard that captures real HTTP traffic via Chrome and iterates `validate-auth` until success. Runnable from any LLM tool; the wizard streams JSONL phase events for skill consumption.
+**You MUST invoke Phase 1c.5 when any of these are true** — do NOT defer auth setup to "after a baseline scan", do NOT silently ship without auth, do NOT force-fit a recipe pattern:
 
-**Trigger this fallback when any of:**
-
-1. Phase 1c sub-step 0 found auth signals but you can't confidently match the pattern against the recipe table above
+1. Phase 1c sub-step 0 found auth signals but the pattern doesn't match any row in the Phase 1c recipe table — bespoke challenge-response, custom multi-stage flow, client-side computed proof, undocumented scheme, or any case where you'd be guessing which row to pick
 2. `API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml` returned non-zero after Phase 1c wrote a config
 3. The user explicitly asked to "set up auth interactively", "use the live analyzer", or equivalent
 
-The fallback runs `hawk perch onboard --events json` (synthesizing `stackhawk.yml` from `--app-host` if needed), opens Chrome, waits for the user to log in, then drives an iterative loop where each `validateAttempt` event carries structured per-field errors with `hint` commands. The skill consults `hawk config show recipe.auth-analyzer-workflow --text` plus `hawk perch traffic` to write `stackhawk-auth.yml`; saving the file auto-triggers the next validation attempt. Onboard owns retry cap, mtime detection, and gRPC plumbing — the skill orchestrates triggers, the YAML write, and cleanup (`hawk perch stop` always).
+`hawk perch onboard` is the wizard. It captures real HTTP traffic via Chrome, runs the validate-auth loop with structured per-field errors, and streams JSONL phase events for skill consumption. The skill runs `hawk perch onboard --events json` (synthesizing `stackhawk.yml` from `--app-host` if needed), consults `hawk config show recipe.auth-analyzer-workflow --text` plus `hawk perch traffic` to write `stackhawk-auth.yml`, and reads `validateAttempt` events to iterate. Saving the YAML auto-triggers the next attempt. Onboard owns retry cap, mtime detection, and gRPC plumbing — the skill orchestrates triggers, the YAML write, and cleanup (`hawk perch stop` always).
 
 Full flow, prerequisite checks, JSONL event handler matrix, placeholder-applicationId guard, error table, and re-run behavior:
 → [`references/auth-analyzer-fallback.md`](references/auth-analyzer-fallback.md)

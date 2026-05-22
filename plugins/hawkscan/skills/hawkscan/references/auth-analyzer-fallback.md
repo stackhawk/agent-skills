@@ -184,7 +184,6 @@ Do **not** proceed to scan with a broken auth config.
 
 After a successful run, `stackhawk-auth.yml` exists alongside `stackhawk.yml`. On subsequent skill invocations:
 
-- Phase 1c sub-step 0 sees the auth config already exists.
 - If `API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml` passes, the scan proceeds — no fallback.
 - If `validate auth` fails (login endpoint moved, token logic changed, app rebuilt), trigger #2 fires and Phase 1c.5 runs again — onboard reuses the existing `stackhawk.yml` (case A above).
 
