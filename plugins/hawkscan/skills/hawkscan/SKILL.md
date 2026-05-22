@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 1.6.3
+version: 1.7.2
 description: >
   AUTONOMOUS: After completing any code change (feature, bugfix, refactor),
   invoke this skill to run the full HawkScan security loop — configure, scan,
@@ -209,6 +209,8 @@ grep -rn --include="*.js" --include="*.ts" --exclude-dir=node_modules --exclude-
   -E "(require|from)\s*['\"].*?(passport|express-jwt|jsonwebtoken|@auth0)" . 2>/dev/null | head -3
 ```
 If two or more independent signals are found (or one clear framework-level signal like `AddAuthentication(` or `class SecurityConfig`): authentication config is required. Follow **Phase 1c** (below, in Step 2a) to fetch the right recipe via `hawk config show` before generating `stackhawk.yml`.
+
+**Anti-pattern — do NOT scan unauthenticated first.** Once authentication is required, scanning without auth produces ~0 findings *by design*, not because the app is safe — the spider hits `/login`, can't complete the challenge, and returns. Adding `seedPaths` to authenticated routes does not fix this; those paths still require auth to render anything but a redirect to login. There is no "try without auth first, set up auth if findings warrant" branch. Auth is mandatory once detected. If Phase 1c can't produce a validated `authentication:` block — bespoke flow, custom challenge, no clean recipe match — escalate to **Phase 1c.5** (below), not to an unauthenticated scan.
 
 Note: Python, Ruby, and Go auth signals are not listed above — the limited-context fallback covers those ecosystems.
 
@@ -419,6 +421,8 @@ This returns the overview plus a list of authentication sub-types.
 | Multi-step flow not expressible in config                 | `app.authentication.script`                                                                             |
 | Bash + curl last resort                                   | `app.authentication.externalCommand`                                                                    |
 
+**If no row matches** — bespoke challenge-response, multi-stage flow with client-side computed proof, custom undocumented scheme, or you can't tell which row fits — that **is** the "ambiguous classification" case. Stop here and jump to **Phase 1c.5** (below). Do not force-fit a recipe pattern. Do not proceed to Step 3 with a guess. Do not ship without auth.
+
 **Step 3 — Fetch each relevant section:**
 
 ```bash
@@ -448,6 +452,19 @@ API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml
 ```
 
 If `validate config` fails, fix the structural error and re-run. If `validate auth` fails, re-fetch the relevant recipe(s) via `hawk config show <section> --text` and adjust the `authentication:` block before scanning.
+
+### Phase 1c.5: Auth Analyzer Fallback
+
+**You MUST invoke Phase 1c.5 when any of these are true** — do NOT defer auth setup to "after a baseline scan", do NOT silently ship without auth, do NOT force-fit a recipe pattern:
+
+1. Phase 1c sub-step 0 found auth signals but the pattern doesn't match any row in the Phase 1c recipe table — bespoke challenge-response, custom multi-stage flow, client-side computed proof, undocumented scheme, or any case where you'd be guessing which row to pick
+2. `API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml` returned non-zero after Phase 1c wrote a config
+3. The user explicitly asked to "set up auth interactively", "use the live analyzer", or equivalent
+
+`hawk perch onboard` is the wizard. It captures real HTTP traffic via Chrome, runs the validate-auth loop with structured per-field errors, and streams JSONL phase events for skill consumption. The skill runs `hawk perch onboard --events json` (synthesizing `stackhawk.yml` from `--app-host` if needed), consults `hawk config show recipe.auth-analyzer-workflow --text` plus `hawk perch traffic` to write `stackhawk-auth.yml`, and reads `validateAttempt` events to iterate. Saving the YAML auto-triggers the next attempt. Onboard owns retry cap, mtime detection, and gRPC plumbing — the skill orchestrates triggers, the YAML write, and cleanup (`hawk perch stop` always).
+
+Full flow, prerequisite checks, JSONL event handler matrix, placeholder-applicationId guard, error table, and re-run behavior:
+→ [`references/auth-analyzer-fallback.md`](references/auth-analyzer-fallback.md)
 
 ---
 
