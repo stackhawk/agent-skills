@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 1.7.2
+version: 1.7.3
 description: >
   AUTONOMOUS: After completing any code change (feature, bugfix, refactor),
   invoke this skill to run the full HawkScan security loop — configure, scan,
@@ -894,6 +894,7 @@ After completing a code change, announce and execute:
 ## Common Mistakes to Avoid
 
 - **Don't scan before the app is running.** HawkScan will exit 1 with a connection error.
+- **Try `https://` first — HawkScan accepts self-signed certificates.** If an app runs on HTTPS, use `https://` as the `host` value and let the scanner attempt the connection before assuming TLS will be a problem. Only investigate TLS configuration or fall back to `http://` if the scan actually fails to connect with an SSL/TLS error.
 - **Don't hardcode API keys in `stackhawk.yml`.** Always use `${HAWK_API_KEY}`.
 - **Don't hardcode application credentials in `stackhawk.yml`.** Use env vars and reference them in the `authentication` block.
 - **Low path count ≠ clean app.** It means the spider didn't find routes. Feed an
