@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 1.7.2
+version: 1.7.3
 description: >
   AUTONOMOUS: After completing any code change (feature, bugfix, refactor),
   invoke this skill to run the full HawkScan security loop — configure, scan,
@@ -113,11 +113,11 @@ git remote get-url origin
 # If this fails (no git repo, no origin remote): skip Phase 0a, proceed to Phase 0b
 
 # 2. List ASM repos and normalize URLs to find a match
-HAWKOP_API_KEY=$HAWK_API_KEY hawkop repo list --format json
+hawkop repo list --format json
 
 # 3a. If a repo URL matches (normalize: lowercase, strip .git, strip trailing /,
 #     strip host prefix to compare org/repo path segment):
-HAWKOP_API_KEY=$HAWK_API_KEY hawkop repo link --repo-id <REPO_UUID> --app-id <APP_UUID>
+hawkop repo link --repo-id <REPO_UUID> --app-id <APP_UUID>
 # Report: "Ensured link: app <APP_NAME> ↔ ASM repo <REPO_NAME>"
 
 # 3b. If no match: inject git_origin tag into stackhawk.yml tags block
@@ -134,9 +134,9 @@ HAWKOP_API_KEY=$HAWK_API_KEY hawkop repo link --repo-id <REPO_UUID> --app-id <AP
 
 ### Phase 0b: Agent Tagging
 
-Writes a `_STACKHAWK_AGENT` tag placeholder into `stackhawk.yml` once. At scan
-time (Step 3), the agent detects its platform and exports `HAWK_AGENT` — the
-placeholder interpolates automatically.
+Writes a `_STACKHAWK_AGENT` tag placeholder into `stackhawk.yml` once or if 
+it's missing in the current file. At scan time (Step 3), the agent detects 
+its platform and exports `HAWK_AGENT` — the placeholder interpolates automatically.
 
 Add to `stackhawk.yml` tags block if not already present:
 
@@ -259,14 +259,12 @@ find . -not -path "*/node_modules/*" \( \
 **Outcomes:**
 
 - **SPA framework found AND API routes present** (Next.js API routes, Nuxt server routes,
-  SvelteKit endpoints): fullstack app — enable Ajax Spider automatically, wire OpenAPI spec
-  if available. Always include in generated config:
-  ```yaml
-  hawk:
-    spider:
-      ajax: true
-      maxDurationMinutes: 2
-  ```
+  SvelteKit endpoints): register as **two separate StackHawk applications** — one for the
+  frontend (SPA) and one for the API. Do not scan them as a single app.
+  - **Frontend app**: Ajax Spider enabled, host points to the frontend URL, SPA auth if
+    needed.
+  - **API app**: ALL Spiders disabled, OpenAPI, GraphQL Introspection, etc spec wired if available, API auth configured.
+  See `references/spa-scanning.md` Scenario B for full setup.
 - **SPA framework found AND no API routes** (pure frontend calling external API): auto-enable
   Ajax Spider (same config as above) and surface a note before proceeding: *"This appears to
   be a frontend-only app. The highest-value HawkScan target is the backend API it calls —
@@ -285,22 +283,16 @@ count to add the Ajax Spider after the fact.
    the agent to start it first and confirm the host/port.
 2. **Do we have a `stackhawk.yml`?** Check the project root. If missing, go to Step 2a (generate).
    If present, go to Step 2b (tune).
-3. **Do we have credentials?** Check in the CLI's resolution order. The `hawk` CLI itself
-   reads the `API_KEY` env var (not `HAWK_API_KEY`); this skill standardizes on
-   `HAWK_API_KEY` as the canonical user-facing name and bridges it inline at every CLI
-   invocation (`API_KEY=$HAWK_API_KEY hawk <cmd>`).
-   1. `HAWK_API_KEY` env var set → use it; every example below bridges automatically.
-   2. `~/.hawk/hawk.properties` exists (written by a prior `hawk init`) → treat as
-      authenticated, proceed.
-   3. Neither present → instruct the user to run `hawk init` (interactive, saves key to
-      `~/.hawk/hawk.properties`) or export `HAWK_API_KEY` directly.
+3. **Do we have credentials?** Check the CLI's local config:
+   1. `~/.hawk/hawk.properties` exists (written by a prior `hawk init`) → authenticated,
+      proceed.
+   2. Not present → run `hawk init` (interactive, saves key to `~/.hawk/hawk.properties`).
 
-   Every `hawk` and `hawkop` invocation in this skill bridges `HAWK_API_KEY` into the env
-   var the underlying tool actually reads. You don't need to set `API_KEY` or
-   `HAWKOP_API_KEY` yourself.
+   > **CI/CD only:** If running in a pipeline, set `HAWK_API_KEY` as a secret and prefix
+   > each invocation: `API_KEY=$HAWK_API_KEY hawk <cmd>`. For local/agentic use, `hawk init`
+   > handles credentials — no env var needed.
 
-   If a later command returns 401/403, the stored credential is stale — re-run `hawk init`
-   or refresh `HAWK_API_KEY`.
+   If a later command returns 401/403, the stored credential is stale — re-run `hawk init`.
 4. **What runtime is available?** Check for the `hawk` CLI first:
    ```bash
    which hawk
@@ -321,7 +313,7 @@ count to add the Ajax Spider after the fact.
      apps can share hosts in CI. Proceed to create.
    - **Create path:** run:
      ```bash
-     API_KEY=$HAWK_API_KEY hawk create app --name "<repo-name>" --env <env-name>
+     hawk create app --name "<repo-name>" --env <env-name>
      ```
      Resolve `<env-name>` using this order (first match wins):
      1. `STACKHAWK_ENV` env var if set → use it exactly
@@ -389,7 +381,7 @@ bash form `${VAR:-default}` is NOT supported. The entire YAML value must be the 
 **Validate after generating:**
 After writing `stackhawk.yml`, always run:
 ```bash
-API_KEY=$HAWK_API_KEY timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
+timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
 ```
 Do not proceed to Step 3 until validation passes. If validation fails, fix the reported
 errors and re-validate before scanning.
@@ -445,10 +437,10 @@ Run the structural check first, then the live auth check. **Auth validation is m
 
 ```bash
 # Structural validation
-API_KEY=$HAWK_API_KEY hawk validate config stackhawk.yml
+hawk validate config stackhawk.yml
 
 # Live auth validation
-API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml
+hawk validate auth stackhawk.yml
 ```
 
 If `validate config` fails, fix the structural error and re-run. If `validate auth` fails, re-fetch the relevant recipe(s) via `hawk config show <section> --text` and adjust the `authentication:` block before scanning.
@@ -458,7 +450,7 @@ If `validate config` fails, fix the structural error and re-run. If `validate au
 **You MUST invoke Phase 1c.5 when any of these are true** — do NOT defer auth setup to "after a baseline scan", do NOT silently ship without auth, do NOT force-fit a recipe pattern:
 
 1. Phase 1c sub-step 0 found auth signals but the pattern doesn't match any row in the Phase 1c recipe table — bespoke challenge-response, custom multi-stage flow, client-side computed proof, undocumented scheme, or any case where you'd be guessing which row to pick
-2. `API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml` returned non-zero after Phase 1c wrote a config
+2. `hawk validate auth stackhawk.yml` returned non-zero after Phase 1c wrote a config
 3. The user explicitly asked to "set up auth interactively", "use the live analyzer", or equivalent
 
 `hawk perch onboard` is the wizard. It captures real HTTP traffic via Chrome, runs the validate-auth loop with structured per-field errors, and streams JSONL phase events for skill consumption. The skill runs `hawk perch onboard --events json` (synthesizing `stackhawk.yml` from `--app-host` if needed), consults `hawk config show recipe.auth-analyzer-workflow --text` plus `hawk perch traffic` to write `stackhawk-auth.yml`, and reads `validateAttempt` events to iterate. Saving the YAML auto-triggers the next attempt. Onboard owns retry cap, mtime detection, and gRPC plumbing — the skill orchestrates triggers, the YAML write, and cleanup (`hawk perch stop` always).
@@ -508,7 +500,7 @@ Review the existing config against the current app state:
 After modifying `stackhawk.yml` — whether tuning spider settings, adding auth, adding tags,
 or any Phase 0 edit — run:
 ```bash
-API_KEY=$HAWK_API_KEY timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
+timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
 ```
 Fix reported errors before proceeding to Step 3.
 
@@ -527,39 +519,58 @@ burning a full scan run.
 export COMMIT_SHA=$(git rev-parse HEAD)
 export BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
 
-# Detect agent platform for _STACKHAWK_AGENT tag interpolation
-# Skip detection if HAWK_AGENT is already set (allows CI/CD override)
+# Detect agent platform and model for _STACKHAWK_AGENT tag interpolation
+# Platform and model are detected independently — they can be from different vendors
+# (e.g. Copilot IDE running an Anthropic model produces "copilot:claude-sonnet-4-6").
+# Skip detection if HAWK_AGENT is already set (allows CI/CD override).
 if [ -z "${HAWK_AGENT}" ]; then
+  # Step 1: detect agent platform (the IDE / agentic tool)
   if [ -n "${CLAUDE_CODE}" ] || [ -d ".claude" ]; then
-    export HAWK_AGENT=claude-code
+    _HAWK_PLATFORM=claude-code
   elif [ -n "${CURSOR_TRACE_ID}" ] || [ -d ".cursor" ]; then
-    export HAWK_AGENT=cursor
+    _HAWK_PLATFORM=cursor
   elif [ -f "GEMINI.md" ] || [ -n "${GEMINI_API_KEY}" ]; then
-    export HAWK_AGENT=gemini
+    _HAWK_PLATFORM=gemini
   elif [ -d ".codex" ]; then
-    export HAWK_AGENT=codex
+    _HAWK_PLATFORM=codex
   elif [ -f ".github/copilot-instructions.md" ]; then
-    export HAWK_AGENT=copilot
+    _HAWK_PLATFORM=copilot
   else
-    export HAWK_AGENT=unknown
+    _HAWK_PLATFORM=unknown
   fi
+
+  # Step 2: detect model from provider env vars (independent of platform)
+  if [ -n "${ANTHROPIC_MODEL:-}" ]; then
+    _HAWK_MODEL=${ANTHROPIC_MODEL}
+  elif [ -n "${OPENAI_MODEL:-}" ]; then
+    _HAWK_MODEL=${OPENAI_MODEL}
+  elif [ -n "${GEMINI_MODEL:-}" ]; then
+    _HAWK_MODEL=${GEMINI_MODEL}
+  elif [ -n "${AZURE_OPENAI_DEPLOYMENT:-}" ]; then
+    _HAWK_MODEL=${AZURE_OPENAI_DEPLOYMENT}
+  else
+    _HAWK_MODEL=
+  fi
+
+  export HAWK_AGENT="${_HAWK_PLATFORM}${_HAWK_MODEL:+:${_HAWK_MODEL}}"
+  unset _HAWK_PLATFORM _HAWK_MODEL
 fi
 
-API_KEY=$HAWK_API_KEY hawk validate config stackhawk.yml
+hawk validate config stackhawk.yml
 
 # Validate OpenAPI specification referenced in stackhawk.yml
-API_KEY=$HAWK_API_KEY hawk validate api stackhawk.yml
+hawk validate api stackhawk.yml
 
 # Validate authentication config — REQUIRED if `authentication:` exists in stackhawk.yml.
 if grep -qE '^\s*authentication:' stackhawk.yml; then
-  API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml
+  hawk validate auth stackhawk.yml
 fi
 ```
 
-Run `API_KEY=$HAWK_API_KEY hawk validate config stackhawk.yml` every time the config changes.
-Run `API_KEY=$HAWK_API_KEY hawk validate api stackhawk.yml` when adding or modifying OpenAPI spec references.
-Run `API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml` whenever the `authentication:` block is new or modified — **do not skip it**.
-If any validation fails, fix it before proceeding to `API_KEY=$HAWK_API_KEY hawk scan`.
+Run `hawk validate config stackhawk.yml` every time the config changes.
+Run `hawk validate api stackhawk.yml` when adding or modifying OpenAPI spec references.
+Run `hawk validate auth stackhawk.yml` whenever the `authentication:` block is new or modified — **do not skip it**.
+If any validation fails, fix it before proceeding to `hawk scan`.
 
 #### Config File Path Rules (Important — Common Agent Mistake)
 
@@ -600,17 +611,22 @@ For Docker-based scanning (CI environments or when CLI isn't installed), see:
 
 **Quick reference for agentic scanning:**
 ```bash
-API_KEY=$HAWK_API_KEY hawk scan                                          # scan using stackhawk.yml in current directory
-API_KEY=$HAWK_API_KEY hawk scan --json-output                            # output findings as JSON (best for agentic parsing, requires Dev Release v5.3.41+)
-API_KEY=$HAWK_API_KEY hawk rescan                                        # re-run plugins that fired on the most recent scan
-API_KEY=$HAWK_API_KEY hawk rescan --scan-id <SCAN_ID> --json-output      # re-run plugins against a specific prior scan — fast fix verification
+hawk scan                                          # scan using stackhawk.yml in current directory
+hawk scan --json-output                            # output findings as JSON (best for agentic parsing, requires Dev Release v5.3.41+)
+hawk rescan                                        # re-run plugins that fired on the most recent scan
+hawk rescan --scan-id <SCAN_ID> --json-output      # re-run plugins against a specific prior scan — fast fix verification
 ```
 
 **Rescan is the agentic fix-loop's best friend.** After fixing findings
-from scan `<SCAN_ID>`, `API_KEY=$HAWK_API_KEY hawk rescan --scan-id <SCAN_ID>` re-runs only the
+from scan `<SCAN_ID>`, `hawk rescan --scan-id <SCAN_ID>` re-runs only the
 plugins that previously produced findings — seconds vs. minutes. Use it
 in the Autonomous Loop's rescan step (Step 6). Capture the `scan.id`
 field from the initial scan's JSON output.
+
+**Always rescan against the original full-scan ID.** If you rescan and then
+need to rescan again, use the same `<SCAN_ID>` from the first `hawk scan`
+run — not the ID produced by a prior `hawk rescan`. Rescan IDs are not valid
+parent scan references.
 
 ---
 
@@ -636,10 +652,10 @@ Use `--json-output` to get structured scan results for agentic consumption
 
 ```bash
 # CLI — json output to file
-API_KEY=$HAWK_API_KEY hawk scan --json-output > findings.json
+hawk scan --json-output > findings.json
 
 # CLI — json output piped directly
-API_KEY=$HAWK_API_KEY hawk scan --json-output
+hawk scan --json-output
 ```
 
 `--json-output` suppresses all other stdout (progress, banners, etc.), so you do NOT
@@ -662,7 +678,7 @@ For per-finding fix guidance on high-iteration findings (CSP, CORS, Auth, Missin
 ### Stdout Parsing (Fallback)
 
 If `--json-output` is not available (requires at least Dev Release v5.3.41), fall back to capturing
-stdout with `API_KEY=$HAWK_API_KEY hawk --no-color scan --verbose` and parse the terminal output. Look for lines
+stdout with `hawk --no-color scan --verbose` and parse the terminal output. Look for lines
 containing finding names, severity levels, and affected paths. The platform URL printed
 at scan end can be used to fetch the full report via the StackHawk API if needed.
 
@@ -699,21 +715,24 @@ If a `NEW` finding is clearly a false positive, mark it via the platform API
 
 **Single finding:**
 ```bash
-HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan triage \
+hawkop scan triage \
   --scan <SCAN_UUID> \
   --hash <FINDING_HASH> \
   --status false-positive \
-  --note "CSP finding on JSON endpoint /api/health which never serves HTML; inapplicable"
+  --note "CSP finding on JSON endpoint /api/health which never serves HTML; inapplicable [triaged by ${HAWK_AGENT:-agent}]"
 ```
 
 **Batch (multiple FPs in one scan):**
 ```bash
-# Write a triage.yaml with one entry per false positive, then:
-HAWKOP_API_KEY=$HAWK_API_KEY hawkop scan triage --scan <SCAN_UUID> --from-file triage.yaml
+# Write a triage.yaml with one entry per false positive.
+# Always append the agent signature to each note field:
+#   note: "<reason> [triaged by ${HAWK_AGENT:-agent}]"
+hawkop scan triage --scan <SCAN_UUID> --from-file triage.yaml
 ```
 
 **Rules:**
 - ✅ Mark `FALSE_POSITIVE` autonomously — note must clearly explain why
+- ✅ **Always append `[triaged by ${HAWK_AGENT:-agent}]` to every note** — this attributes the triage decision to the agent in the platform audit trail
 - ✅ Use `ADD_COMMENT` to annotate without changing status
 - ❌ **Never mark `RISK_ACCEPTED`** — human decision only
 - ❌ **Never mark `ASSIGNED`** — human decision only
@@ -744,12 +763,12 @@ After generating fix tasks, instruct the agent:
   to confirm remediation. Repeat until exit 0 or only accepted-risk findings remain.
 - **Exit code 1**: Do NOT hand fix tasks. Run validation commands to diagnose first:
   ```bash
-  API_KEY=$HAWK_API_KEY hawk validate config stackhawk.yml   # catches malformed YAML, missing required fields
-  API_KEY=$HAWK_API_KEY hawk validate api stackhawk.yml      # validates OpenAPI spec references in config
+  hawk validate config stackhawk.yml   # catches malformed YAML, missing required fields
+  hawk validate api stackhawk.yml      # validates OpenAPI spec references in config
   ```
   Common causes:
   - App not reachable → confirm it's running and `host` in config is correct
-  - Auth failure → run `API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml`;
+  - Auth failure → run `hawk validate auth stackhawk.yml`;
     re-check the relevant recipe via `hawk config show <section> --text` (Phase 1c, Step 2a)
   - Invalid `applicationId` → verify UUID matches an app in the StackHawk platform
   - Config parse error → `hawk validate config` will show the specific line
@@ -767,7 +786,7 @@ core value proposition of agentic DAST.
 Run the autonomous loop when ALL of these are true:
 - You just finished implementing a feature, bug fix, or code change the user requested
 - The application is running (or you can start it)
-- A `HAWK_API_KEY` is available in the environment
+- The hawk CLI is initialized (`~/.hawk/hawk.properties` exists, or `hawk init` was run)
 - The StackHawk skill is active
 
 ### When NOT to Trigger
@@ -803,27 +822,40 @@ After completing a code change, announce and execute:
    export COMMIT_SHA=$(git rev-parse HEAD)
    export BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
 
-   # Detect agent platform for _STACKHAWK_AGENT tag interpolation
-   # Skip detection if HAWK_AGENT is already set (allows CI/CD override)
+   # Detect agent platform and model independently — they can be from different vendors.
+   # Skip detection if HAWK_AGENT is already set (allows CI/CD override).
    if [ -z "${HAWK_AGENT}" ]; then
      if [ -n "${CLAUDE_CODE}" ] || [ -d ".claude" ]; then
-       export HAWK_AGENT=claude-code
+       _HAWK_PLATFORM=claude-code
      elif [ -n "${CURSOR_TRACE_ID}" ] || [ -d ".cursor" ]; then
-       export HAWK_AGENT=cursor
+       _HAWK_PLATFORM=cursor
      elif [ -f "GEMINI.md" ] || [ -n "${GEMINI_API_KEY}" ]; then
-       export HAWK_AGENT=gemini
+       _HAWK_PLATFORM=gemini
      elif [ -d ".codex" ]; then
-       export HAWK_AGENT=codex
+       _HAWK_PLATFORM=codex
      elif [ -f ".github/copilot-instructions.md" ]; then
-       export HAWK_AGENT=copilot
+       _HAWK_PLATFORM=copilot
      else
-       export HAWK_AGENT=unknown
+       _HAWK_PLATFORM=unknown
      fi
+     if [ -n "${ANTHROPIC_MODEL:-}" ]; then
+       _HAWK_MODEL=${ANTHROPIC_MODEL}
+     elif [ -n "${OPENAI_MODEL:-}" ]; then
+       _HAWK_MODEL=${OPENAI_MODEL}
+     elif [ -n "${GEMINI_MODEL:-}" ]; then
+       _HAWK_MODEL=${GEMINI_MODEL}
+     elif [ -n "${AZURE_OPENAI_DEPLOYMENT:-}" ]; then
+       _HAWK_MODEL=${AZURE_OPENAI_DEPLOYMENT}
+     else
+       _HAWK_MODEL=
+     fi
+     export HAWK_AGENT="${_HAWK_PLATFORM}${_HAWK_MODEL:+:${_HAWK_MODEL}}"
+     unset _HAWK_PLATFORM _HAWK_MODEL
    fi
 
-   API_KEY=$HAWK_API_KEY API_KEY=$HAWK_API_KEY timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
+   timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
    ```
-4. **Scan:** Run `API_KEY=$HAWK_API_KEY hawk scan --json-output` and parse the structured findings. The scan
+4. **Scan:** Run `hawk scan --json-output` and parse the structured findings. The scan
    results will be tagged with the commit SHA and branch from the env vars above.
 5. **If findings exist:**
    - **Run the Step 4.5 triage filter first** (per-path `status` field).
@@ -843,12 +875,13 @@ After completing a code change, announce and execute:
      `fix: resolve [CWE-XXX] [vulnerability type] found by HawkScan`
      Example: `fix: resolve CWE-89 SQL injection found by HawkScan`
 6. **Rescan:** **Rescan is the default for all fix-verify cycles.** After fixing findings,
-   run `API_KEY=$HAWK_API_KEY hawk rescan --scan-id <SCAN_ID> --json-output`. Rescans are
+   run `hawk rescan --scan-id <SCAN_ID> --json-output`. Rescans are
    fast — multiple iterations are acceptable. `<SCAN_ID>` is the `scan.id` value from the
-   JSON output captured in Step 4. Rescan re-runs only the plugins that fired on the
+   JSON output captured in Step 4 — **always use the original full-scan ID**, never the
+   ID from a prior rescan. Rescan re-runs only the plugins that fired on the
    parent scan — more targeted, not less.
 
-   Run a full `API_KEY=$HAWK_API_KEY hawk scan --json-output` only if one of these
+   Run a full `hawk scan --json-output` only if one of these
    specific conditions applies:
    - The fix added cross-cutting surfaces (new API endpoints, new input
      vectors, new auth paths) — rescan won't test them.

@@ -27,7 +27,7 @@ find . -not -path "*/node_modules/*" \( \
 ```
 
 - Command 1 finds a framework, command 2 finds **nothing** → **Scenario A or C**
-- Both commands find results → **Scenario B**
+- Both commands find results → **Scenario B** (create two separate StackHawk apps)
 
 ---
 
@@ -61,16 +61,17 @@ hawk:
 
 **Detection:** SPA framework found AND API route files present.
 
-**Recommendation:** Scan the app directly — one scan covers both frontend surface and API routes.
+**Recommendation:** Register as **two separate StackHawk applications** — one for the frontend, one for the API. Do not scan them together as a single app. Separate apps give cleaner findings, targeted scanning, and independent scan histories.
+
+### App 1 — Frontend (SPA)
 
 - Enable Ajax Spider.
-- Wire OpenAPI spec if available (Next.js: `next-swagger-doc`; others: check for `openapi.json`
-  or `/api-docs` endpoint).
-- Configure auth if API routes require it (follow Phase 1c in `SKILL.md` — use `hawk config show <section> --text` to fetch the right recipe).
+- Host points to the frontend URL (e.g. `http://localhost:3000`).
+- Configure SPA auth if the frontend has login flows.
 
 ```yaml
 app:
-  applicationId: ${APP_ID}
+  applicationId: ${FRONTEND_APP_ID}
   env: ${APP_ENV:Development}
   host: ${APP_HOST:http://localhost:3000}
 hawk:
@@ -78,6 +79,24 @@ hawk:
     ajax: true
     maxDurationMinutes: 2
 ```
+
+### App 2 — API
+
+- Ajax Spider disabled (not needed for API endpoints).
+- Wire OpenAPI spec if available (Next.js: `next-swagger-doc`; others: check for `openapi.json`
+  or `/api-docs` endpoint).
+- Configure API auth (follow Phase 1c in `SKILL.md` — use `hawk config show <section> --text` to fetch the right recipe).
+
+```yaml
+app:
+  applicationId: ${API_APP_ID}
+  env: ${APP_ENV:Development}
+  host: ${APP_HOST:http://localhost:3000}
+  openApiConf:
+    filePath: ./openapi.json
+```
+
+Create both apps in the StackHawk platform (`hawk create app`) and run scans independently.
 
 ---
 

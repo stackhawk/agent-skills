@@ -16,8 +16,8 @@ The skill prefers the [**`hawkop` CLI**](https://docs.stackhawk.com/hawkop/) whe
 
 - A [StackHawk account](https://app.stackhawk.com) (free tier available)
 - A StackHawk API key — generate one at **Settings → API Keys**
-- `HAWK_API_KEY` set as an environment variable — used by both the raw API path and (bridged into `HAWKOP_API_KEY`) the `hawkop` CLI path
-- **Recommended:** [`hawkop`](https://docs.stackhawk.com/hawkop/) installed; the skill bridges `HAWK_API_KEY` → `HAWKOP_API_KEY` per-invocation, so you do not need to set `HAWKOP_API_KEY` separately
+- **Recommended:** [`hawkop`](https://docs.stackhawk.com/hawkop/) installed and initialized via `hawkop init` (stores credentials locally — no env var needed for local/agentic use)
+- For the raw API path (curl): `HAWK_API_KEY` set as an environment variable
 - `jq` installed (used for JSON processing in the raw API path)
 
 ## Installation
@@ -52,7 +52,7 @@ Once installed, Claude will use the StackHawk API skill when you ask questions l
 
 ## Security Note
 
-Never hardcode your API key. Always set it as `$HAWK_API_KEY` and reference that variable in scripts and configurations. Skill examples bridge it inline (e.g. `HAWKOP_API_KEY=$HAWK_API_KEY hawkop ...`) — you do not need to manage two separate variables.
+Never hardcode your API key. For local/agentic use, `hawkop init` stores credentials locally. For CI/CD, set `HAWKOP_API_KEY` (or `HAWK_API_KEY` for raw API calls) as a pipeline secret — never inline key values in scripts or configs.
 
 ## Resources
 

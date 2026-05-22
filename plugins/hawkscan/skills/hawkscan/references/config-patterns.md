@@ -116,4 +116,4 @@ hawk config show <field-path> --text
       value: ${COMMIT_SHA}
   ```
 
-- **Validate after every change.** Run `API_KEY=$HAWK_API_KEY hawk validate config stackhawk.yml` after any edit. Cheap; catches syntax and schema errors before a wasted scan run.
+- **Validate after every change.** Run `hawk validate config stackhawk.yml` after any edit. Cheap; catches syntax and schema errors before a wasted scan run.
