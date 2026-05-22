@@ -90,30 +90,18 @@ This saves the key to `~/.hawk/hawk.properties`.
 2. Go to Settings → API Keys
 3. Create or copy an existing key (keys only display once on creation)
 
-### Set `HAWK_API_KEY` Environment Variable (Alternative)
+### CI/CD: Set `HAWK_API_KEY` as a Secret
 
-Instead of `hawk init`, you can set the key as an env var:
+For pipeline runs where `hawk init` cannot be used interactively, set `HAWK_API_KEY` as a
+CI secret and prefix each invocation:
 
-**Bash/Zsh:**
 ```bash
-mkdir -p ~/.hawk
-echo 'export HAWK_API_KEY=hawk.xxxxxxxxxx.xxxxxxxxxx' > ~/.hawk/hawk.rc
-source ~/.hawk/hawk.rc
+API_KEY=$HAWK_API_KEY hawk scan
 ```
 
-**PowerShell:**
-```powershell
-mkdir "$HOME\.hawk"
-echo '$env:HAWK_API_KEY="hawk.xxxxxxxxxx.xxxxxxxxxx"' > $HOME\.hawk\hawk.ps1
-. $HOME\.hawk\hawk.ps1
-```
+The CLI resolves keys in this order: `--api-key` flag → `API_KEY` env var → `~/.hawk/hawk.properties`.
 
-Either method works — `hawk init` writes to `~/.hawk/hawk.properties`, while the env
-var approach uses shell config. The CLI itself reads the `API_KEY` env var (not
-`HAWK_API_KEY`); these skills standardize on `HAWK_API_KEY` as the user-facing
-name and bridge it inline at every CLI invocation (e.g.
-`API_KEY=$HAWK_API_KEY hawk scan`). The CLI resolves keys in this order:
-`--api-key` flag → `API_KEY` env var → `~/.hawk/hawk.properties`.
+For local/agentic use, `hawk init` is the preferred approach — no env var needed.
 
 ---
 
