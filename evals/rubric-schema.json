@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SkillEvalRubricResult",
+  "description": "Structured output for qualitative rubric-based skill evaluation. A grader agent reviews the skill run output and generated artifacts, then returns this JSON. Use with --output-schema (Codex) or equivalent structured-output mechanism on other platforms.",
+  "type": "object",
+  "required": ["skill", "run_id", "overall_pass", "score", "checks"],
+  "additionalProperties": false,
+  "properties": {
+    "skill": {
+      "type": "string",
+      "description": "Skill name being evaluated ('hawkscan' or 'api')"
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Identifier for this eval run — matches the 'id' column from the prompts.csv row"
+    },
+    "overall_pass": {
+      "type": "boolean",
+      "description": "True if all blocking checks passed and score >= 70. False otherwise."
+    },
+    "score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Quality score 0–100. Each failed check deducts from 100: blocking failures deduct 15 points each, warning failures deduct 5 points each."
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "pass", "notes"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Check ID from the skill's rubric-items.json"
+          },
+          "pass": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "string",
+            "description": "One sentence explaining why the check passed or failed. Quote specific output or file content when failing."
+          }
+        }
+      }
+    }
+  }
+}

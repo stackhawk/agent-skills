@@ -1,0 +1,56 @@
+{
+  "skill": "hawkscan",
+  "grader_prompt": "You are evaluating whether a hawkscan skill run produced correct, high-quality output. Review the agent's output text, the generated stackhawk.yml (if present), and the commands executed. For each check below, determine pass/fail and write a one-sentence explanation. Return a JSON object conforming to rubric-schema.json.",
+  "checks": [
+    {
+      "id": "config_interpolation_syntax",
+      "description": "stackhawk.yml uses ${VAR:default} syntax (single colon, no dash) for all variable references. The bash form ${VAR:-default} is NOT used anywhere in the file.",
+      "focus": "stackhawk.yml content — every ${...} expression"
+    },
+    {
+      "id": "host_is_full_value",
+      "description": "The host: field contains only a complete env var reference (e.g. ${APP_HOST:http://localhost:8080}). It does NOT contain a partial URL with interpolation mid-string (e.g. host: \"https://${HOST}/api\").",
+      "focus": "stackhawk.yml host: field"
+    },
+    {
+      "id": "commit_tags_at_top_level",
+      "description": "_STACKHAWK_GIT_COMMIT_SHA and _STACKHAWK_GIT_BRANCH tags appear in a top-level 'tags:' block, NOT nested under 'app:'.",
+      "focus": "stackhawk.yml overall structure — indentation of tags block"
+    },
+    {
+      "id": "agent_tag_present",
+      "description": "A _STACKHAWK_AGENT tag with value ${HAWK_AGENT:none} is present in the tags block.",
+      "focus": "stackhawk.yml tags block"
+    },
+    {
+      "id": "auth_configured_correctly",
+      "description": "If the application requires authentication: (a) an authentication: block is present in stackhawk.yml, (b) the recipe was fetched via 'hawk config show <section>' rather than written from memory, and (c) 'hawk validate auth' was run. If auth is NOT required, no authentication: block was added.",
+      "focus": "stackhawk.yml authentication section and validate auth command"
+    },
+    {
+      "id": "phase_order_respected",
+      "description": "Skill phases executed in the correct order: preflight → Step 1 (assess context) → Step 2 (config) → Step 3 (validate + scan) → Step 4 (parse findings) → Step 4.5 (triage filter) → Step 5/6 (fix + rescan). No phase was skipped or reordered.",
+      "focus": "Sequence of commands and agent decisions"
+    },
+    {
+      "id": "findings_routed_correctly",
+      "description": "FALSE_POSITIVE and RISK_ACCEPTED findings were skipped; ASSIGNED findings were prioritized over NEW; NEW findings were addressed in severity order (High → Medium → Low).",
+      "focus": "Agent's findings routing decisions and fix order"
+    },
+    {
+      "id": "rescan_decision_correct",
+      "description": "After fixing findings, 'hawk rescan --scan-id' was used (not a new full hawk scan), UNLESS one of the documented full-scan conditions applied: new API endpoints added, substantial codebase change, or baselining a new release.",
+      "focus": "Step 6 command choice and reasoning"
+    },
+    {
+      "id": "no_zap_language",
+      "description": "The agent never referred to the scanner as 'ZAP', 'OWASP ZAP', or any ZAP-derived name. It used 'HawkScan' and 'StackHawk' correctly throughout.",
+      "focus": "All agent output text"
+    },
+    {
+      "id": "state_transitions_announced",
+      "description": "The agent announced major state transitions audibly: scanning started, N vulnerabilities found (or clean), fixing in progress, rescan complete. The user was never left without visibility into what was happening.",
+      "focus": "Agent output messages throughout the run"
+    }
+  ]
+}

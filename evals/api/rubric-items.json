@@ -1,0 +1,46 @@
+{
+  "skill": "api",
+  "grader_prompt": "You are evaluating whether an api skill run produced correct, high-quality output. Review the agent's output text and the commands it executed. For each check below, determine pass/fail and write a one-sentence explanation. Return a JSON object conforming to rubric-schema.json.",
+  "checks": [
+    {
+      "id": "hawkop_used_when_available",
+      "description": "When hawkop was installed and configured, the agent used hawkop commands (hawkop scan get, hawkop app list, etc.) for the operations hawkop supports, rather than falling back to raw curl.",
+      "focus": "Commands executed — presence of hawkop vs curl calls"
+    },
+    {
+      "id": "posture_table_formatted_correctly",
+      "description": "The org posture summary is presented as a markdown table with columns: App, Environment, High, Medium, Low, Last Scan. No missing columns, no prose substitution.",
+      "focus": "Output formatting for Step 3 posture summary"
+    },
+    {
+      "id": "severity_breakdown_shown",
+      "description": "Finding counts are broken down by severity (High / Medium / Low) and clearly labeled — not just a single total count.",
+      "focus": "Output content — severity breakdown"
+    },
+    {
+      "id": "platform_links_present",
+      "description": "Every specific scan reference in the output includes an app.stackhawk.com/scans/{scanId} link so the user can drill into evidence directly.",
+      "focus": "Output links — presence of app.stackhawk.com URLs"
+    },
+    {
+      "id": "next_actions_offered",
+      "description": "After presenting results, the agent offered concrete next actions appropriate to the data: drill into High-severity apps, recommend fresh scan for stale apps, direct to platform for triage, or note that low path count may mean coverage gaps.",
+      "focus": "Post-result guidance section"
+    },
+    {
+      "id": "stale_apps_identified",
+      "description": "Apps with lastScanTimestamp older than 30 days were identified and flagged as stale in the posture output.",
+      "focus": "Step 3 posture summary — stale app detection"
+    },
+    {
+      "id": "no_false_clean_reported",
+      "description": "If any app showed an empty findings list or low path count, the agent flagged this as a potential coverage gap rather than a clean bill of health.",
+      "focus": "Output accuracy — clean result caveat"
+    },
+    {
+      "id": "triage_correctly_redirected",
+      "description": "If the user asked about triaging findings, the agent redirected them to the platform UI at app.stackhawk.com rather than attempting triage write operations via API.",
+      "focus": "Triage guidance — write operation boundary respected"
+    }
+  ]
+}
