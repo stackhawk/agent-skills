@@ -131,7 +131,7 @@ jobs:
     name: Update marketplace pin
     needs: release
     if: inputs.dry_run != true
-    runs-on: biodome-arm-2cpu
+    runs-on: agent-skills-amd-4cpu
     steps:
       - name: Biodome job setup
         uses: ./../../../../../home/runner/.github/actions/biodome-setup-v2
