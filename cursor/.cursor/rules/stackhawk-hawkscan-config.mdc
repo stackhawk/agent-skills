@@ -124,4 +124,6 @@ hawk config show <field-path> --text
       value: ${COMMIT_SHA}
   ```
 
+- **Try `https://` first — HawkScan accepts self-signed certificates.** If an app runs on HTTPS, set `host: https://localhost:<port>` and let the scanner attempt the connection. Only fall back to `http://` or investigate TLS configuration if the scan actually fails to connect with an SSL/TLS error.
+
 - **Validate after every change.** Run `hawk validate config stackhawk.yml` after any edit. Cheap; catches syntax and schema errors before a wasted scan run.
