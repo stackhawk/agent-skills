@@ -8,15 +8,18 @@ A harness connects the platform-agnostic test cases in `evals/` to a specific ag
 4. Optionally runs a rubric grader against `rubric-items.json` + `rubric-schema.json` (qualitative)
 5. Writes a results file for comparison across versions
 
-## Planned harnesses
+## Harnesses
 
-| Platform | Runner mechanism | Trace format | Status |
-|----------|-----------------|--------------|--------|
-| Codex | `codex exec --json --full-auto` | JSONL event stream | planned |
-| Claude Code | `claude -p "<prompt>" --output-format json` | JSON response | planned |
-| Gemini CLI | `gemini --prompt "<prompt>"` | stdout | planned |
-| Cursor | Manual / IDE extension | Manual review | planned |
-| Copilot | Manual / VS Code extension | Manual review | planned |
+| Platform | Type | Runner | Status |
+|----------|------|--------|--------|
+| Claude Code | Automated | `claude -p --output-format stream-json` | ✅ Done |
+| Codex | Automated | `codex exec --json --full-auto` | ✅ Done |
+| Copilot | Manual interactive | `run-evals.py` (records human observations) | ✅ Done |
+| Cursor | Manual interactive | `run-evals.py` (records human observations) | ✅ Done |
+| Gemini CLI | — | `gemini --prompt` | Planned |
+
+**Copilot**: No agentic CLI exists — `gh copilot` supports only suggest/explain.
+**Cursor**: A headless CLI (`cursor-agent --headless`) has been reported but is unverified — see `cursor/README.md`.
 
 ## Harness contract
 
