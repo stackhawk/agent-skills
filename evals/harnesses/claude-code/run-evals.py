@@ -9,6 +9,7 @@ Usage:
     python3 run-evals.py --skill hawkscan --dry-run     # print prompts, no claude calls
     python3 run-evals.py --skill hawkscan --full-auto   # allow agent to execute commands
     python3 run-evals.py --skill hawkscan --rubric      # also run qualitative rubric grader
+    python3 run-evals.py --skill hawkscan --bare        # CI mode: ANTHROPIC_API_KEY only, no keychain
 
 Requirements:
     - claude CLI installed and authenticated (https://claude.ai/code)
@@ -23,6 +24,7 @@ Output:
 import argparse
 import csv
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -213,6 +215,7 @@ def run_claude(
     run_id: str,
     plugin_dirs: list[str],
     full_auto: bool = False,
+    bare: bool = False,
     max_budget: float = 0.20,
 ) -> tuple[dict, int]:
     # Each eval runs in a fresh temp dir so there is no state leakage.
@@ -228,6 +231,8 @@ def run_claude(
             cmd += ["--plugin-dir", pd]
         if full_auto:
             cmd.append("--dangerously-skip-permissions")
+        if bare:
+            cmd.append("--bare")
 
         proc = subprocess.run(
             cmd,
@@ -268,6 +273,7 @@ def run_rubric_grader(
     skill: str,
     run_id: str,
     plugin_dirs: list[str],
+    bare: bool = False,
 ) -> dict | None:
     rubric_path = EVALS_DIR / skill / "rubric-items.json"
     schema_path = EVALS_DIR / "rubric-schema.json"
@@ -309,6 +315,8 @@ Populate the JSON result with:
     ]
     for pd in plugin_dirs:
         cmd += ["--plugin-dir", pd]
+    if bare:
+        cmd.append("--bare")
 
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
@@ -341,6 +349,8 @@ def main() -> None:
                         help="Run qualitative rubric grader after process checks (extra cost + time)")
     parser.add_argument("--full-auto", action="store_true",
                         help="Pass --dangerously-skip-permissions so the agent can execute commands")
+    parser.add_argument("--bare", action="store_true",
+                        help="Pass --bare to claude: ANTHROPIC_API_KEY only, no keychain/hooks/CLAUDE.md (recommended for CI)")
     parser.add_argument("--max-budget", type=float, default=0.20, metavar="USD",
                         help="Max spend per eval run in USD (default: 0.20)")
     parser.add_argument("--plugin-dir", action="append", dest="plugin_dirs",
@@ -366,6 +376,8 @@ def main() -> None:
         prompts = all_prompts
 
     mode = "full-auto" if args.full_auto else "observe"
+    if args.bare:
+        mode += "+bare"
     print(f"\nSkill: {skill}  |  Platform: claude-code  |  Mode: {mode}  |  Prompts: {len(prompts)}")
     if args.dry_run:
         print("[dry-run — no claude calls]")
@@ -390,6 +402,7 @@ def main() -> None:
         parsed, _exit = run_claude(
             prompt, skill, run_id, plugin_dirs,
             full_auto=args.full_auto,
+            bare=args.bare,
             max_budget=args.max_budget,
         )
         total_cost += parsed.get("cost_usd", 0.0)
@@ -409,7 +422,7 @@ def main() -> None:
         rubric_result = None
         if args.rubric and should_trigger and did_trigger:
             print("  [rubric] grading…", end=" ", flush=True)
-            rubric_result = run_rubric_grader(parsed, skill, run_id, plugin_dirs)
+            rubric_result = run_rubric_grader(parsed, skill, run_id, plugin_dirs, bare=args.bare)
             print(f"score={rubric_result.get('score', '?')}" if rubric_result else "failed")
 
         result = {
@@ -489,6 +502,65 @@ def main() -> None:
         ],
     }
     (RESULTS_DIR / skill / "summary.json").write_text(json.dumps(summary, indent=2))
+
+    # ── GitHub Actions step summary ────────────────────────────────────────
+    step_summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if step_summary_path:
+        _write_step_summary(
+            step_summary_path, skill, all_results,
+            false_pos, false_neg, avg_score, total_blocking, total_cost,
+        )
+
+    # ── Exit non-zero for CI on any regression ─────────────────────────────
+    if false_pos or false_neg or total_blocking > 0:
+        sys.exit(1)
+
+
+def _write_step_summary(
+    path: str,
+    skill: str,
+    results: list[dict],
+    false_pos: list[dict],
+    false_neg: list[dict],
+    avg_score: int | None,
+    total_blocking: int,
+    total_cost: float,
+) -> None:
+    correct = sum(1 for r in results if r["trigger_correct"])
+    total = len(results)
+    trigger_icon = "✅" if correct == total else "❌"
+    score_icon = "✅" if (avg_score or 0) >= 70 and total_blocking == 0 else "❌"
+
+    lines = [
+        f"## Skill Eval: `{skill}` (claude-code)\n",
+        "| Metric | Value |",
+        "|---|---|",
+        f"| Trigger accuracy | {trigger_icon} {correct}/{total} |",
+    ]
+    if false_pos:
+        lines.append(f"| False positives | ⚠️ {', '.join(r['run_id'] for r in false_pos)} |")
+    if false_neg:
+        lines.append(f"| False negatives | ⚠️ {', '.join(r['run_id'] for r in false_neg)} |")
+    if avg_score is not None:
+        lines.append(f"| Process avg score | {score_icon} {avg_score}/100 |")
+        lines.append(f"| Blocking failures | {'❌' if total_blocking else '✅'} {total_blocking} |")
+    lines.append(f"| Total cost | ${total_cost:.3f} |")
+    lines.append("")
+
+    # Per-run table
+    lines += [
+        "<details><summary>Per-run results</summary>\n",
+        "| ID | Trigger | Score | Cost |",
+        "|---|---|---|---|",
+    ]
+    for r in results:
+        t = "✅" if r["trigger_correct"] else "❌"
+        score = r["scoring"]["score"] if r["process_checks"] else "—"
+        lines.append(f"| {r['run_id']} | {t} | {score} | ${r['cost_usd']:.3f} |")
+    lines.append("\n</details>\n")
+
+    with open(path, "a") as f:
+        f.write("\n".join(lines) + "\n")
 
 
 if __name__ == "__main__":

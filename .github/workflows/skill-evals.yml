@@ -1,0 +1,182 @@
+name: Skill Evals
+
+on:
+  pull_request:
+    paths:
+      - "plugins/**"
+      - "evals/**"
+      - ".github/workflows/skill-evals.yml"
+  workflow_dispatch:
+    inputs:
+      skill:
+        description: "Skill to evaluate"
+        required: true
+        default: "both"
+        type: choice
+        options: [hawkscan, api, both]
+      rubric:
+        description: "Run qualitative rubric grader (slower, ~$0.10 extra per run)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  eval:
+    name: eval / ${{ matrix.skill }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: [hawkscan, api]
+    # On workflow_dispatch with a specific skill, skip the other matrix leg.
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      inputs.skill == 'both' ||
+      inputs.skill == matrix.skill
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Verify claude CLI
+        run: claude --version
+
+      - name: Run ${{ matrix.skill }} evals
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          RUBRIC_FLAG=""
+          if [ "${{ inputs.rubric }}" = "true" ]; then
+            RUBRIC_FLAG="--rubric"
+          fi
+          python3 evals/harnesses/claude-code/run-evals.py \
+            --skill ${{ matrix.skill }} \
+            --bare \
+            --max-budget 0.15 \
+            $RUBRIC_FLAG
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-${{ matrix.skill }}
+          path: evals/harnesses/claude-code/results/${{ matrix.skill }}/
+          retention-days: 30
+
+  comment:
+    name: Post PR summary
+    needs: eval
+    # Run even if evals failed so the comment always appears on PRs.
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: eval-results-*
+          merge-multiple: false
+          path: results/
+
+      - name: Build and post comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const needsResult = ${{ toJSON(needs.eval.result) }};
+            const overallIcon = needsResult === 'success' ? '✅' : '❌';
+
+            let body = `## ${overallIcon} Skill Eval Results\n\n`;
+
+            for (const skill of ['hawkscan', 'api']) {
+              const summaryPath = path.join(
+                'results', `eval-results-${skill}`, skill, 'summary.json'
+              );
+
+              if (!fs.existsSync(summaryPath)) {
+                body += `### \`${skill}\`\n⚠️ No results — eval job may have failed or been skipped.\n\n`;
+                continue;
+              }
+
+              const s = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
+              const ta = s.trigger_accuracy;
+              const triggerIcon = ta.correct === ta.total ? '✅' : '❌';
+              const scoreIcon =
+                s.process_avg_score !== null && s.process_avg_score >= 70 &&
+                s.total_blocking_failures === 0 ? '✅' : '❌';
+
+              body += `### \`${skill}\`\n`;
+              body += `| Metric | Value |\n|---|---|\n`;
+              body += `| Trigger accuracy | ${triggerIcon} ${ta.correct}/${ta.total} |\n`;
+
+              if (s.false_positives?.length) {
+                body += `| False positives | ⚠️ \`${s.false_positives.join('`, `')}\` |\n`;
+              }
+              if (s.false_negatives?.length) {
+                body += `| False negatives | ⚠️ \`${s.false_negatives.join('`, `')}\` |\n`;
+              }
+              if (s.process_avg_score !== null) {
+                body += `| Process avg score | ${scoreIcon} ${s.process_avg_score}/100 |\n`;
+                body += `| Blocking failures | ${s.total_blocking_failures > 0 ? '❌' : '✅'} ${s.total_blocking_failures} |\n`;
+              }
+              body += `| Cost | \$${s.total_cost_usd.toFixed(3)} |\n\n`;
+
+              // Per-run detail table
+              if (s.runs?.length) {
+                body += '<details><summary>Per-run detail</summary>\n\n';
+                body += '| ID | Trigger ✓ | Score |\n|---|---|---|\n';
+                for (const run of s.runs) {
+                  const t = run.trigger_correct ? '✅' : '❌';
+                  body += `| \`${run.run_id}\` | ${t} | ${run.score ?? '—'} |\n`;
+                }
+                body += '\n</details>\n\n';
+              }
+            }
+
+            body += `---\n_Triggered by commit ${context.sha.slice(0, 7)}. `;
+            body += `[View full results in workflow artifacts.](`;
+            body += `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})_\n`;
+
+            // Find and update existing eval comment, or create a new one.
+            const marker = '<!-- skill-eval-comment -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes(marker));
+
+            const fullBody = marker + '\n' + body;
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: fullBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: fullBody,
+              });
+            }
