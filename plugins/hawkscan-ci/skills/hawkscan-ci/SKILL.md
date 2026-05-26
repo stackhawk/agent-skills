@@ -65,6 +65,8 @@ ls bitbucket-pipelines.yml 2>/dev/null
 ls .buildkite/pipeline.yml 2>/dev/null
 ls .travis.yml 2>/dev/null
 ls -d bamboo-specs 2>/dev/null
+ls concourse/*.yml pipeline.yml 2>/dev/null
+ls -d harness 2>/dev/null
 ls appspec.yml buildspec.yml 2>/dev/null
 ```
 
@@ -80,6 +82,8 @@ ls appspec.yml buildspec.yml 2>/dev/null
 | `.travis.yml` | Travis CI |
 | `bamboo-specs/` | Bamboo |
 | `appspec.yml`, `buildspec.yml` | AWS CodeBuild / CodeDeploy |
+| `concourse/*.yml`, `pipeline.yml` (heuristic) | Concourse |
+| `harness/` | Harness |
 
 - **One match** → use it.
 - **Multiple matches** → ask: *"I see CI config for both X and Y in this repo. Which one should HawkScan run from?"*
@@ -279,7 +283,7 @@ After writing/patching the workflow file:
    - If the scan job should be a required check, update branch protection rules in the provider UI
    - Confirm `stackhawk.yml` `applicationId` and `host` match the environment the pipeline will scan (preview URL vs ephemeral env vs local-in-runner)
 3. **Set expectations:**
-   > *"First pipeline run will be slower — HawkScan creates the App and Env in the platform if they don't exist (~30s). Subsequent runs reuse them."*
+   > *"First pipeline run will be slower — HawkScan creates the App and Env in the platform if they don't exist, and the initial full scan has no prior baseline to diff against. Subsequent runs reuse the App and Env and are faster."*
 4. **Stop.** Do not trigger the pipeline. Do not push the branch. Do not open the PR. The user owns the merge story.
 
 ---
