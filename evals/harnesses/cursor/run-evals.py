@@ -260,12 +260,15 @@ def run_cursor(
     try:
         _setup_workspace(skill, tmpdir)
 
+        api_key = os.environ.get("CURSOR_API_KEY", "")
         cmd = [
             "agent", "-p", prompt,
             "--output-format", "stream-json",
             "--print",
             "--trust",
         ]
+        if api_key:
+            cmd += ["--api-key", api_key]
         if model:
             cmd += ["--model", model]
         if full_auto:

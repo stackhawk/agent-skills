@@ -15,11 +15,11 @@ on:
         type: choice
         options: [hawkscan, api, both]
       platform:
-        description: "Platform to run (all = claude-code + codex + gemini)"
+        description: "Platform to run (all = claude-code + codex + gemini + cursor)"
         required: true
         default: "all"
         type: choice
-        options: [all, claude-code, codex, gemini]
+        options: [all, claude-code, codex, gemini, cursor]
       rubric:
         description: "Run qualitative rubric grader (slower, ~$0.10 extra per run)"
         required: false
@@ -35,6 +35,7 @@ permissions:
 #   ANTHROPIC_API_KEY  — Anthropic API key for Claude Code evals
 #   OPENAI_API_KEY     — OpenAI API key for Codex evals
 #   GEMINI_API_KEY     — Google Gemini API key for Gemini CLI evals
+#   CURSOR_API_KEY     — Cursor API key for Cursor agent evals (Cursor Pro required)
 # ---------------------------------------------------------------------------
 
 jobs:
@@ -194,10 +195,56 @@ jobs:
           path: evals/harnesses/gemini/results/${{ matrix.skill }}/
           retention-days: 30
 
+  # ── Cursor ────────────────────────────────────────────────────────────────
+  eval-cursor:
+    name: cursor / ${{ matrix.skill }}
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      inputs.platform == 'all' ||
+      inputs.platform == 'cursor'
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: [hawkscan, api]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Cursor CLI
+        run: npm install -g @cursor/cli || npm install -g cursor-agent
+        continue-on-error: true  # package name TBD; update when stable
+
+      - name: Verify agent CLI
+        run: agent --version
+
+      - name: Run ${{ matrix.skill }} evals
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: |
+          python3 evals/harnesses/cursor/run-evals.py \
+            --skill ${{ matrix.skill }}
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-cursor-${{ matrix.skill }}
+          path: evals/harnesses/cursor/results/${{ matrix.skill }}/
+          retention-days: 30
+
   # ── PR comment ────────────────────────────────────────────────────────────
   comment:
     name: Post PR summary
-    needs: [eval-claude-code, eval-codex, eval-gemini]
+    needs: [eval-claude-code, eval-codex, eval-gemini, eval-cursor]
     if: always() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -223,7 +270,7 @@ jobs:
 
             let body = `## ${overallIcon} Skill Eval Results\n\n`;
 
-            const platforms = ['claude-code', 'codex', 'gemini'];
+            const platforms = ['claude-code', 'codex', 'gemini', 'cursor'];
             const skills = ['hawkscan', 'api'];
 
             for (const platform of platforms) {
