@@ -224,7 +224,7 @@ grep -rn --include="requirements*.txt" --include="pyproject.toml" \
   -E '^(sqlalchemy|django|pymongo|motor|psycopg2|pymysql)' . 2>/dev/null | head -3
 ```
 
-**Meaning:** Storage kind `http`. No seed step. Bootstrap focuses on startup and the upstream dependency map. Upstream deps found in env config (§5) may have their own storage — trace those repos separately.
+**Meaning:** Storage kind `http`. No seed step. Bootstrap focuses on startup and the upstream dependency map. Upstream deps found in env config (see the Environment Config Detection section below) may have their own storage — trace those repos separately.
 
 ---
 
@@ -274,7 +274,7 @@ grep -rn --include="*.java" --include="*.kt" \
 # Factory files (Ruby FactoryBot, Python factory_boy, JS/TS)
 find . -not -path "*/node_modules/*" -not -path "*/target/*" \
   -not -path "*/build/*" -not -path "*/vendor/*" -not -path "*/.git/*" \
-  -path "*/factories/*.rb" -o -path "*/factories/*.py" \
+  \( -path "*/factories/*.rb" -o -path "*/factories/*.py" \) \
   2>/dev/null | head -5
 
 # No Flyway, Liquibase, or Alembic (confirm absence)
@@ -297,22 +297,25 @@ step type for the service's HTTP surface.
 ```bash
 # OpenAPI/Swagger specs
 find . -not -path "*/node_modules/*" -not -path "*/vendor/*" \
+  -not -path "*/target/*" -not -path "*/build/*" -not -path "*/.git/*" \
   \( -name "openapi*.yaml" -o -name "openapi*.json" \
      -o -name "swagger*.yaml" -o -name "swagger*.json" \) \
   2>/dev/null | head -5
 
 # gRPC .proto files
 find . -not -path "*/node_modules/*" -not -path "*/vendor/*" \
+  -not -path "*/target/*" -not -path "*/build/*" -not -path "*/.git/*" \
   -name "*.proto" \
   2>/dev/null | head -5
 
 # GraphQL schema
 find . -not -path "*/node_modules/*" -not -path "*/vendor/*" \
+  -not -path "*/target/*" -not -path "*/build/*" -not -path "*/.git/*" \
   \( -name "*.graphql" -o -name "schema.graphql" \) \
   2>/dev/null | head -5
 
 # .NET ASP.NET Core
-find . -not -path "*/bin/*" -not -path "*/obj/*" \
+find . -not -path "*/bin/*" -not -path "*/obj/*" -not -path "*/.git/*" \
   \( -name "*.csproj" -o -name "Program.cs" \) \
   2>/dev/null | head -5
 ```
@@ -360,7 +363,7 @@ grep -rn --include="*.js" --include="*.ts" \
 
 **If two or more signals are found** (or one clear framework-level signal like `AddAuthentication(` or `class SecurityConfig`): auth is required. The manifest seed step must include a user row. Also surface: the login endpoint path, the expected credential fields, and any role required to reach the target data.
 
-**Python / Ruby / Go** auth signals are not listed above — use env config (§5) to find JWT secrets, OAuth client IDs, or session cookie keys as auth indicators.
+**Python / Ruby / Go** auth signals are not listed above — use env config (see the Environment Config Detection section below) to find JWT secrets, OAuth client IDs, or session cookie keys as auth indicators.
 
 ---
 
@@ -427,8 +430,10 @@ grep -rn --include="appsettings*.json" \
 ```
 
 Each URL or hostname found is a candidate upstream dependency in the service
-model. Cross-reference against Docker Compose service names (§6) and the
-cross-repo dependency map.
+model. Cross-reference against Docker Compose service names (see the Docker
+Compose Service and Port Detection section below) and the cross-repo dependency
+map. See `cross-repo-deps.md` for how upstream-service references resolve to
+local repo paths.
 
 ---
 
