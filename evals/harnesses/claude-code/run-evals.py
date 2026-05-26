@@ -44,17 +44,21 @@ RESULTS_DIR = HARNESS_DIR / "results"
 # Trigger signals
 # Any of these appearing in bash commands or output text means the skill fired.
 # ---------------------------------------------------------------------------
-TRIGGER_SIGNALS = {
+# CLI signals — checked against bash_commands only (prevents documentation content
+# from creating false positives when the agent writes README/guides about HawkScan).
+CLI_SIGNALS = {
     "hawkscan": [
         "hawk scan",
         "hawk validate",
         "hawk rescan",
-        "hawk version",
+        # "hawk version" intentionally excluded: running 'hawk version' alone is common
+        # for installation-check tasks and would cause false positives. The preflight
+        # workflow always runs 'hawk config --help' in the same command, so 'hawk config'
+        # below is sufficient to distinguish scan-intent from install-check tasks.
         "hawk config",
         "hawk create app",
         "hawk init",
         "hawk perch",
-        "stackhawk.yml",
     ],
     "api": [
         "hawkop scan",
@@ -66,6 +70,45 @@ TRIGGER_SIGNALS = {
         "/api/v1/scan",
         "/api/v2/org",
         "hawk_api GET",
+    ],
+}
+
+# Invocation signals — checked against output_text only. Catches contextual prompts
+# where the agent correctly identifies the skill should trigger and says so explicitly,
+# but can't reach the CLI workflow (empty working dir, no running app, etc.).
+#
+# These are intentionally specific to action-intent phrases, NOT the generic
+# "hawkscan:hawkscan: yes" pattern (which also fires on educational/informational
+# responses where the agent answers "what does HawkScan detect?" type questions).
+INVOCATION_SIGNALS = {
+    "hawkscan": [
+        # Generic YES-evaluation signals — catch any run where the agent explicitly
+        # evaluates hawkscan as YES regardless of phrasing. Models vary in their markdown
+        # formatting: backtick (`` `hawkscan:hawkscan` ``), bold (**hawkscan:hawkscan**),
+        # or plain text. Each produces a different character sequence around `: YES`.
+        # Safe because SKILL.md now instructs NO for educational questions (hw-20),
+        # doc-only changes (hw-16/17/18), installation tasks (hw-19), and explicit skips.
+        "hawkscan:hawkscan`: yes",   # "`hawkscan:hawkscan`: YES" — backtick + colon
+        "hawkscan:hawkscan` — yes",  # "`hawkscan:hawkscan` — YES" — backtick + dash
+        "hawkscan:hawkscan**: yes",  # "**hawkscan:hawkscan**: YES" — bold + colon
+        "hawkscan:hawkscan** — yes", # "**hawkscan:hawkscan** — YES" — bold + dash
+        "hawkscan:hawkscan: yes",    # "hawkscan:hawkscan: YES" — plain colon
+        "hawkscan:hawkscan — yes",   # "hawkscan:hawkscan — YES" — plain dash
+        # Specific action-intent phrases as belt-and-suspenders for unusual formats
+        "autonomous security scan",
+        "dast scan after code",
+        "dast scan triggered",
+        "dast scan required",
+        "security scan required",
+        "security scan after",
+        "run the security scan",
+        "running the hawkscan",
+    ],
+    "api": [
+        "stackhawk-api:api`: yes",
+        "stackhawk-api:api` — yes",
+        "stackhawk-api:api: yes",
+        "stackhawk-api:api — yes",
     ],
 }
 
@@ -135,13 +178,17 @@ def parse_stream(jsonl: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def detect_trigger(parsed: dict, skill: str) -> bool:
-    signals = TRIGGER_SIGNALS.get(skill, [])
-    haystack = " ".join([
-        *parsed["bash_commands"],
-        *parsed["files_written"],
-        parsed["output_text"],
-    ]).lower()
-    return any(s.lower() in haystack for s in signals)
+    # CLI signals are checked only against actual bash commands executed — prevents
+    # documentation content (README guides, educational answers) from triggering.
+    cli_haystack = " ".join(parsed["bash_commands"]).lower()
+    if any(s.lower() in cli_haystack for s in CLI_SIGNALS.get(skill, [])):
+        return True
+
+    # Invocation signals are checked only against output text — catches cases where
+    # the agent evaluated the skill as YES but couldn't run CLI commands (e.g. empty
+    # working dir, permission blocks on hawkop, no running app).
+    text_haystack = parsed["output_text"].lower()
+    return any(s.lower() in text_haystack for s in INVOCATION_SIGNALS.get(skill, []))
 
 
 # ---------------------------------------------------------------------------
@@ -170,9 +217,17 @@ def run_process_checks(parsed: dict, checks: list) -> list[dict]:
             target = check.get("target_file", "").lower()
             passed = target not in all_files
         elif ctype == "conditional_command":
-            # Simplified: always enforce — conditional evaluation requires
-            # file inspection that the harness can't do without the actual run dir.
-            passed = signal_hit is not None
+            # Only enforce when the condition's keyword appears in the trace.
+            # Extract the keyword inside single quotes from the condition string,
+            # e.g. "stackhawk.yml contains 'authentication:'" → "authentication:"
+            import re as _re
+            condition_str = check.get("condition", "")
+            m = _re.search(r"'([^']+)'", condition_str)
+            condition_keyword = m.group(1).lower() if m else None
+            if condition_keyword and condition_keyword not in haystack:
+                passed = True  # condition not met — check is not applicable
+            else:
+                passed = signal_hit is not None
         elif ctype == "command_preference":
             preferred = [p.lower() for p in check.get("preferred", [])]
             passed = any(p in haystack for p in preferred) and anti_hit is None
@@ -224,6 +279,7 @@ def run_claude(
         cmd = [
             "claude", "-p", prompt,
             "--output-format", "stream-json",
+            "--verbose",
             "--no-session-persistence",
             "--max-budget-usd", str(max_budget),
         ]

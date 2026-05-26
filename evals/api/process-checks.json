@@ -24,11 +24,11 @@
     {
       "id": "step1_org_id_established",
       "phase": "step_1",
-      "description": "Agent establishes orgId before making org-scoped API calls.",
+      "description": "Agent establishes orgId before making org-scoped API calls. hawkop implicitly knows the org from its stored config, so hawkop status is sufficient.",
       "type": "command_executed",
-      "signals": ["hawkop org get", "ORG_ID", "organization.id", "orgId"],
+      "signals": ["hawkop org get", "hawkop status", "ORG_ID", "organization.id", "orgId"],
       "severity": "blocking",
-      "failure_guidance": "Most raw API endpoints require orgId. Missing it returns empty results without an error — easily misread as 'no apps scanned'."
+      "failure_guidance": "Most raw API endpoints require orgId. Missing it returns empty results without an error — easily misread as 'no apps scanned'. When using hawkop, 'hawkop status' confirms the org is known."
     },
     {
       "id": "step3_hawkop_preferred_when_available",
@@ -98,8 +98,7 @@
       "id": "antipattern_no_id_confusion",
       "phase": "any",
       "description": "Agent does NOT use orgId where appId is expected (or vice versa) in API calls.",
-      "type": "command_check",
-      "signals": ["/api/v1/scan/${ORG_ID}", "hawkop scan list --app", "applicationId"],
+      "type": "command_negative",
       "anti_patterns": ["/api/v1/scan/${APP_ID}", "/scan/${APP_ID}?pageSize"],
       "severity": "blocking",
       "failure_guidance": "Mixing orgId and appId in API endpoints returns empty results without an error. /api/v1/scan/{orgId} takes the org UUID, not app UUID."

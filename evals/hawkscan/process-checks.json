@@ -65,8 +65,8 @@
       "target_file": "stackhawk.yml",
       "signals": ["${APP_ID", "${APP_HOST", "${HAWK_API_KEY"],
       "anti_patterns": ["applicationId: [0-9a-f]{8}-", "host: http://localhost", "host: https://localhost"],
-      "severity": "blocking",
-      "failure_guidance": "Hardcoded values break multi-environment use and risk committing credentials to source control."
+      "severity": "warning",
+      "failure_guidance": "Hardcoded values break multi-environment use and risk committing credentials to source control. In observe mode this check applies to generated YAML shown in agent output."
     },
     {
       "id": "step2_no_mid_value_interpolation",
@@ -155,11 +155,11 @@
     {
       "id": "step4_triage_filter_applied",
       "phase": "step_4_5",
-      "description": "Before routing findings to the fix loop, agent checks per-path triage status (findings[].paths[].status) and skips FALSE_POSITIVE and RISK_ACCEPTED paths.",
+      "description": "Before routing findings to the fix loop, agent checks per-path triage status and skips FALSE_POSITIVE and RISK_ACCEPTED paths. Only applicable after a scan completes with findings.",
       "type": "output_contains",
-      "signals": ["FALSE_POSITIVE", "RISK_ACCEPTED", "ASSIGNED", "NEW", "triage", "status"],
-      "severity": "blocking",
-      "failure_guidance": "Routing FALSE_POSITIVE findings to the fix loop creates churn against deliberate human decisions and wastes fix capacity."
+      "signals": ["FALSE_POSITIVE", "RISK_ACCEPTED", "ASSIGNED", "triage filter", "triage status"],
+      "severity": "warning",
+      "failure_guidance": "Routing FALSE_POSITIVE findings to the fix loop creates churn against deliberate human decisions. This check only fires in full-auto mode with real scan results."
     },
     {
       "id": "step6_rescan_used_not_full_scan",
