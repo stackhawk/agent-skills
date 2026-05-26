@@ -41,28 +41,61 @@ RESULTS_DIR = HARNESS_DIR / "results"
 # ---------------------------------------------------------------------------
 # Trigger signals
 # ---------------------------------------------------------------------------
-TRIGGER_SIGNALS = {
+# CLI signals — checked against bash_commands only (prevents documentation content
+# from creating false positives when the agent writes README/guides about HawkScan).
+CLI_SIGNALS = {
     "hawkscan": [
         "hawk scan",
         "hawk validate",
         "hawk rescan",
-        "hawk version",
+        # "hawk version" excluded: running 'hawk version' alone is common for
+        # installation-check tasks and would cause false positives. The preflight
+        # workflow always also runs 'hawk config --help', so 'hawk config' below suffices.
         "hawk config",
         "hawk create app",
         "hawk init",
         "hawk perch",
-        "stackhawk.yml",
+    ],
+    # Signals specific to the api reporting workflow — avoids false positives
+    # from hawkop status/app/env commands that the hawkscan skill also runs.
+    "api": [
+        "hawkop scan get",     # api Step 4: app deep dive
+        "hawkop org get",      # api Step 1: establish orgId
+        "hawkop org set",      # api Step 1: switch org
+        "/api/v2/org",         # api Step 3: org posture endpoint (hawkop doesn't wrap it)
+        "/api/v1/scan",        # api Step 4: raw scan drill-down
+        "hawk_api GET",        # api raw API helper function
+    ],
+}
+
+# Invocation signals — checked against output_text only. In full-auto mode these are
+# belt-and-suspenders: the agent usually runs CLI commands directly. They catch
+# contextual prompts where the skill fires but the agent finds an empty working dir
+# and stops before reaching the CLI (same as observe mode in Claude Code harness).
+INVOCATION_SIGNALS = {
+    "hawkscan": [
+        # All markdown formatting variants the model uses around `: YES` or ` — YES`
+        "hawkscan:hawkscan`: yes",   # backtick + colon
+        "hawkscan:hawkscan` — yes",  # backtick + dash
+        "hawkscan:hawkscan**: yes",  # bold + colon
+        "hawkscan:hawkscan** — yes", # bold + dash
+        "hawkscan:hawkscan: yes",    # plain colon
+        "hawkscan:hawkscan — yes",   # plain dash
+        # Specific action-intent phrases
+        "autonomous security scan",
+        "dast scan after code",
+        "dast scan triggered",
+        "dast scan required",
+        "security scan required",
+        "security scan after",
+        "run the security scan",
+        "running the hawkscan",
     ],
     "api": [
-        "hawkop scan",
-        "hawkop app",
-        "hawkop org",
-        "hawkop env",
-        "hawkop status",
-        "hawkop init",
-        "/api/v1/scan",
-        "/api/v2/org",
-        "hawk_api GET",
+        "stackhawk-api:api`: yes",
+        "stackhawk-api:api` — yes",
+        "stackhawk-api:api: yes",
+        "stackhawk-api:api — yes",
     ],
 }
 
@@ -102,8 +135,11 @@ def parse_stream(jsonl: str) -> dict:
 
         elif etype == "item.completed":
             item = event.get("item", {})
-            # Capture any assistant message text
-            if item.get("type") == "message":
+            # Capture any assistant message text — Codex uses "agent_message" type
+            if item.get("type") in ("message", "agent_message"):
+                text = item.get("text", "")
+                if text:
+                    output_text += text + "\n"
                 content = item.get("content", "")
                 if isinstance(content, str):
                     output_text += content + "\n"
@@ -132,11 +168,12 @@ def parse_stream(jsonl: str) -> dict:
 
 
 def _setup_skill_in_dir(skill: str, target_dir: Path) -> None:
-    """Copy skill SKILL.md + references into .codex/skills/<skill>/ for discovery."""
-    src = REPO_ROOT / "plugins" / skill / "skills" / skill
-    dst = target_dir / ".codex" / "skills" / skill
-    if src.exists():
-        shutil.copytree(src, dst, dirs_exist_ok=True)
+    """No-op: skills are installed globally via 'codex plugin add <skill>@stackhawk'.
+    Run: codex plugin marketplace add /path/to/agent-skills
+         codex plugin add hawkscan@stackhawk
+         codex plugin add api@stackhawk
+    """
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -144,13 +181,16 @@ def _setup_skill_in_dir(skill: str, target_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def detect_trigger(parsed: dict, skill: str) -> bool:
-    signals = TRIGGER_SIGNALS.get(skill, [])
-    haystack = " ".join([
-        *parsed["bash_commands"],
-        *parsed["files_written"],
-        parsed["output_text"],
-    ]).lower()
-    return any(s.lower() in haystack for s in signals)
+    # CLI signals checked against actual bash commands only — prevents README/educational
+    # output text from creating false positives.
+    cli_haystack = " ".join(parsed["bash_commands"]).lower()
+    if any(s.lower() in cli_haystack for s in CLI_SIGNALS.get(skill, [])):
+        return True
+
+    # Invocation signals checked against output text only — belt-and-suspenders for
+    # contextual prompts where the skill fires but no CLI commands run (empty dir, etc.)
+    text_haystack = parsed["output_text"].lower()
+    return any(s.lower() in text_haystack for s in INVOCATION_SIGNALS.get(skill, []))
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +219,15 @@ def run_process_checks(parsed: dict, checks: list) -> list[dict]:
             target = check.get("target_file", "").lower()
             passed = target not in all_files
         elif ctype == "conditional_command":
-            passed = signal_hit is not None
+            # Only enforce when the condition's keyword appears in the trace.
+            import re as _re
+            condition_str = check.get("condition", "")
+            m = _re.search(r"'([^']+)'", condition_str)
+            condition_keyword = m.group(1).lower() if m else None
+            if condition_keyword and condition_keyword not in haystack:
+                passed = True  # condition not met — check not applicable
+            else:
+                passed = signal_hit is not None
         elif ctype == "command_preference":
             preferred = [p.lower() for p in check.get("preferred", [])]
             passed = any(p in haystack for p in preferred) and anti_hit is None
@@ -227,9 +275,13 @@ def run_codex(
     try:
         _setup_skill_in_dir(skill, tmpdir)
 
-        cmd = ["codex", "exec", "--json"]
-        if full_auto:
-            cmd.append("--full-auto")
+        cmd = [
+            "codex", "exec", "--json",
+            "--sandbox", "workspace-write",
+            "--skip-git-repo-check",
+        ]
+        if not full_auto:
+            cmd += ["--sandbox", "read-only"]
         cmd.append(prompt)
 
         proc = subprocess.run(
