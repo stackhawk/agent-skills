@@ -343,20 +343,24 @@ ON CONFLICT (id) DO NOTHING;
 ### 3. `bootstrap/eyas/002-users.sql`
 
 The password is bcrypt-hashed at insert time using PostgreSQL's `pgcrypto` extension
-(`crypt()` + `gen_salt('bf')`). This avoids ever storing a plaintext password in a
-checked-in file. The `pgcrypto` extension ships with standard Postgres distributions and is
-enabled in eyas's migration scripts.
+(`crypt()` + `gen_salt('bf')`). The `pgcrypto` extension ships with standard Postgres
+distributions and is enabled in eyas's migration scripts.
+
+The password is supplied via `psql -v test_pass="..."` substitution (the `:'test_pass'`
+placeholder expands at execution time) so the plaintext does not live in a checked-in file.
+The Runner (Tool C) will use the same pattern.
 
 ```sql
 -- Bootstrap seed: create hawkscan-test user in eyas
 -- Idempotent via INSERT ... ON CONFLICT DO NOTHING
 -- Requires: pgcrypto extension (CREATE EXTENSION IF NOT EXISTS pgcrypto;)
+-- Supply password via: psql -v test_pass="$TEST_PASS" -f 002-users.sql
 
 INSERT INTO users (id, email, password_hash, created_at)
 VALUES (
   '00000000-0000-0000-0000-000000000002',
   'hawkscan-test@example.com',
-  crypt('HawkScanTest1!', gen_salt('bf')),  -- bcrypt; requires pgcrypto extension
+  crypt(:'test_pass', gen_salt('bf')),  -- :test_pass supplied via psql -v test_pass="$TEST_PASS"
   CURRENT_TIMESTAMP
 )
 ON CONFLICT (email) DO NOTHING;
@@ -390,7 +394,7 @@ VALUES (
   '00000000-0000-0000-0000-000000000001',
   CURRENT_TIMESTAMP
 )
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (name, org_id) DO NOTHING;
 ```
 
 ### 6. `bootstrap/falcon/001-link-app-to-env.http`
@@ -618,7 +622,8 @@ set +a
 psql "${EYAS_DB_URL}" -f bootstrap/eyas/001-orgs.sql
 
 # Create test user (bcrypt hash computed inside Postgres via pgcrypto)
-psql "${EYAS_DB_URL}" -f bootstrap/eyas/002-users.sql
+# -v passes the plaintext password so it never lives in a checked-in file
+psql "${EYAS_DB_URL}" -v test_pass="${TEST_PASS}" -f bootstrap/eyas/002-users.sql
 
 # Link user to org
 psql "${EYAS_DB_URL}" -f bootstrap/eyas/003-memberships.sql
@@ -695,8 +700,11 @@ psql "${YARAK_DB_URL}" -c \
 
 ### falcon — env link exists
 
+> Note: this curl requires the `SESSION` cookie set in Manual Replay Step 6. Run that step first.
+
 ```bash
-curl -s "${FALCON_URL}/v1/apps/target-app-1/envs" | jq '.envs | length'
+# Requires the SESSION cookie obtained in Manual Replay Step 6
+curl -s -H "Cookie: session=${SESSION}" "${FALCON_URL}/v1/apps/target-app-1/envs" | jq '.envs | length'
 # Expected: ≥ 1
 ```
 
