@@ -88,12 +88,21 @@ INVOCATION_SIGNALS = {
         # or plain text. Each produces a different character sequence around `: YES`.
         # Safe because SKILL.md now instructs NO for educational questions (hw-20),
         # doc-only changes (hw-16/17/18), installation tasks (hw-19), and explicit skips.
-        "hawkscan:hawkscan`: yes",   # "`hawkscan:hawkscan`: YES" — backtick + colon
-        "hawkscan:hawkscan` — yes",  # "`hawkscan:hawkscan` — YES" — backtick + dash
+        "hawkscan:hawkscan`: yes",   # "`hawkscan:hawkscan`: YES" — backtick + colon (Sonnet/Haiku)
+        "hawkscan:hawkscan` — yes",  # "`hawkscan:hawkscan` — YES" — backtick + em-dash
         "hawkscan:hawkscan**: yes",  # "**hawkscan:hawkscan**: YES" — bold + colon
-        "hawkscan:hawkscan** — yes", # "**hawkscan:hawkscan** — YES" — bold + dash
+        "hawkscan:hawkscan** — yes", # "**hawkscan:hawkscan** — YES" — bold + em-dash
         "hawkscan:hawkscan: yes",    # "hawkscan:hawkscan: YES" — plain colon
-        "hawkscan:hawkscan — yes",   # "hawkscan:hawkscan — YES" — plain dash
+        "hawkscan:hawkscan — yes",   # "hawkscan:hawkscan — YES" — em-dash
+        "hawkscan:hawkscan - yes",   # "hawkscan:hawkscan - YES" — plain hyphen (Opus 4.7)
+        "hawkscan:hawkscan - **yes", # "hawkscan:hawkscan - **YES**" — bold YES (Opus 4.7)
+        # Plugin name only — Opus 4.7 sometimes omits :hawkscan suffix
+        "hawkscan**: yes",           # "**hawkscan**: YES" — bold, no skill suffix
+        "hawkscan** — yes",          # bold + em-dash, no skill suffix
+        "hawkscan** - yes",          # "**hawkscan:hawkscan** - YES" — bold name + hyphen (Opus)
+        "hawkscan: yes",             # plain colon, no skill suffix
+        "hawkscan — yes",            # em-dash, no skill suffix
+        "hawkscan - yes",            # plain hyphen, no skill suffix
         # Specific action-intent phrases as belt-and-suspenders for unusual formats
         "autonomous security scan",
         "dast scan after code",
@@ -105,10 +114,21 @@ INVOCATION_SIGNALS = {
         "running the hawkscan",
     ],
     "api": [
-        "stackhawk-api:api`: yes",
-        "stackhawk-api:api` — yes",
-        "stackhawk-api:api: yes",
-        "stackhawk-api:api — yes",
+        # Full skill name (plugin:skill) — Sonnet/Haiku format
+        "stackhawk-api:api`: yes",   # backtick + colon
+        "stackhawk-api:api` — yes",  # backtick + em-dash
+        "stackhawk-api:api**: yes",  # bold + colon
+        "stackhawk-api:api** — yes", # bold + em-dash
+        "stackhawk-api:api: yes",    # plain colon
+        "stackhawk-api:api — yes",   # em-dash
+        "stackhawk-api:api - yes",   # plain hyphen (Opus 4.7)
+        # Plugin name only (Opus 4.7 sometimes omits :api suffix)
+        "stackhawk-api**: yes",      # bold + colon, no skill suffix
+        "stackhawk-api** — yes",     # bold + em-dash, no skill suffix
+        "stackhawk-api**: yes",      # bold + colon
+        "stackhawk-api: yes",        # plain colon, no skill suffix
+        "stackhawk-api — yes",       # em-dash, no skill suffix
+        "stackhawk-api - yes",       # plain hyphen, no skill suffix
     ],
 }
 
