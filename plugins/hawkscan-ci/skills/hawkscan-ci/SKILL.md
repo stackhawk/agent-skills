@@ -65,7 +65,7 @@ ls bitbucket-pipelines.yml 2>/dev/null
 ls .buildkite/pipeline.yml 2>/dev/null
 ls .travis.yml 2>/dev/null
 ls -d bamboo-specs 2>/dev/null
-ls concourse/*.yml pipeline.yml 2>/dev/null
+ls concourse/*.yml 2>/dev/null
 ls -d harness 2>/dev/null
 ls appspec.yml buildspec.yml 2>/dev/null
 ```
@@ -82,7 +82,7 @@ ls appspec.yml buildspec.yml 2>/dev/null
 | `.travis.yml` | Travis CI |
 | `bamboo-specs/` | Bamboo |
 | `appspec.yml`, `buildspec.yml` | AWS CodeBuild / CodeDeploy |
-| `concourse/*.yml`, `pipeline.yml` (heuristic) | Concourse |
+| `concourse/*.yml` (heuristic — confirm with user) | Concourse |
 | `harness/` | Harness |
 
 - **One match** → use it.
@@ -128,9 +128,9 @@ Print the exact command/UI step the user needs to run:
 | Provider | Command / UI |
 |---|---|
 | GitHub Actions | `gh secret set HAWK_API_KEY` (paste interactively), or **Settings → Secrets and variables → Actions** |
-| GitLab CI/CD | `glab variable set HAWK_API_ID <id>` AND `glab variable set HAWK_API_SECRET <secret>` — **mandatory key split** (GitLab's masker can't handle the `.` separators in `hawk.<id>.<secret>`) |
+| GitLab CI/CD | `glab variable set HAWK_API_ID <id> --masked --protected` AND `glab variable set HAWK_API_SECRET <secret> --masked --protected` — **mandatory key split** (GitLab's masker can't handle the `.` separators in `hawk.<id>.<secret>`). Reassemble in the job: `API_KEY="hawk.${HAWK_API_ID}.${HAWK_API_SECRET}"` |
 | Jenkins | Credentials Store → Add credential → "Secret text", ID `HAWK_API_KEY` (UI only) |
-| CircleCI | `circleci secret create HAWK_API_KEY`, or org-scoped Contexts |
+| CircleCI | `circleci context store-secret <context-name> HAWK_API_KEY` (org-scoped Contexts), or **Project Settings → Environment Variables** (UI) |
 | Azure Pipelines | `az pipelines variable create --name HAWK_API_KEY --secret true`, or variable group |
 | Bitbucket | **Repository Settings → Repository variables** → add `HAWK_API_KEY`, check "Secured" |
 | Others | See [`references/execution-shapes.md`](references/execution-shapes.md) |
@@ -214,12 +214,14 @@ Provider expression cheat sheet:
 
 | Provider | `COMMIT_SHA` | `BRANCH_NAME` |
 |---|---|---|
-| GitHub Actions | `${{ github.sha }}` | `${{ github.ref_name }}` |
+| GitHub Actions | `${{ github.sha }}` | `${{ github.head_ref \|\| github.ref_name }}` |
 | GitLab CI | `${CI_COMMIT_SHA}` | `${CI_COMMIT_REF_NAME}` |
 | Jenkins | `${env.GIT_COMMIT}` | `${env.BRANCH_NAME}` (multibranch) |
 | CircleCI | `${CIRCLE_SHA1}` | `${CIRCLE_BRANCH}` |
 | Azure Pipelines | `$(Build.SourceVersion)` | `$(Build.SourceBranchName)` |
 | Bitbucket | `${BITBUCKET_COMMIT}` | `${BITBUCKET_BRANCH}` |
+| Buildkite | `${BUILDKITE_COMMIT}` | `${BUILDKITE_BRANCH}` |
+| Others | see [`references/execution-shapes.md`](references/execution-shapes.md) | see [`references/execution-shapes.md`](references/execution-shapes.md) |
 
 **Do not set `HAWK_AGENT`.** That variable attributes scans to the AI
 agent that triggered the work; a CI pipeline isn't an agent. The
@@ -249,6 +251,13 @@ Per the Step 2b choice:
 - **Warn-only:** capture the exit code, echo a clear warning
   (*"HawkScan found N findings — review at the platform URL"*), exit 0
   from the wrapper.
+  Shell-based runners:
+  ```bash
+  hawk scan || HAWK_EXIT=$?
+  [ "${HAWK_EXIT:-0}" -eq 42 ] && echo "::warning::HawkScan found findings — review at the platform URL" || true
+  exit 0
+  ```
+  GitHub Actions has a native form (`continue-on-error: true`). Full per-provider warn-only patterns: [`references/failure-semantics.md`](references/failure-semantics.md).
 
 ### 5.7 — Upload the scan artifact
 
