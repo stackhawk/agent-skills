@@ -270,6 +270,7 @@ def run_codex(
     run_id: str,
     full_auto: bool = True,
     max_budget: float = 0.20,
+    model: str | None = None,
 ) -> tuple[dict, int]:
     tmpdir = Path(tempfile.mkdtemp(prefix=f"hawkeval_{run_id}_"))
     try:
@@ -280,6 +281,8 @@ def run_codex(
             "--sandbox", "workspace-write",
             "--skip-git-repo-check",
         ]
+        if model:
+            cmd += ["-m", model]
         if not full_auto:
             cmd += ["--sandbox", "read-only"]
         cmd.append(prompt)
@@ -393,6 +396,8 @@ def main() -> None:
                         help="Run without --full-auto (restricts filesystem access)")
     parser.add_argument("--max-budget", type=float, default=0.20, metavar="USD",
                         help="Max spend per eval run in USD (default: 0.20)")
+    parser.add_argument("--model", metavar="MODEL_ID",
+                        help="Override the Codex model (e.g. o3, o4-mini, gpt-4o)")
     args = parser.parse_args()
 
     skill = args.skill
@@ -414,7 +419,8 @@ def main() -> None:
         prompts = all_prompts
 
     mode = "full-auto" if full_auto else "sandbox"
-    print(f"\nSkill: {skill}  |  Platform: codex  |  Mode: {mode}  |  Prompts: {len(prompts)}")
+    model_label = f"  |  Model: {args.model}" if args.model else ""
+    print(f"\nSkill: {skill}  |  Platform: codex  |  Mode: {mode}{model_label}  |  Prompts: {len(prompts)}")
     if args.dry_run:
         print("[dry-run — no codex calls]")
     print("─" * 68)
@@ -439,6 +445,7 @@ def main() -> None:
             prompt, skill, run_id,
             full_auto=full_auto,
             max_budget=args.max_budget,
+            model=args.model,
         )
 
         # Codex doesn't report USD cost directly; estimate from token usage

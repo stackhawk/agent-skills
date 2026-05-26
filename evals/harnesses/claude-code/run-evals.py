@@ -272,6 +272,7 @@ def run_claude(
     full_auto: bool = False,
     bare: bool = False,
     max_budget: float = 0.20,
+    model: str | None = None,
 ) -> tuple[dict, int]:
     # Each eval runs in a fresh temp dir so there is no state leakage.
     tmpdir = tempfile.mkdtemp(prefix=f"hawkeval_{run_id}_")
@@ -283,6 +284,8 @@ def run_claude(
             "--no-session-persistence",
             "--max-budget-usd", str(max_budget),
         ]
+        if model:
+            cmd += ["--model", model]
         for pd in plugin_dirs:
             cmd += ["--plugin-dir", pd]
         if full_auto:
@@ -411,6 +414,8 @@ def main() -> None:
                         help="Max spend per eval run in USD (default: 0.20)")
     parser.add_argument("--plugin-dir", action="append", dest="plugin_dirs",
                         help="Plugin dir to load; auto-detected from repo root if omitted")
+    parser.add_argument("--model", metavar="MODEL_ID",
+                        help="Override the Claude model (e.g. claude-haiku-4-5-20251001, claude-sonnet-4-6)")
     args = parser.parse_args()
 
     skill = args.skill
@@ -434,7 +439,8 @@ def main() -> None:
     mode = "full-auto" if args.full_auto else "observe"
     if args.bare:
         mode += "+bare"
-    print(f"\nSkill: {skill}  |  Platform: claude-code  |  Mode: {mode}  |  Prompts: {len(prompts)}")
+    model_label = f"  |  Model: {args.model}" if args.model else ""
+    print(f"\nSkill: {skill}  |  Platform: claude-code  |  Mode: {mode}{model_label}  |  Prompts: {len(prompts)}")
     if args.dry_run:
         print("[dry-run — no claude calls]")
     print("─" * 68)
@@ -460,6 +466,7 @@ def main() -> None:
             full_auto=args.full_auto,
             bare=args.bare,
             max_budget=args.max_budget,
+            model=args.model,
         )
         total_cost += parsed.get("cost_usd", 0.0)
 
