@@ -78,7 +78,7 @@ find . -not -path "*/node_modules/*" -not -path "*/target/*" -not -path "*/build
   2>/dev/null | head -10
 
 # Go gRPC generated files
-find . -not -path "*/vendor/*" -not -path "*/.git/*" \
+find . -not -path "*/build/*" -not -path "*/vendor/*" -not -path "*/.git/*" \
   -name '*_grpc.pb.go' \
   2>/dev/null | head -10
 ```
@@ -216,7 +216,7 @@ def normalize(name):
     name = name.lower()
     for suffix in ('-service', '_service', '-svc', '_svc'):
         if name.endswith(suffix):
-            name = name[:-len(suffix)]
+            return name[:-len(suffix)]  # strip outermost suffix, stop
     return name
 ```
 
@@ -260,6 +260,8 @@ the skill behaves as follows:
 
 - Skips all `discovery.md` storage-kind detection for that upstream — there is
   nothing to scan.
+
+See `manifest-schema.md` for the `http` step format and required fields.
 - If the remote service exposes an OpenAPI spec (e.g., via a public URL), the
   skill records the spec URL in the manifest for documentation purposes but
   does not attempt to download or parse it automatically.
