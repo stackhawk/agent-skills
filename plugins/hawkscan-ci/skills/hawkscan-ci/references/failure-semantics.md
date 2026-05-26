@@ -56,7 +56,7 @@ The exit code propagates; the job fails; the pipeline fails; the PR check turns 
 
 ```yaml
 - name: Run HawkScan (warn-only)
-  continue-on-error: false   # we explicitly handle the exit code below
+    # exit code handled explicitly below (do not use continue-on-error here)
   run: |
     set +e
     docker run --rm ... stackhawk/hawkscan:5.5.11

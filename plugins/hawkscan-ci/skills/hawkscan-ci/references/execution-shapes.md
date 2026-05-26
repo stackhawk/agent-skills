@@ -152,11 +152,10 @@ pipeline {
 ```yaml
 jobs:
   hawkscan:
-    docker:
-      - image: cimg/base:current
+    machine:
+      image: ubuntu-2404:current
     steps:
       - checkout
-      - setup_remote_docker
       - run:
           name: Start app
           command: docker compose up -d
@@ -169,12 +168,13 @@ jobs:
               -e API_KEY=$HAWK_API_KEY \
               -e COMMIT_SHA=$CIRCLE_SHA1 \
               -e BRANCH_NAME=$CIRCLE_BRANCH \
+              --network host \
               stackhawk/hawkscan:5.5.11
       - store_artifacts:
           path: hawkscan/
 ```
 
-**Gotchas:** `setup_remote_docker` runs Docker on a separate host, so localhost from inside the scanner doesn't reach app processes started in the build container. Either run the app *also* in the remote Docker host (via `docker compose`) or use a `machine:` executor for everything-on-one-host.
+**Gotchas:** the `machine:` executor runs the app and scanner on the same host, so `--network host` reaches the app. If you instead use the `docker:` executor with `setup_remote_docker`, the app and scanner run on a separate Docker host and `localhost` won't bridge between them — start the app in that same remote-Docker context and target its published port, or stay on the `machine:` executor as shown above.
 
 ### Azure Pipelines
 
@@ -199,7 +199,7 @@ jobs:
           docker pull stackhawk/hawkscan:$(HAWK_VERSION)
           docker run --rm \
             -v "$(pwd):/hawk:rw" \
-            -e API_KEY=$(HAWK_API_KEY) \
+            -e API_KEY=$HAWK_API_KEY \
             -e COMMIT_SHA=$(Build.SourceVersion) \
             -e BRANCH_NAME=$(Build.SourceBranchName) \
             --network host \
