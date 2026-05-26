@@ -108,15 +108,13 @@ INVOCATION_SIGNALS = {
 }
 
 # ---------------------------------------------------------------------------
-# Stream-json parsing
-# Gemini CLI --output-format stream-json produces JSONL. The exact event
-# types depend on the CLI version. Common patterns seen in v0.43.x:
-#   {"type":"content","value":"<text>"}      — assistant text
-#   {"type":"tool_call","name":"...","args":{}}
-#   {"type":"tool_result","output":"..."}
-#   {"type":"usage","inputTokens":N,"outputTokens":N}
-# If your version differs, inspect results/<skill>/hw-01.jsonl and update
-# the parser below accordingly.
+# Stream-json parsing — verified against Gemini CLI v0.43.x stream-json format:
+#   {"type":"init", ...}
+#   {"type":"message","role":"user","content":"..."}
+#   {"type":"message","role":"assistant","content":"...","delta":true}  ← streaming
+#   {"type":"tool_use","tool_name":"run_shell_command","parameters":{"command":"..."}}
+#   {"type":"tool_result","tool_id":"...","status":"success"}
+#   {"type":"result","status":"success","stats":{"total_tokens":N,...}}
 # ---------------------------------------------------------------------------
 
 def parse_stream(jsonl: str) -> dict:
@@ -137,51 +135,48 @@ def parse_stream(jsonl: str) -> dict:
 
         etype = event.get("type", "")
 
-        # Text content from the model
-        if etype == "content":
-            val = event.get("value", "")
-            if isinstance(val, str):
-                output_text += val + "\n"
-            elif isinstance(val, list):
-                for block in val:
+        # Assistant text — delta streaming chunks
+        if etype == "message" and event.get("role") == "assistant":
+            content = event.get("content", "")
+            if isinstance(content, str):
+                output_text += content
+                if not event.get("delta"):
+                    output_text += "\n"
+            elif isinstance(content, list):
+                for block in content:
                     if isinstance(block, dict) and block.get("type") == "text":
-                        output_text += block.get("text", "") + "\n"
+                        output_text += block.get("text", "")
 
-        # Tool calls — look for shell execution commands
-        elif etype == "tool_call":
-            name = event.get("name", "")
-            args = event.get("args", {})
-            if name in ("run_shell_command", "shell", "bash", "execute_code",
-                        "run_code", "terminal"):
-                cmd = (args.get("command") or args.get("code") or
-                       args.get("cmd") or "")
+        # Tool calls — run_shell_command carries the command in parameters
+        elif etype == "tool_use":
+            name = event.get("tool_name", "")
+            params = event.get("parameters", {})
+            if name in ("run_shell_command", "shell", "bash", "execute_bash",
+                        "execute_code", "run_code", "terminal"):
+                cmd = (params.get("command") or params.get("code") or
+                       params.get("cmd") or "")
                 if cmd:
                     bash_commands.append(cmd)
-            elif name in ("write_file", "create_file"):
-                path = args.get("path") or args.get("file_path") or ""
+            elif name in ("write_file", "create_file", "write_to_file"):
+                path = params.get("path") or params.get("file_path") or ""
                 if path:
                     files_written.append(path)
 
         # Claude Code-style assistant block (in case Gemini mimics that format)
         elif etype == "assistant":
-            for block in event.get("message", {}).get("content", []):
-                btype = block.get("type", "")
-                if btype == "text":
-                    output_text += block.get("text", "") + "\n"
-                elif btype == "tool_use":
-                    tname = block.get("name", "")
-                    inp = block.get("input", {})
-                    if tname in ("Bash", "run_bash", "shell"):
-                        cmd = inp.get("command", "")
-                        if cmd:
-                            bash_commands.append(cmd)
-                    elif tname in ("Write",):
-                        p = inp.get("file_path", "")
-                        if p:
-                            files_written.append(p)
+            pass  # kept for forward-compat if format changes
 
-        elif etype == "usage":
-            usage = event
+        # Final result carries token stats
+        elif etype == "result":
+            stats = event.get("stats", {})
+            if stats:
+                usage = {
+                    "inputTokens":  stats.get("input_tokens", 0),
+                    "outputTokens": stats.get("output_tokens", 0),
+                    "totalTokens":  stats.get("total_tokens", 0),
+                }
+            if event.get("status") == "error":
+                error = str(event.get("error", "unknown error"))
 
         elif etype == "error":
             error = event.get("message", "unknown error")
@@ -298,7 +293,7 @@ def run_gemini(
             cmd,
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=900,   # 15 min — Gemini rate-limit retries can take 5-10 min per prompt
             cwd=str(tmpdir),
             env={**os.environ},
         )
@@ -339,14 +334,12 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--full-auto", action="store_true",
                         help="Pass --approval-mode yolo so agent executes commands")
-    parser.add_argument("--model", metavar="MODEL_ID", default="gemini-2.5-pro",
-                        help="Gemini model ID (default: gemini-2.5-pro)")
+    parser.add_argument("--model", metavar="MODEL_ID", default=None,
+                        help="Gemini model ID override (default: gemini CLI's configured default, currently gemini-3-flash-preview)")
     args = parser.parse_args()
 
-    if not args.dry_run and not os.environ.get("GEMINI_API_KEY"):
-        print("ERROR: GEMINI_API_KEY not set. Export it before running.", file=sys.stderr)
-        sys.exit(1)
-
+    # Auth: Gemini supports GEMINI_API_KEY env var, Google Cloud credentials (GOOGLE_GENAI_USE_GCA),
+    # or stored OAuth via `gemini` login. The CLI will error naturally if not authenticated.
     skill = args.skill
     prompts_path = EVALS_DIR / skill / "prompts.csv"
     checks_path  = EVALS_DIR / skill / "process-checks.json"

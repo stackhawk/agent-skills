@@ -14,6 +14,12 @@ on:
         default: "both"
         type: choice
         options: [hawkscan, api, both]
+      platform:
+        description: "Platform to run (all = claude-code + codex + gemini)"
+        required: true
+        default: "all"
+        type: choice
+        options: [all, claude-code, codex, gemini]
       rubric:
         description: "Run qualitative rubric grader (slower, ~$0.10 extra per run)"
         required: false
@@ -24,19 +30,27 @@ permissions:
   contents: read
   pull-requests: write
 
+# ---------------------------------------------------------------------------
+# Required GitHub Actions secrets:
+#   ANTHROPIC_API_KEY  — Anthropic API key for Claude Code evals
+#   OPENAI_API_KEY     — OpenAI API key for Codex evals
+#   GEMINI_API_KEY     — Google Gemini API key for Gemini CLI evals
+# ---------------------------------------------------------------------------
+
 jobs:
-  eval:
-    name: eval / ${{ matrix.skill }}
+
+  # ── Claude Code ──────────────────────────────────────────────────────────
+  eval-claude-code:
+    name: claude-code / ${{ matrix.skill }}
     runs-on: ubuntu-latest
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      inputs.platform == 'all' ||
+      inputs.platform == 'claude-code'
     strategy:
       fail-fast: false
       matrix:
         skill: [hawkscan, api]
-    # On workflow_dispatch with a specific skill, skip the other matrix leg.
-    if: |
-      github.event_name != 'workflow_dispatch' ||
-      inputs.skill == 'both' ||
-      inputs.skill == matrix.skill
 
     steps:
       - uses: actions/checkout@v4
@@ -73,14 +87,117 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: eval-results-${{ matrix.skill }}
+          name: eval-claude-code-${{ matrix.skill }}
           path: evals/harnesses/claude-code/results/${{ matrix.skill }}/
           retention-days: 30
 
+  # ── Codex ─────────────────────────────────────────────────────────────────
+  eval-codex:
+    name: codex / ${{ matrix.skill }}
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      inputs.platform == 'all' ||
+      inputs.platform == 'codex'
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: [hawkscan, api]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
+
+      - name: Verify codex CLI
+        run: codex --version
+
+      - name: Install StackHawk skills (hawkscan + api)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          codex plugin marketplace add .
+          echo y | codex plugin add hawkscan@stackhawk
+          echo y | codex plugin add api@stackhawk
+
+      - name: Run ${{ matrix.skill }} evals
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python3 evals/harnesses/codex/run-evals.py \
+            --skill ${{ matrix.skill }}
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-codex-${{ matrix.skill }}
+          path: evals/harnesses/codex/results/${{ matrix.skill }}/
+          retention-days: 30
+
+  # ── Gemini ────────────────────────────────────────────────────────────────
+  eval-gemini:
+    name: gemini / ${{ matrix.skill }}
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      inputs.platform == 'all' ||
+      inputs.platform == 'gemini'
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: [hawkscan, api]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Gemini CLI
+        run: npm install -g @google/gemini-cli
+
+      - name: Verify gemini CLI
+        run: gemini --version
+
+      - name: Link StackHawk extension
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: echo y | gemini extensions link .
+
+      - name: Run ${{ matrix.skill }} evals
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python3 evals/harnesses/gemini/run-evals.py \
+            --skill ${{ matrix.skill }}
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-gemini-${{ matrix.skill }}
+          path: evals/harnesses/gemini/results/${{ matrix.skill }}/
+          retention-days: 30
+
+  # ── PR comment ────────────────────────────────────────────────────────────
   comment:
     name: Post PR summary
-    needs: eval
-    # Run even if evals failed so the comment always appears on PRs.
+    needs: [eval-claude-code, eval-codex, eval-gemini]
     if: always() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -89,7 +206,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: eval-results-*
+          pattern: eval-*
           merge-multiple: false
           path: results/
 
@@ -100,61 +217,46 @@ jobs:
             const fs = require('fs');
             const path = require('path');
 
-            const needsResult = ${{ toJSON(needs.eval.result) }};
-            const overallIcon = needsResult === 'success' ? '✅' : '❌';
+            const needsResult = ${{ toJSON(needs) }};
+            const allSuccess = Object.values(needsResult).every(n => n.result === 'success');
+            const overallIcon = allSuccess ? '✅' : '❌';
 
             let body = `## ${overallIcon} Skill Eval Results\n\n`;
 
-            for (const skill of ['hawkscan', 'api']) {
-              const summaryPath = path.join(
-                'results', `eval-results-${skill}`, skill, 'summary.json'
-              );
+            const platforms = ['claude-code', 'codex', 'gemini'];
+            const skills = ['hawkscan', 'api'];
 
-              if (!fs.existsSync(summaryPath)) {
-                body += `### \`${skill}\`\n⚠️ No results — eval job may have failed or been skipped.\n\n`;
-                continue;
-              }
+            for (const platform of platforms) {
+              body += `### Platform: \`${platform}\`\n\n`;
+              for (const skill of skills) {
+                const summaryPath = path.join(
+                  'results', `eval-${platform}-${skill}`, skill, 'summary.json'
+                );
 
-              const s = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
-              const ta = s.trigger_accuracy;
-              const triggerIcon = ta.correct === ta.total ? '✅' : '❌';
-              const scoreIcon =
-                s.process_avg_score !== null && s.process_avg_score >= 70 &&
-                s.total_blocking_failures === 0 ? '✅' : '❌';
-
-              body += `### \`${skill}\`\n`;
-              body += `| Metric | Value |\n|---|---|\n`;
-              body += `| Trigger accuracy | ${triggerIcon} ${ta.correct}/${ta.total} |\n`;
-
-              if (s.false_positives?.length) {
-                body += `| False positives | ⚠️ \`${s.false_positives.join('`, `')}\` |\n`;
-              }
-              if (s.false_negatives?.length) {
-                body += `| False negatives | ⚠️ \`${s.false_negatives.join('`, `')}\` |\n`;
-              }
-              if (s.process_avg_score !== null) {
-                body += `| Process avg score | ${scoreIcon} ${s.process_avg_score}/100 |\n`;
-                body += `| Blocking failures | ${s.total_blocking_failures > 0 ? '❌' : '✅'} ${s.total_blocking_failures} |\n`;
-              }
-              body += `| Cost | \$${s.total_cost_usd.toFixed(3)} |\n\n`;
-
-              // Per-run detail table
-              if (s.runs?.length) {
-                body += '<details><summary>Per-run detail</summary>\n\n';
-                body += '| ID | Trigger ✓ | Score |\n|---|---|---|\n';
-                for (const run of s.runs) {
-                  const t = run.trigger_correct ? '✅' : '❌';
-                  body += `| \`${run.run_id}\` | ${t} | ${run.score ?? '—'} |\n`;
+                if (!fs.existsSync(summaryPath)) {
+                  body += `**\`${skill}\`**: ⚠️ No results\n`;
+                  continue;
                 }
-                body += '\n</details>\n\n';
+
+                const s = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
+                const ta = s.trigger_accuracy;
+                const triggerIcon = ta.correct === ta.total ? '✅' : '❌';
+
+                body += `**\`${skill}\`**: ${triggerIcon} Trigger ${ta.correct}/${ta.total}`;
+                if (s.process_avg_score !== null) {
+                  const scoreIcon = s.process_avg_score >= 70 && s.total_blocking_failures === 0 ? '✅' : '⚠️';
+                  body += ` | ${scoreIcon} Process ${s.process_avg_score}/100`;
+                }
+                if (s.false_positives?.length) body += ` | ⚠️ FP: ${s.false_positives.join(', ')}`;
+                if (s.false_negatives?.length) body += ` | ⚠️ FN: ${s.false_negatives.join(', ')}`;
+                body += '\n';
               }
+              body += '\n';
             }
 
-            body += `---\n_Triggered by commit ${context.sha.slice(0, 7)}. `;
-            body += `[View full results in workflow artifacts.](`;
-            body += `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})_\n`;
+            body += `---\n_Commit ${context.sha.slice(0, 7)}. `;
+            body += `[Full results](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})_\n`;
 
-            // Find and update existing eval comment, or create a new one.
             const marker = '<!-- skill-eval-comment -->';
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
@@ -162,7 +264,6 @@ jobs:
               issue_number: context.issue.number,
             });
             const existing = comments.find(c => c.body.includes(marker));
-
             const fullBody = marker + '\n' + body;
 
             if (existing) {
