@@ -47,7 +47,7 @@ outputs:                            # REQUIRED. Values the seed produced.
   KEY: value                        #   Skill A writes these to .bootstrap-credentials.env.
 ```
 
-All four top-level keys (`version`, `name`, `description`, `prerequisites`,
+All six top-level keys (`version`, `name`, `description`, `prerequisites`,
 `steps`, `outputs`) are required. The manifest is invalid without any of them.
 
 ---
@@ -444,7 +444,9 @@ platform-admin apikey create \
 Every step must declare exactly one idempotency primitive. The Runner evaluates
 the primitive before running the step: if the check passes (entity already
 exists), the step is skipped. If the check fails (entity absent or
-unreachable), the step executes.
+unreachable), the step executes. For per-dialect SQL guidance (Postgres
+`ON CONFLICT`, MySQL `INSERT IGNORE`, SQLite `INSERT OR IGNORE`), see
+`idempotency-patterns.md`.
 
 ### check_sql
 
@@ -657,7 +659,10 @@ values) for discoverability.
 
 - **hawkscan:** detects `.bootstrap-credentials.env` in the repo root at
   Phase 1c / Phase 1c.5 and substitutes `${TEST_USER}`, `${TEST_PASS}`, etc.
-  into the auth block of `stackhawk.yml`.
+  into the auth block of `stackhawk.yml`. The bootstrap skill's parent SKILL.md
+  (`../SKILL.md`) documents the handoff to hawkscan; see also
+  `idempotency-patterns.md` for how steps should preserve idempotency when they
+  write to outputs.
 - **Tool C (future Runner):** sources `.bootstrap-credentials.env` before
   executing any step, making the values available for env interpolation in
   step files and `target.connection` fields.
@@ -708,10 +713,6 @@ description: Seeds users, orgs, and apps required for authenticated HawkScan aga
 
 prerequisites:
   env:
-    - name: TEST_USER
-      description: Sourced from .bootstrap-credentials.env; the seeded test user's email
-    - name: TEST_PASS
-      description: Sourced from .bootstrap-credentials.env; the seeded test user's password
     - name: EYAS_DB_URL
       description: "Postgres connection string for eyas — e.g. postgres://user:pass@localhost:5432/eyas_dev"
     - name: YARAK_DB_URL
@@ -926,12 +927,40 @@ alternative exists.
 
 ### Mixing service responsibilities in one step file
 
-**Wrong:** a single file `falcon/001-setup.sql` that runs SQL against both
-eyas and yarak in sequence.
+**Wrong:**
+```yaml
+# WRONG — one step file touching two services
+- id: falcon-setup
+  service: falcon
+  type: sql
+  file: falcon/001-setup.sql       # file inside performs inserts against BOTH eyas DB and yarak DB
+  target: { kind: postgres, connection: ${EYAS_DB_URL} }
+  # ... (idempotency check can only cover one service)
+```
 
-**Right:** one file per service, one service per step. Each step has a `service:`
-field that names exactly one service; the step file should touch only that
-service's storage layer.
+**Right:**
+```yaml
+# RIGHT — one step per service
+- id: eyas-orgs
+  service: eyas
+  type: sql
+  file: eyas/001-orgs.sql
+  target: { kind: postgres, connection: ${EYAS_DB_URL} }
+  idempotency: { check_sql: "SELECT 1 FROM organizations WHERE name = 'HawkScan Test Org';" }
+
+- id: yarak-apps
+  service: yarak
+  type: sql
+  file: yarak/001-apps.sql
+  target: { kind: postgres, connection: ${YARAK_DB_URL} }
+  depends_on: [ eyas-orgs ]
+  idempotency: { check_sql: "SELECT 1 FROM applications WHERE name = 'target-app-1';" }
+```
+
+Each step targets exactly one service so its idempotency check, target, and
+dependency edges are unambiguous. A multi-service step body would force the
+runner to coordinate transactions across services, which the manifest format
+does not support.
 
 Mixed-service step files make the manifest's dependency graph unreliable (the
 Runner cannot know which services a mixed file actually touches), break
