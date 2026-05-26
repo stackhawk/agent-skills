@@ -18,6 +18,8 @@ guards against data corruption. Both are required. A step body that silently
 double-inserts or overwrites a credential is not idempotent, regardless of how
 good the check predicate is.
 
+For the full field specification of `check_sql`, `check_http`, and `check_command` predicates, see `manifest-schema.md`.
+
 ---
 
 ## SQL — Postgres
@@ -273,7 +275,7 @@ Manifest step:
       -H "authorization: Bearer ${BOOTSTRAP_TOKEN}" \
       -d '{"user_id": "user-admin-01"}' \
       localhost:50051 \
-      acme.UserService/GetUser 2>&1 | grep -q '"id"'
+      acme.UserService/GetUser | grep -q '"id": "user-admin-01"'
   depends_on: [seed-org]
 ```
 
@@ -290,7 +292,7 @@ RESPONSE=$(grpcurl -plaintext \
   localhost:50051 \
   acme.UserService/GetUser 2>&1 || true)
 
-if echo "$RESPONSE" | grep -q '"id"'; then
+if echo "$RESPONSE" | grep -q '"id": "user-admin-01"'; then
   echo "user-admin-01 already exists, skipping CreateUser"
   exit 0
 fi
@@ -544,6 +546,11 @@ than silently skipping the seed step.
 check_query: "SELECT 1 FROM users WHERE created_at > NOW() - INTERVAL '1 hour'"
 ```
 
+```yaml
+# DO INSTEAD: use a stable key
+check_sql: SELECT 1 FROM users WHERE email = 'hawkscan-test@example.com';
+```
+
 ### Predicates that rely on auto-increment IDs from a prior step
 
 Auto-increment IDs are not stable across environments or re-runs. Use
@@ -585,6 +592,22 @@ sequentially dependent steps.
 -- NEVER — cleanup + insert in one step; retry behavior is unpredictable
 DELETE FROM feature_flags WHERE name LIKE 'legacy-%';
 INSERT INTO feature_flags (name, enabled) VALUES ('dark-mode', true);
+```
+
+```yaml
+# DO INSTEAD: separate steps, each with one concern
+- id: cleanup-stale-users
+  description: Remove stale test users from previous run
+  type: sql
+  file: cleanup/001-purge-stale-users.sql
+  idempotency: { check_sql: "SELECT 1 FROM users WHERE last_login < NOW() - INTERVAL '7 days' LIMIT 1;" }
+
+- id: seed-test-user
+  description: Insert canonical test user
+  type: sql
+  file: seed/001-insert-test-user.sql
+  depends_on: [ cleanup-stale-users ]
+  idempotency: { check_sql: "SELECT 1 FROM users WHERE email = 'hawkscan-test@example.com';" }
 ```
 
 ### Relying on retries to paper over non-idempotent bodies
