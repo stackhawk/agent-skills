@@ -1,0 +1,22 @@
+{
+  "name": "bootstrap",
+  "version": "1.7.3",
+  "description": "Read a target repo and emit checked-in seed artifacts so HawkScan has data to scan. Generates SQL / HTTP / gRPC / Mongo / shell steps across the target repo and any upstream services it depends on, plus a manifest and a credentials handoff file that hawkscan consumes.",
+  "author": {
+    "name": "StackHawk",
+    "email": "support@stackhawk.com",
+    "url": "https://www.stackhawk.com"
+  },
+  "homepage": "https://docs.stackhawk.com",
+  "repository": "https://github.com/stackhawk/agent-skills",
+  "license": "MIT",
+  "keywords": [
+    "bootstrap",
+    "seed-data",
+    "hawkscan",
+    "dast",
+    "test-data",
+    "fixtures"
+  ],
+  "skills": "./skills/"
+}
