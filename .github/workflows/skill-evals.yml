@@ -166,9 +166,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install agy CLI
-        run: |
-          curl -fsSL https://install.antigravity.sh | sh  # update URL when published
-        continue-on-error: true  # installer URL TBD — update when agy ships a stable installer
+        run: curl -fsSL https://antigravity.google/install-cli | bash
 
       - name: Verify agy CLI
         run: agy --version

@@ -21,9 +21,8 @@ Install the CLI for whichever platform you want to test:
 ```bash
 npm install -g @anthropic-ai/claude-code   # Claude Code
 npm install -g @openai/codex               # Codex
-npm install -g @google/gemini-cli          # Gemini
+curl -fsSL https://antigravity.google/install-cli | bash  # Antigravity (agy)
 # Cursor agent CLI ships with the Cursor desktop app
-# agy is an internal StackHawk tool
 ```
 
 ### Claude Code
