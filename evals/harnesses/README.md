@@ -50,7 +50,7 @@ One-time plugin setup:
 ```bash
 codex plugin marketplace add .
 codex plugin add hawkscan@stackhawk
-codex plugin add api@stackhawk
+codex plugin add stackhawk-api@stackhawk
 ```
 
 ```bash

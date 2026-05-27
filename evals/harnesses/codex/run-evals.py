@@ -171,7 +171,7 @@ def _setup_skill_in_dir(skill: str, target_dir: Path) -> None:
     """No-op: skills are installed globally via 'codex plugin add <skill>@stackhawk'.
     Run: codex plugin marketplace add /path/to/agent-skills
          codex plugin add hawkscan@stackhawk
-         codex plugin add api@stackhawk
+         codex plugin add stackhawk-api@stackhawk
     """
     pass
 

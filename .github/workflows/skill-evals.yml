@@ -128,7 +128,7 @@ jobs:
         run: |
           codex plugin marketplace add .
           echo y | codex plugin add hawkscan@stackhawk
-          echo y | codex plugin add api@stackhawk
+          echo y | codex plugin add stackhawk-api@stackhawk
 
       - name: Run ${{ matrix.skill }} evals
         env:
