@@ -77,11 +77,11 @@ adding a unique constraint and using `ON CONFLICT` when that is possible.
 
 ### Password-Hash Seeding
 
-When seeding a table that stores bcrypt-hashed passwords (e.g., beak's `stackhawk_user`),
-hash the plaintext **at skill emission time** — NOT at SQL execution time. Postgres's
-`pgcrypto.crypt()` uses a different internal format than `BCryptPasswordEncoder` and is
-therefore not a valid substitute. The skill embeds the already-computed hash as a string
-literal in the emitted SQL.
+When seeding a table that stores bcrypt-hashed passwords (e.g., a `users` or `credentials`
+table with a `password_hash` column), hash the plaintext **at skill emission time** — NOT
+at SQL execution time. Postgres's `pgcrypto.crypt()` uses a different internal format than
+`BCryptPasswordEncoder` and is therefore not a valid substitute. The skill embeds the
+already-computed hash as a string literal in the emitted SQL.
 
 **Pseudocode — compute the hash once at emission:**
 
@@ -89,7 +89,7 @@ literal in the emitted SQL.
 # Pseudocode — skill computes the hash once at emission, embeds the result.
 # Plaintext password lives in .bootstrap-credentials.env (gitignored).
 import bcrypt
-hashed = bcrypt.hashpw(b"HawkScanTest1!", bcrypt.gensalt(rounds=12)).decode()
+hashed = bcrypt.hashpw(b"ExampleSeedPass1!", bcrypt.gensalt(rounds=12)).decode()
 # Embed `hashed` into the SQL INSERT VALUES.
 ```
 
@@ -97,8 +97,8 @@ hashed = bcrypt.hashpw(b"HawkScanTest1!", bcrypt.gensalt(rounds=12)).decode()
 
 ```sql
 -- Hash was computed at emission time; plaintext is in .bootstrap-credentials.env.
-INSERT INTO stackhawk_user (id, email, password, full_name, email_validated, created_date, updated_date)
-VALUES (1, 'owner@hawkscan.test', '$2a$12$<computed-hash>', 'Bootstrap Owner', true, now(), now())
+INSERT INTO users (id, email, password_hash, created_at)
+VALUES ('00000000-0000-0000-0000-000000000002', 'test-owner@example.com', '$2a$12$<computed-hash>', now())
 ON CONFLICT (email) DO NOTHING;
 ```
 
@@ -106,7 +106,7 @@ ON CONFLICT (email) DO NOTHING;
 
 ```yaml
 idempotency:
-  check_sql: SELECT 1 FROM stackhawk_user WHERE email = 'owner@hawkscan.test';
+  check_sql: SELECT 1 FROM users WHERE email = 'test-owner@example.com';
 ```
 
 **Anti-pattern: do not hash inside SQL with `crypt()`** unless you have confirmed that
@@ -117,8 +117,8 @@ passwords never match.
 
 ```sql
 -- WRONG for BCryptPasswordEncoder applications:
-INSERT INTO stackhawk_user (email, password)
-VALUES ('owner@hawkscan.test', crypt('HawkScanTest1!', gen_salt('bf')));
+INSERT INTO users (email, password_hash)
+VALUES ('test-owner@example.com', crypt('ExampleSeedPass1!', gen_salt('bf')));
 -- crypt() produces $2$ format; BCryptPasswordEncoder expects $2a$/$2b$ — incompatible.
 ```
 
@@ -603,7 +603,7 @@ check_query: "SELECT 1 FROM users WHERE created_at > NOW() - INTERVAL '1 hour'"
 
 ```yaml
 # DO INSTEAD: use a stable key
-check_sql: SELECT 1 FROM users WHERE email = 'hawkscan-test@example.com';
+check_sql: SELECT 1 FROM users WHERE email = 'test-owner@example.com';
 ```
 
 ### Predicates that rely on auto-increment IDs from a prior step
@@ -662,7 +662,7 @@ INSERT INTO feature_flags (name, enabled) VALUES ('dark-mode', true);
   type: sql
   file: seed/001-insert-test-user.sql
   depends_on: [ cleanup-stale-users ]
-  idempotency: { check_sql: "SELECT 1 FROM users WHERE email = 'hawkscan-test@example.com';" }
+  idempotency: { check_sql: "SELECT 1 FROM users WHERE email = 'test-owner@example.com';" }
 ```
 
 ### Relying on retries to paper over non-idempotent bodies

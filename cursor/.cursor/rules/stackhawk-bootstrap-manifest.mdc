@@ -1,6 +1,6 @@
 ---
 description: >
-  Bootstrap manifest schema (Contract B) full reference: top-level structure (version, prerequisites, steps, outputs); step schema with all fields; supported step types (sql, http, grpc, mongo, shell); idempotency primitives (check_sql, check_http, check_command, none); dependency model; self-validation rules; complete falcon example; forbidden patterns.
+  Bootstrap manifest schema (Contract B) full reference: top-level structure (version, targets, prerequisites, steps, outputs); step schema with all fields (target as scalar string, idempotency as scalar strategy name); supported step types (sql, http, grpc, mongo, shell); idempotency primitives (check_sql, check_http, check_command, none); dependency model; self-validation rules; complete example; forbidden patterns.
 globs:
   - "**/bootstrap/manifest.yaml"
 alwaysApply: false
@@ -27,7 +27,7 @@ execution semantics) requires `version: 2`.
 7. [Dependency model](#dependency-model)
 8. [outputs section](#outputs-section)
 9. [Self-validation rules](#self-validation-rules)
-10. [Complete falcon example](#complete-falcon-example)
+10. [Complete example](#complete-example)
 11. [Forbidden patterns](#forbidden-patterns)
 
 ---
@@ -76,8 +76,8 @@ be set in the shell before the Runner (Tool C) executes any step.
 ```yaml
 prerequisites:
   env:
-    - name: EYAS_DB_URL
-      description: "Postgres connection string for eyas — e.g. postgres://user:pass@localhost:5432/eyas_dev"
+    - name: AUTH_SERVICE_DB_URL
+      description: "Postgres connection string for auth-service — e.g. postgres://user:pass@localhost:5432/auth_dev"
     - name: TEST_PASS
       description: "Sourced from .bootstrap-credentials.env; the seeded user's password"
 ```
@@ -110,11 +110,11 @@ until it receives any 2xx or 3xx response (or up to a configurable timeout).
 ```yaml
 prerequisites:
   services:
-    - name: falcon
-      url: ${FALCON_URL:http://localhost:9000}
+    - name: gateway-api
+      url: ${GATEWAY_URL:http://localhost:9000}
       check: http_ready
-    - name: eyas
-      url: ${EYAS_URL:http://localhost:8080}
+    - name: auth-service
+      url: ${AUTH_SERVICE_URL:http://localhost:8080}
       check: http_ready
 ```
 
@@ -149,7 +149,7 @@ the unit of idempotency checking, dependency tracking, and retry in Tool C.
   depends_on: [ <id>, ... ]         # OPTIONAL. Explicit ordering. Topo-sorted by Runner.
                                     #   Absence ⇒ implicit dependency on previous step in list.
   creates: [ "<kind>:<name>", ... ] # OPTIONAL (recommended). Documents what the step produces.
-                                    #   Examples: "org:hawkscan-test-org", "user:hawkscan-test@example.com"
+                                    #   Examples: "org:example-test-org", "user:test-owner@example.com"
                                     #   v1: documentation only. v2 may enable typed cross-step refs.
   idempotency:                      # REQUIRED. Exactly one primitive (see §6).
     check_sql: "SELECT ..."
@@ -193,27 +193,27 @@ target:
 
 Manifest fragment:
 ```yaml
-- id: eyas-orgs
-  description: Create test organization in eyas
-  service: eyas
+- id: auth-orgs
+  description: Create test organization in auth-service
+  service: auth-service
   type: sql
-  file: eyas/001-orgs.sql
+  file: auth-service/001-orgs.sql
   target:
     kind: postgres
-    connection: ${EYAS_DB_URL}
-  creates: [ "org:hawkscan-test-org" ]
+    connection: ${AUTH_SERVICE_DB_URL}
+  creates: [ "org:example-test-org" ]
   idempotency:
-    check_sql: "SELECT 1 FROM organizations WHERE name = 'HawkScan Test Org';"
+    check_sql: "SELECT 1 FROM organizations WHERE name = 'Example Test Org';"
 ```
 
-Referenced file — `bootstrap/eyas/001-orgs.sql`:
+Referenced file — `bootstrap/auth-service/001-orgs.sql`:
 ```sql
--- Seed test organization for HawkScan scanning.
+-- Seed test organization for scanning.
 -- Uses ON CONFLICT DO NOTHING so re-running is safe.
 INSERT INTO organizations (id, name, created_at)
 VALUES (
   '00000000-0000-0000-0000-000000000001',
-  'HawkScan Test Org',
+  'Example Test Org',
   NOW()
 )
 ON CONFLICT (id) DO NOTHING;
@@ -242,15 +242,15 @@ target:
 
 Manifest fragment:
 ```yaml
-- id: falcon-link
-  description: Link app to env via falcon REST API
-  service: falcon
+- id: gateway-link
+  description: Link app to env via gateway-api REST API
+  service: gateway-api
   type: http
-  file: falcon/001-link-app-to-env.http
+  file: gateway-api/001-link-app-to-env.http
   target:
     kind: http
-    base_url: ${FALCON_URL:http://localhost:9000}
-  depends_on: [ eyas-users, yarak-apps ]
+    base_url: ${GATEWAY_URL:http://localhost:9000}
+  depends_on: [ auth-users, inventory-apps ]
   creates: [ "env-link:target-app-1" ]
   idempotency:
     check_http:
@@ -260,17 +260,17 @@ Manifest fragment:
       expect_jq: ".envs | length > 0"
 ```
 
-Referenced file — `bootstrap/falcon/001-link-app-to-env.http`:
+Referenced file — `bootstrap/gateway-api/001-link-app-to-env.http`:
 ```http
 ### Link target-app-1 to the default scan environment
 
-PUT {{$env FALCON_URL}}/v1/apps/target-app-1/envs/Development
+PUT {{$env GATEWAY_URL}}/v1/apps/target-app-1/envs/Development
 Content-Type: application/json
-Authorization: Bearer {{$env FALCON_ADMIN_TOKEN}}
+Authorization: Bearer {{$env GATEWAY_ADMIN_TOKEN}}
 
 {
   "orgId": "00000000-0000-0000-0000-000000000001",
-  "description": "Default scan environment for HawkScan"
+  "description": "Default scan environment"
 }
 ```
 
@@ -303,14 +303,14 @@ Manifest fragment:
   target:
     kind: grpc
     connection: ${REGISTRY_GRPC_ADDR:localhost:50051}
-  creates: [ "tenant:hawkscan-test-tenant" ]
+  creates: [ "tenant:example-test-tenant" ]
   idempotency:
     check_command: >-
       grpcurl -plaintext -proto registry/proto/tenant.proto
-      -d '{"name":"hawkscan-test-tenant"}'
+      -d '{"name":"example-test-tenant"}'
       ${REGISTRY_GRPC_ADDR:-localhost:50051}
       registry.TenantService/GetTenant
-      2>&1 | grep -q 'hawkscan-test-tenant'
+      2>&1 | grep -q 'example-test-tenant'
 ```
 
 Referenced file — `bootstrap/registry/001-create-tenant.sh`:
@@ -327,8 +327,8 @@ grpcurl \
   -plaintext \
   -proto registry/proto/tenant.proto \
   -d '{
-    "name":        "hawkscan-test-tenant",
-    "displayName": "HawkScan Test Tenant",
+    "name":        "example-test-tenant",
+    "displayName": "Example Test Tenant",
     "ownerId":     "00000000-0000-0000-0000-000000000001"
   }' \
   "${ADDR}" \
@@ -364,11 +364,11 @@ Manifest fragment:
   target:
     kind: mongo
     connection: ${CATALOG_MONGO_URI:mongodb://localhost:27017/catalog}
-  creates: [ "user:hawkscan-test@example.com" ]
+  creates: [ "user:test-owner@example.com" ]
   idempotency:
     check_command: >-
       mongosh "${CATALOG_MONGO_URI:-mongodb://localhost:27017/catalog}" --quiet
-      --eval 'db.users.countDocuments({email:"hawkscan-test@example.com"})' | grep -q '^[1-9]'
+      --eval 'db.users.countDocuments({email:"test-owner@example.com"})' | grep -q '^[1-9]'
 ```
 
 Referenced file — `bootstrap/catalog/001-users.js`:
@@ -376,12 +376,12 @@ Referenced file — `bootstrap/catalog/001-users.js`:
 // Upsert test user for HawkScan scanning.
 // findOneAndUpdate with upsert:true is safe to replay.
 db.users.findOneAndUpdate(
-  { email: "hawkscan-test@example.com" },
+  { email: "test-owner@example.com" },
   {
     $setOnInsert: {
       _id:       "00000000-0000-0000-0000-000000000020",
-      email:     "hawkscan-test@example.com",
-      password:  process.env.TEST_PASS || "HawkScanTest1!",
+      email:     "test-owner@example.com",
+      password:  process.env.TEST_PASS || "ExampleSeedPass1!",
       orgId:     "00000000-0000-0000-0000-000000000001",
       role:      "SCAN_USER",
       createdAt: new Date(),
@@ -423,10 +423,10 @@ Manifest fragment:
   file: platform/001-provision-apikey.sh
   target:
     kind: none
-  depends_on: [ eyas-users ]
-  creates: [ "apikey:hawkscan-scan-key" ]
+  depends_on: [ auth-users ]
+  creates: [ "apikey:bootstrap-scan-key" ]
   idempotency:
-    check_command: "platform-admin apikey list --user hawkscan-test@example.com | grep -q hawkscan-scan-key"
+    check_command: "platform-admin apikey list --user test-owner@example.com | grep -q bootstrap-scan-key"
 ```
 
 Referenced file — `bootstrap/platform/001-provision-apikey.sh`:
@@ -438,8 +438,8 @@ set -euo pipefail
 # Requires: platform-admin CLI on PATH, PLATFORM_ADMIN_TOKEN set.
 
 platform-admin apikey create \
-  --user  "hawkscan-test@example.com" \
-  --name  "hawkscan-scan-key" \
+  --user  "test-owner@example.com" \
+  --name  "bootstrap-scan-key" \
   --scope "scan:read scan:write" \
   --token "${PLATFORM_ADMIN_TOKEN}"
 ```
@@ -462,7 +462,7 @@ already exists — skip the step. If it returns 0 rows (or errors), run the step
 
 ```yaml
 idempotency:
-  check_sql: "SELECT 1 FROM users WHERE email = 'hawkscan-test@example.com';"
+  check_sql: "SELECT 1 FROM users WHERE email = 'test-owner@example.com';"
 ```
 
 The query must be a SELECT that returns data when the seed is already present.
@@ -475,8 +475,8 @@ idempotency:
   check_sql: |
     SELECT 1 FROM organizations o
     JOIN users u ON u.org_id = o.id
-    WHERE u.email = 'hawkscan-test@example.com'
-      AND o.name  = 'HawkScan Test Org';
+    WHERE u.email = 'test-owner@example.com'
+      AND o.name  = 'Example Test Org';
 ```
 
 ---
@@ -519,8 +519,8 @@ absence) causes the step to run.
 ```yaml
 idempotency:
   check_command: >-
-    psql "${EYAS_DB_URL}" -tAc
-    "SELECT 1 FROM users WHERE email='hawkscan-test@example.com'"
+    psql "${AUTH_SERVICE_DB_URL}" -tAc
+    "SELECT 1 FROM users WHERE email='test-owner@example.com'"
     | grep -q 1
 ```
 
@@ -568,13 +568,13 @@ list. This keeps simple linear sequences readable without repeating IDs.
 
 ```yaml
 steps:
-  - id: eyas-orgs      # no depends_on → depends on nothing (first step)
+  - id: auth-orgs       # no depends_on → depends on nothing (first step)
     ...
 
-  - id: eyas-users     # no depends_on → implicitly depends on eyas-orgs
+  - id: auth-users      # no depends_on → implicitly depends on auth-orgs
     ...
 
-  - id: yarak-apps     # no depends_on → implicitly depends on eyas-users
+  - id: inventory-apps  # no depends_on → implicitly depends on auth-users
     ...
 ```
 
@@ -588,27 +588,27 @@ topo-sort produces a valid schedule for any future parallel Runner.
 
 ```yaml
 steps:
-  - id: eyas-orgs
+  - id: auth-orgs
     # ... no depends_on: first step
 
-  - id: eyas-users
-    depends_on: [ eyas-orgs ]   # explicit: requires org to exist first
+  - id: auth-users
+    depends_on: [ auth-orgs ]      # explicit: requires org to exist first
     # ...
 
-  - id: yarak-apps
-    depends_on: [ eyas-orgs ]   # explicit: requires org too, but NOT eyas-users
-                                #   → parallel-eligible with eyas-users in v2 Runner
+  - id: inventory-apps
+    depends_on: [ auth-orgs ]      # explicit: requires org too, but NOT auth-users
+                                   #   → parallel-eligible with auth-users in v2 Runner
     # ...
 
-  - id: falcon-link
-    depends_on: [ eyas-users, yarak-apps ]   # requires both to complete first
+  - id: gateway-link
+    depends_on: [ auth-users, inventory-apps ]   # requires both to complete first
     # ...
 ```
 
 ### `creates` — declarative output documentation
 
 ```yaml
-creates: [ "org:hawkscan-test-org", "user:hawkscan-test@example.com" ]
+creates: [ "org:example-test-org", "user:test-owner@example.com" ]
 ```
 
 `creates` is documentation in v1. It tells humans (and AI assistants) what
@@ -618,7 +618,7 @@ entity each step produces. Possible `kind:` prefixes: `org`, `user`, `app`,
 v2 may enable typed cross-step references:
 ```yaml
 # v2 aspirational — NOT valid in v1
-depends_on: [ "user:hawkscan-test@example.com" ]
+depends_on: [ "user:test-owner@example.com" ]
 ```
 
 ---
@@ -631,11 +631,11 @@ CI) need after the seed is complete.
 
 ```yaml
 outputs:
-  TEST_USER: hawkscan-test@example.com
-  TEST_PASS: HawkScanTest1!
+  TEST_USER: test-owner@example.com
+  TEST_PASS: ExampleSeedPass1!
   TEST_ORG_ID: 00000000-0000-0000-0000-000000000001
   TEST_APP_ID: 00000000-0000-0000-0000-000000000010
-  FALCON_LOGIN_URL: ${FALCON_URL}/login
+  GATEWAY_LOGIN_URL: ${GATEWAY_URL}/login
 ```
 
 Values may contain env interpolation (`${VAR}` or `${VAR:default}`); the Runner
@@ -647,11 +647,11 @@ Skill A writes each key-value pair to `.bootstrap-credentials.env` in the
 target repo root, one pair per line:
 
 ```
-TEST_USER=hawkscan-test@example.com
-TEST_PASS=HawkScanTest1!
+TEST_USER=test-owner@example.com
+TEST_PASS=ExampleSeedPass1!
 TEST_ORG_ID=00000000-0000-0000-0000-000000000001
 TEST_APP_ID=00000000-0000-0000-0000-000000000010
-FALCON_LOGIN_URL=http://localhost:9000/login
+GATEWAY_LOGIN_URL=http://localhost:9000/login
 ```
 
 No quoting unless values contain spaces. No `export` prefix. The file is
@@ -708,100 +708,116 @@ broken manifest.
 
 ---
 
-## Complete falcon example
+## Complete example
 
-Full manifest for the falcon validation target. This is the reference shape
-that Skill A produces for the end-to-end v1 validation scenario.
+Full manifest for the generic two-upstream example (gateway-api + auth-service +
+inventory-service). This is the reference shape that Skill A produces for a
+typical scenario: an API gateway with no own DB, two upstream Postgres services,
+and a REST API link step.
+
+The manifest uses a top-level `targets:` map (service name → connection details)
+so each step can reference its target by name as a scalar string rather than
+repeating connection details inline. Per-step `idempotency:` is a scalar string
+(the strategy name) alongside an explicit `check_sql` / `check_http` field — the
+compact form the skill emits in practice. The expanded object form
+(`idempotency: { check_sql: "..." }`) documented in §Idempotency primitives
+above is equivalent and accepted by the Runner.
 
 ```yaml
 version: 1
-name: falcon-hawkscan-bootstrap
-description: Seeds users, orgs, and apps required for authenticated HawkScan against falcon.
+name: gateway-api-hawkscan-bootstrap
+description: Seeds users, orgs, and apps required for authenticated HawkScan against gateway-api.
+
+targets:
+  auth-service:
+    kind: postgres
+    connection: ${AUTH_SERVICE_DB_URL}
+  inventory-service:
+    kind: postgres
+    connection: ${INVENTORY_SERVICE_DB_URL}
+  gateway-api:
+    kind: http
+    base_url: ${GATEWAY_URL:http://localhost:9000}
 
 prerequisites:
   env:
-    - name: EYAS_DB_URL
-      description: "Postgres connection string for eyas — e.g. postgres://user:pass@localhost:5432/eyas_dev"
-    - name: YARAK_DB_URL
-      description: "Postgres connection string for yarak — e.g. postgres://user:pass@localhost:5432/yarak_dev"
+    - name: AUTH_SERVICE_DB_URL
+      description: "Postgres DSN for auth-service — e.g. postgres://user:pass@localhost:5432/auth_dev"
+    - name: INVENTORY_SERVICE_DB_URL
+      description: "Postgres DSN for inventory-service — e.g. postgres://user:pass@localhost:5432/inventory_dev"
+    - name: GATEWAY_URL
+      description: "Base URL for gateway-api — e.g. http://localhost:9000"
   services:
-    - name: eyas
-      url: ${EYAS_URL:http://localhost:8080}
+    - name: auth-service
+      url: ${AUTH_SERVICE_URL:http://localhost:8080}
       check: http_ready
-    - name: yarak
-      url: ${YARAK_URL:http://localhost:9090}
+    - name: inventory-service
+      url: ${INVENTORY_SERVICE_URL:http://localhost:9090}
       check: http_ready
-    - name: falcon
-      url: ${FALCON_URL:http://localhost:9000}
+    - name: gateway-api
+      url: ${GATEWAY_URL:http://localhost:9000}
       check: http_ready
   notes: |
     Start the stack before running: `docker-compose up -d` or your env's equivalent.
-    Ensure EYAS_DB_URL and YARAK_DB_URL are set in your shell or .env file before
-    invoking the Runner. See bootstrap/credentials.env.example for a template.
+    Ensure AUTH_SERVICE_DB_URL and INVENTORY_SERVICE_DB_URL are set in your shell
+    or .env file before invoking the Runner.
+    See bootstrap/credentials.env.example for a template.
 
 steps:
-  - id: eyas-orgs
-    description: Create test organization in eyas
-    service: eyas
+  - id: auth-orgs
+    description: Create test organization in auth-service
+    service: auth-service
     type: sql
-    file: eyas/001-orgs.sql
-    target:
-      kind: postgres
-      connection: ${EYAS_DB_URL}
-    creates: [ "org:hawkscan-test-org" ]
-    idempotency:
-      check_sql: "SELECT 1 FROM organizations WHERE name = 'HawkScan Test Org';"
+    file: auth-service/001-orgs.sql
+    target: auth-service
+    creates: [ "org:example-test-org" ]
+    idempotency: check_sql
+    check_sql: "SELECT 1 FROM organizations WHERE name = 'Example Test Org';"
 
-  - id: eyas-users
+  - id: auth-users
     description: Create test user, bound to test org
-    service: eyas
+    service: auth-service
     type: sql
-    file: eyas/002-users.sql
-    target:
-      kind: postgres
-      connection: ${EYAS_DB_URL}
-    depends_on: [ eyas-orgs ]
-    creates: [ "user:hawkscan-test@example.com" ]
-    idempotency:
-      check_sql: "SELECT 1 FROM users WHERE email = 'hawkscan-test@example.com';"
+    file: auth-service/002-users.sql
+    target: auth-service
+    depends_on: [ auth-orgs ]
+    creates: [ "user:test-owner@example.com" ]
+    idempotency: check_sql
+    check_sql: "SELECT 1 FROM users WHERE email = 'test-owner@example.com';"
 
-  - id: yarak-apps
+  - id: inventory-apps
     description: Create scannable app, owned by test org
-    service: yarak
+    service: inventory-service
     type: sql
-    file: yarak/001-apps.sql
-    target:
-      kind: postgres
-      connection: ${YARAK_DB_URL}
-    depends_on: [ eyas-orgs ]
+    file: inventory-service/001-apps.sql
+    target: inventory-service
+    depends_on: [ auth-orgs ]
     creates: [ "app:target-app-1" ]
-    idempotency:
-      check_sql: "SELECT 1 FROM applications WHERE name = 'target-app-1';"
+    idempotency: check_sql
+    check_sql: "SELECT 1 FROM applications WHERE name = 'target-app-1';"
 
-  - id: falcon-link
-    description: Link app to env via falcon REST API (no DB; goes through API gateway)
-    service: falcon
+  - id: gateway-link
+    description: Link app to env via gateway-api REST API (no DB; goes through API gateway)
+    service: gateway-api
     type: http
-    file: falcon/001-link-app-to-env.http
-    target:
-      kind: http
-      base_url: ${FALCON_URL:http://localhost:9000}
-    depends_on: [ eyas-users, yarak-apps ]
+    file: gateway-api/001-link-app-to-env.http
+    target: gateway-api
+    depends_on: [ auth-users, inventory-apps ]
     creates: [ "env-link:target-app-1" ]
-    idempotency:
-      check_http:
-        method: GET
-        path: /v1/apps/target-app-1/envs
-        expect_status: 200
-        expect_jq: ".envs | length > 0"
+    idempotency: check_http
+    check_http:
+      method: GET
+      path: /v1/apps/target-app-1/envs
+      expect_status: 200
+      expect_jq: ".envs | length > 0"
 
 outputs:
-  TEST_USER: hawkscan-test@example.com
-  TEST_PASS: HawkScanTest1!
-  TEST_PASSWORD: HawkScanTest1!  # alias for hawkscan usernamePassword recipe compatibility
+  TEST_USER: test-owner@example.com
+  TEST_PASS: ExampleSeedPass1!
+  TEST_PASSWORD: ExampleSeedPass1!  # alias for usernamePassword recipe compatibility
   TEST_ORG_ID: 00000000-0000-0000-0000-000000000001
   TEST_APP_ID: 00000000-0000-0000-0000-000000000010
-  FALCON_LOGIN_URL: ${FALCON_URL}/login
+  GATEWAY_LOGIN_URL: ${GATEWAY_URL}/login
 ```
 
 `TEST_PASSWORD` is emitted whenever a password-storage column was detected and seeded (see
@@ -811,26 +827,27 @@ while `TEST_PASSWORD` is the key hawkscan's `usernamePassword` auth recipe refer
 
 ### Referenced step files
 
-**`bootstrap/eyas/001-orgs.sql`**
+**`bootstrap/auth-service/001-orgs.sql`**
 ```sql
--- Seed test organization for HawkScan scanning.
+-- Seed test organization.
 INSERT INTO organizations (id, name, created_at)
 VALUES (
   '00000000-0000-0000-0000-000000000001',
-  'HawkScan Test Org',
+  'Example Test Org',
   NOW()
 )
 ON CONFLICT (id) DO NOTHING;
 ```
 
-**`bootstrap/eyas/002-users.sql`**
+**`bootstrap/auth-service/002-users.sql`**
 ```sql
 -- Seed test user bound to the test organization.
+-- Supply password via: psql -v test_pass="$TEST_PASS" -f 002-users.sql
 INSERT INTO users (id, email, password_hash, org_id, role, created_at)
 VALUES (
   '00000000-0000-0000-0000-000000000002',
-  'hawkscan-test@example.com',
-  crypt('HawkScanTest1!', gen_salt('bf')),
+  'test-owner@example.com',
+  crypt(:'test_pass', gen_salt('bf')),
   '00000000-0000-0000-0000-000000000001',
   'SCAN_USER',
   NOW()
@@ -838,7 +855,7 @@ VALUES (
 ON CONFLICT (email) DO NOTHING;
 ```
 
-**`bootstrap/yarak/001-apps.sql`**
+**`bootstrap/inventory-service/001-apps.sql`**
 ```sql
 -- Seed scannable application owned by the test org.
 INSERT INTO applications (id, name, org_id, created_at)
@@ -851,17 +868,17 @@ VALUES (
 ON CONFLICT (name, org_id) DO NOTHING;
 ```
 
-**`bootstrap/falcon/001-link-app-to-env.http`**
+**`bootstrap/gateway-api/001-link-app-to-env.http`**
 ```http
 ### Link target-app-1 to the default scan environment
 
-PUT {{$env FALCON_URL}}/v1/apps/target-app-1/envs/Development
+PUT {{$env GATEWAY_URL}}/v1/apps/target-app-1/envs/Development
 Content-Type: application/json
-Authorization: Bearer {{$env FALCON_ADMIN_TOKEN}}
+Authorization: Bearer {{$env GATEWAY_ADMIN_TOKEN}}
 
 {
   "orgId": "00000000-0000-0000-0000-000000000001",
-  "description": "Default scan environment for HawkScan"
+  "description": "Default scan environment"
 }
 ```
 
@@ -876,16 +893,16 @@ Skill A should never emit them; code review should block them.
 
 **Wrong:**
 ```yaml
-- id: eyas-orgs
+- id: auth-orgs
   type: sql
   # BAD: SQL embedded as a multi-line YAML string
   content: |
     INSERT INTO organizations (id, name)
-    VALUES ('00000000...', 'HawkScan Test Org')
+    VALUES ('00000000...', 'Example Test Org')
     ON CONFLICT DO NOTHING;
 ```
 
-**Right:** put the SQL in `eyas/001-orgs.sql` and reference it via `file:`.
+**Right:** put the SQL in `auth-service/001-orgs.sql` and reference it via `file:`.
 
 SQL embedded in YAML loses syntax highlighting, SQL linting, diff readability,
 and the ability to run the file directly with `psql`. The same applies to
@@ -899,13 +916,13 @@ path; the files own their content.
 **Wrong:**
 ```sql
 -- BAD: password literal in a checked-in file
-INSERT INTO users (email, password) VALUES ('hawkscan-test@example.com', 'HawkScanTest1!');
+INSERT INTO users (email, password) VALUES ('test-owner@example.com', 'ExampleSeedPass1!');
 ```
 
 **Right:** use env interpolation and store values in `.bootstrap-credentials.env` (gitignored):
 ```sql
 INSERT INTO users (email, password_hash)
-VALUES ('hawkscan-test@example.com', crypt(current_setting('app.test_pass'), gen_salt('bf')))
+VALUES ('test-owner@example.com', crypt(current_setting('app.test_pass'), gen_salt('bf')))
 ON CONFLICT (email) DO NOTHING;
 ```
 
@@ -943,30 +960,30 @@ alternative exists.
 **Wrong:**
 ```yaml
 # WRONG — one step file touching two services
-- id: falcon-setup
-  service: falcon
+- id: gateway-setup
+  service: gateway-api
   type: sql
-  file: falcon/001-setup.sql       # file inside performs inserts against BOTH eyas DB and yarak DB
-  target: { kind: postgres, connection: ${EYAS_DB_URL} }
+  file: gateway-api/001-setup.sql   # file inside performs inserts against BOTH auth-service DB and inventory-service DB
+  target: { kind: postgres, connection: ${AUTH_SERVICE_DB_URL} }
   # ... (idempotency check can only cover one service)
 ```
 
 **Right:**
 ```yaml
 # RIGHT — one step per service
-- id: eyas-orgs
-  service: eyas
+- id: auth-orgs
+  service: auth-service
   type: sql
-  file: eyas/001-orgs.sql
-  target: { kind: postgres, connection: ${EYAS_DB_URL} }
-  idempotency: { check_sql: "SELECT 1 FROM organizations WHERE name = 'HawkScan Test Org';" }
+  file: auth-service/001-orgs.sql
+  target: { kind: postgres, connection: ${AUTH_SERVICE_DB_URL} }
+  idempotency: { check_sql: "SELECT 1 FROM organizations WHERE name = 'Example Test Org';" }
 
-- id: yarak-apps
-  service: yarak
+- id: inventory-apps
+  service: inventory-service
   type: sql
-  file: yarak/001-apps.sql
-  target: { kind: postgres, connection: ${YARAK_DB_URL} }
-  depends_on: [ eyas-orgs ]
+  file: inventory-service/001-apps.sql
+  target: { kind: postgres, connection: ${INVENTORY_SERVICE_DB_URL} }
+  depends_on: [ auth-orgs ]
   idempotency: { check_sql: "SELECT 1 FROM applications WHERE name = 'target-app-1';" }
 ```
 

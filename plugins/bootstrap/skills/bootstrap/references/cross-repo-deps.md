@@ -2,13 +2,13 @@
 
 ## Overview
 
-A repo like `falcon` (API gateway, no DB of its own) cannot be bootstrapped in
-isolation — the entities it serves live in upstream services such as `eyas` or
-`yarak`. The skill must locate those upstream repos on disk to know where to
-read schemas, run migrations, and seed data. This reference documents how the
-skill detects upstreams from source signals, resolves service names to local
-repo paths, and handles cases where no local path exists (remote-only or SaaS
-services).
+A repo like `gateway-api` (API gateway, no DB of its own) cannot be bootstrapped
+in isolation — the entities it serves live in upstream services such as
+`auth-service` or `inventory-service`. The skill must locate those upstream repos
+on disk to know where to read schemas, run migrations, and seed data. This
+reference documents how the skill detects upstreams from source signals, resolves
+service names to local repo paths, and handles cases where no local path exists
+(remote-only or SaaS services).
 
 ---
 
@@ -23,7 +23,7 @@ confirmation before the skill treats the upstream as authoritative.
 | `docker-compose.yml` service entries | Sibling services that may run alongside the target |
 | `.env*` / `application.yml` URL env vars | External services the app calls at runtime |
 | gRPC client stubs / generated proto code | Services with proto-defined interfaces |
-| Imported clients (e.g. `EyasClient`, `YarakSDK`) | Named upstreams referenced in source |
+| Imported clients (e.g. `AuthServiceClient`, `InventorySDK`) | Named upstreams referenced in source |
 | `package.json` workspace refs | Monorepo siblings already on disk |
 
 ### docker-compose.yml service entries
@@ -58,7 +58,7 @@ grep -rn --include="appsettings*.json" \
   . 2>/dev/null | head -10
 ```
 
-Each hostname or service name in a URL (e.g., `http://eyas-service:8080`) is a
+Each hostname or service name in a URL (e.g., `http://auth-service:8080`) is a
 candidate upstream. Strip the scheme, port, and path to get the service name,
 then apply naming normalization (see below).
 
@@ -103,9 +103,9 @@ grep -rn --include='*.ts' --include='*.js' \
   . 2>/dev/null | head -10
 ```
 
-Client class names like `EyasClient` or `YarakSDK` directly name the upstream.
-Strip the `Client` / `SDK` suffix, apply normalization, and record as a
-candidate.
+Client class names like `AuthServiceClient` or `InventorySDK` directly name the
+upstream. Strip the `Client` / `SDK` suffix, apply normalization, and record as
+a candidate.
 
 ### package.json workspace refs
 
@@ -137,11 +137,11 @@ layout. The skill checks these first because explicit user input wins.
 Convention: `BOOTSTRAP_REPO_<NORMALIZED_NAME>` where the name is uppercased.
 
 ```bash
-# For a service named "eyas" (after normalization), check:
-echo "${BOOTSTRAP_REPO_EYAS:-}"
+# For a service named "auth-service" (normalized to "auth"), check:
+echo "${BOOTSTRAP_REPO_AUTH:-}"
 
-# For "yarak":
-echo "${BOOTSTRAP_REPO_YARAK:-}"
+# For "inventory-service" (normalized to "inventory"):
+echo "${BOOTSTRAP_REPO_INVENTORY:-}"
 ```
 
 If the env var is set and the path exists, use it immediately — skip Steps 2
@@ -150,21 +150,21 @@ Confirmation patterns) so they can correct it if the env var is stale.
 
 ### Step 2 — Sibling-directory search
 
-For a normalized service name (e.g., `eyas`), probe these candidate paths in
+For a normalized service name (e.g., `auth`), probe these candidate paths in
 order:
 
-1. `../eyas`
-2. `../eyas-service`
-3. `../eyas-svc`
-4. `../eyas_service`
-5. `../<github-org>/eyas` — if the org is discoverable from `git config
+1. `../auth`
+2. `../auth-service`
+3. `../auth-svc`
+4. `../auth_service`
+5. `../<github-org>/auth` — if the org is discoverable from `git config
    remote.origin.url`
 
 Each candidate is valid only if it contains a `.git` directory or one of the
 standard storage signals documented in `discovery.md`.
 
 ```bash
-for candidate in "../eyas" "../eyas-service" "../eyas-svc" "../eyas_service"; do
+for candidate in "../auth" "../auth-service" "../auth-svc" "../auth_service"; do
   if [ -d "$candidate/.git" ]; then
     echo "Found: $candidate"
     break
@@ -179,7 +179,7 @@ git config remote.origin.url \
   | sed -E 's|.*github\.com[:/]([^/]+)/.*|\1|'
 ```
 
-Then probe `../<org>/eyas` if the org extraction succeeded.
+Then probe `../<org>/auth-service` if the org extraction succeeded.
 
 **Always confirm with the user** before treating an auto-resolved candidate as
 authoritative. Auto-resolution is a suggestion, not a decision.
@@ -188,15 +188,15 @@ authoritative. Auto-resolution is a suggestion, not a decision.
 
 If neither Step 1 nor Step 2 yields a result, ask:
 
-> "I see this app calls `eyas-service:8080`. I couldn't find a
-> `BOOTSTRAP_REPO_EYAS` env var or sibling directories like `../eyas`. Where
-> does that service's repo live, or is it remote-only (in which case we'll seed
-> via API)?"
+> "I see this app calls `auth-service:8080`. I couldn't find a
+> `BOOTSTRAP_REPO_AUTH` env var or sibling directories like `../auth-service`.
+> Where does that service's repo live, or is it remote-only (in which case
+> we'll seed via API)?"
 
 The user can respond with:
 
-- **A path** (e.g., `/Users/foo/repos/eyas`) — skill uses that path and
-  proceeds to `discovery.md` detection against it.
+- **A path** (e.g., `/Users/foo/repos/auth-service`) — skill uses that path
+  and proceeds to `discovery.md` detection against it.
 - **"remote-only"** — skill treats the service as HTTP-only and emits
   API-call steps only (see Remote-only upstream).
 - **"skip"** — skill omits seeding for this service and warns that scans
@@ -224,21 +224,21 @@ Examples:
 
 | Raw name | Normalized |
 |---|---|
-| `eyas-service` | `eyas` |
-| `eyas_service` | `eyas` |
-| `Eyas` | `eyas` |
-| `eyas-svc` | `eyas` |
-| `EYAS` | `eyas` |
-| `yarak` | `yarak` |
+| `auth-service` | `auth` |
+| `auth_service` | `auth` |
+| `Auth` | `auth` |
+| `auth-svc` | `auth` |
+| `AUTH` | `auth` |
+| `inventory-service` | `inventory` |
 
-**Practical example:** docker-compose declares a service `eyas-service:8080`.
-The user has `BOOTSTRAP_REPO_EYAS=/repos/eyas` set. Normalization maps
-`eyas-service` → `eyas`; the env var key suffix `EYAS` also normalizes to
-`eyas`; they match and the env var wins (Step 1).
+**Practical example:** docker-compose declares a service `auth-service:8080`.
+The user has `BOOTSTRAP_REPO_AUTH=/repos/auth-service` set. Normalization maps
+`auth-service` → `auth`; the env var key suffix `AUTH` also normalizes to
+`auth`; they match and the env var wins (Step 1).
 
 Apply normalization before any lookup in Steps 1–3 and before deduplication
-across signals. Multiple signals pointing to `eyas-service`, `EyasClient`, and
-`BOOTSTRAP_REPO_EYAS` are all the same upstream entry after normalization.
+across signals. Multiple signals pointing to `auth-service`, `AuthServiceClient`,
+and `BOOTSTRAP_REPO_AUTH` are all the same upstream entry after normalization.
 
 ---
 
@@ -330,9 +330,9 @@ normalization is applied:
 
 ```
 Discovered upstreams from <signals: docker-compose, env URLs, client imports>:
-  - eyas       (resolved to ../eyas via sibling search)
-  - yarak      (resolved to ../yarak via sibling search)
-  - auth0      (remote-only — no local repo)
+  - auth-service       (resolved to ../auth-service via sibling search)
+  - inventory-service  (resolved to ../inventory-service via sibling search)
+  - payment-service    (remote-only — no local repo)
 
 OK to explore these? Or are any of them wrong / missing / extra?
 ```

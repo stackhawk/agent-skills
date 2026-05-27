@@ -1,9 +1,3 @@
----
-description: >
-  End-to-end worked example of the bootstrap skill: discovery output for a two-service architecture (gateway-api + auth-service + inventory-service), cross-repo dep resolution, minimal seed proposal dialog, full content of every emitted artifact (manifest.yaml + per-service SQL/HTTP files + credentials handoff), manual replay walkthrough, validation criteria.
-globs:
-alwaysApply: false
----
 # Example Walkthrough
 
 ## Overview

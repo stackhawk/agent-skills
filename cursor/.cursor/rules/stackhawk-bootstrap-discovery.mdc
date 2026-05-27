@@ -403,7 +403,7 @@ grep -rln "password\|password_hash" \
   . 2>/dev/null | head -5
 ```
 
-A hit in a `createTable` block (Liquibase) or a `CREATE TABLE` statement (Flyway) that names the table `users`, `stackhawk_user`, `accounts`, or similar confirms a local password column.
+A hit in a `createTable` block (Liquibase) or a `CREATE TABLE` statement (Flyway) that names the table `users`, `accounts`, `credentials`, or similar confirms a local password column.
 
 #### Step 2 — Identify the encoding mechanism
 
@@ -451,7 +451,7 @@ grep -rln "BCryptPasswordEncoder\|BCrypt.hashpw\|require\(['\"]bcrypt\|from ['\"
 
 | Detection result | Action |
 |---|---|
-| Password column found + BCrypt encoder found | Mark service as "supports password auth". Phase 2 proposes seeding a known test password (default `HawkScanTest1!`). Hash is computed at emission time and embedded in the SQL literal. |
+| Password column found + BCrypt encoder found | Mark service as "supports password auth". Phase 2 proposes seeding a known test password (default `ExampleSeedPass1!`). Hash is computed at emission time and embedded in the SQL literal. |
 | Password column found + Argon2 or PBKDF2 | Mark service as "supports password auth (non-bcrypt)". Emit the same proposal but note the encoder so the hash is generated correctly. |
 | Password column found + encoder unknown | Ask the user what encoder is used before proposing password seeding. |
 | No password column (external IdP only) | Do not propose password seeding. The seed must supply an API key or OAuth credential instead. |
