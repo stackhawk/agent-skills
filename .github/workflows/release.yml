@@ -154,9 +154,11 @@ jobs:
 
       - name: Clone agent-skills-marketplace
         run: |
+          GH_PAT=$(aws ssm get-parameter --name TF_GITHUB_TOKEN --query 'Parameter.Value' --output text --with-decryption)
+          echo "::add-mask::${GH_PAT}"
           git clone https://github.com/stackhawk/agent-skills-marketplace.git /tmp/marketplace
           git -C /tmp/marketplace remote set-url origin \
-            https://x-access-token:${TF_GITHUB_TOKEN}@github.com/stackhawk/agent-skills-marketplace.git
+            https://x-access-token:${GH_PAT}@github.com/stackhawk/agent-skills-marketplace.git
 
       - name: Update marketplace.json
         run: |
