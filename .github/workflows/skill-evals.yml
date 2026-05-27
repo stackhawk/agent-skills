@@ -15,11 +15,11 @@ on:
         type: choice
         options: [hawkscan, api, both]
       platform:
-        description: "Platform to run (all = claude-code + codex + gemini + cursor)"
+        description: "Platform to run (all = claude-code + codex + agy + cursor)"
         required: true
         default: "all"
         type: choice
-        options: [all, claude-code, codex, gemini, cursor]
+        options: [all, claude-code, codex, agy, cursor]
       rubric:
         description: "Run qualitative rubric grader (slower, ~$0.10 extra per run)"
         required: false
@@ -34,7 +34,7 @@ permissions:
 # Required GitHub Actions secrets:
 #   ANTHROPIC_API_KEY  — Anthropic API key for Claude Code evals
 #   OPENAI_API_KEY     — OpenAI API key for Codex evals
-#   GEMINI_API_KEY     — Google Gemini API key for Gemini CLI evals
+#   AGY_API_KEY        — Antigravity API key for agy evals (replaces Gemini)
 #   CURSOR_API_KEY     — Cursor API key for Cursor agent evals (Cursor Pro required)
 # ---------------------------------------------------------------------------
 
@@ -145,14 +145,14 @@ jobs:
           path: evals/harnesses/codex/results/${{ matrix.skill }}/
           retention-days: 30
 
-  # ── Gemini ────────────────────────────────────────────────────────────────
-  eval-gemini:
-    name: gemini / ${{ matrix.skill }}
+  # ── Antigravity (agy) — replaces Gemini ───────────────────────────────────
+  eval-agy:
+    name: agy / ${{ matrix.skill }}
     runs-on: ubuntu-latest
     if: |
       github.event_name != 'workflow_dispatch' ||
       inputs.platform == 'all' ||
-      inputs.platform == 'gemini'
+      inputs.platform == 'agy'
     strategy:
       fail-fast: false
       matrix:
@@ -165,34 +165,35 @@ jobs:
         with:
           python-version: "3.11"
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
+      - name: Install agy CLI
+        run: |
+          curl -fsSL https://install.antigravity.sh | sh  # update URL when published
+        continue-on-error: true  # installer URL TBD — update when agy ships a stable installer
 
-      - name: Install Gemini CLI
-        run: npm install -g @google/gemini-cli
+      - name: Verify agy CLI
+        run: agy --version
 
-      - name: Verify gemini CLI
-        run: gemini --version
-
-      - name: Link StackHawk extension
+      - name: Install StackHawk plugins
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: echo y | gemini extensions link .
+          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+        run: |
+          echo y | agy plugin install plugins/hawkscan
+          echo y | agy plugin install plugins/api
 
       - name: Run ${{ matrix.skill }} evals
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
         run: |
-          python3 evals/harnesses/gemini/run-evals.py \
-            --skill ${{ matrix.skill }}
+          python3 evals/harnesses/agy/run-evals.py \
+            --skill ${{ matrix.skill }} \
+            --print-timeout 240s
 
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: eval-gemini-${{ matrix.skill }}
-          path: evals/harnesses/gemini/results/${{ matrix.skill }}/
+          name: eval-agy-${{ matrix.skill }}
+          path: evals/harnesses/agy/results/${{ matrix.skill }}/
           retention-days: 30
 
   # ── Cursor ────────────────────────────────────────────────────────────────
@@ -244,7 +245,7 @@ jobs:
   # ── PR comment ────────────────────────────────────────────────────────────
   comment:
     name: Post PR summary
-    needs: [eval-claude-code, eval-codex, eval-gemini, eval-cursor]
+    needs: [eval-claude-code, eval-codex, eval-agy, eval-cursor]
     if: always() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -270,7 +271,7 @@ jobs:
 
             let body = `## ${overallIcon} Skill Eval Results\n\n`;
 
-            const platforms = ['claude-code', 'codex', 'gemini', 'cursor'];
+            const platforms = ['claude-code', 'codex', 'agy', 'cursor'];
             const skills = ['hawkscan', 'api'];
 
             for (const platform of platforms) {

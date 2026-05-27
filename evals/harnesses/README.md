@@ -9,8 +9,7 @@ Each harness connects the platform-agnostic test cases in `evals/` to a specific
 | **Claude Code** | Automated | `claude -p --output-format stream-json --verbose` | ✅ Multi-model |
 | **Codex** | Automated | `codex exec --json --sandbox workspace-write` | ✅ Multi-model |
 | **Cursor** | Automated | `agent -p --output-format stream-json --print` | ✅ Requires Pro |
-| **Antigravity (agy)** | Automated | `agy -p --print` | ✅ Skill-declaration mode |
-| **Gemini CLI** | Automated | `gemini -p --output-format stream-json` | ✅ Requires paid key |
+| **Antigravity (agy)** | Automated | `agy -p --print` | ✅ Replaces Gemini |
 | **Copilot** | Manual interactive | `run-evals.py` (records human observations) | ✅ No agentic CLI |
 
 ## Running locally
@@ -89,19 +88,6 @@ python3 evals/harnesses/agy/run-evals.py --skill api
 python3 evals/harnesses/agy/run-evals.py --skill hawkscan --print-timeout 300s
 ```
 
-### Gemini CLI
-
-One-time extension setup:
-```bash
-echo y | gemini extensions link .
-```
-
-```bash
-# Requires: GEMINI_API_KEY (paid — free tier has daily quota limits)
-GEMINI_API_KEY=<key> python3 evals/harnesses/gemini/run-evals.py --skill hawkscan
-GEMINI_API_KEY=<key> python3 evals/harnesses/gemini/run-evals.py --skill api
-```
-
 ## How it works
 
 For each row in `evals/<skill>/prompts.csv`, each harness:
@@ -127,7 +113,7 @@ The `.github/workflows/skill-evals.yml` workflow runs Claude Code + Codex + Gemi
 Required GitHub secrets:
 - `ANTHROPIC_API_KEY` — Claude Code
 - `OPENAI_API_KEY` — Codex
-- `GEMINI_API_KEY` — Gemini (paid tier required)
+- `AGY_API_KEY` — Antigravity/agy
 - `CURSOR_API_KEY` — Cursor (Pro required)
 
 ## Scoring
