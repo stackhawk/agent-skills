@@ -271,7 +271,7 @@ jobs:
               body += `### Platform: \`${platform}\`\n\n`;
               for (const skill of skills) {
                 const summaryPath = path.join(
-                  'results', `eval-${platform}-${skill}`, skill, 'summary.json'
+                  'results', `eval-${platform}-${skill}`, 'summary.json'
                 );
 
                 if (!fs.existsSync(summaryPath)) {

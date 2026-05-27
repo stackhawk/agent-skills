@@ -125,7 +125,7 @@ INVOCATION_SIGNALS = {
         # Plugin name only (Opus 4.7 sometimes omits :api suffix)
         "stackhawk-api**: yes",      # bold + colon, no skill suffix
         "stackhawk-api** — yes",     # bold + em-dash, no skill suffix
-        "stackhawk-api**: yes",      # bold + colon
+        "stackhawk-api** - yes",     # bold + plain hyphen, no skill suffix (Opus)
         "stackhawk-api: yes",        # plain colon, no skill suffix
         "stackhawk-api — yes",       # em-dash, no skill suffix
         "stackhawk-api - yes",       # plain hyphen, no skill suffix
