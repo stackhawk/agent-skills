@@ -42,7 +42,7 @@ GitLab's `services:` runs sidecar containers alongside the job container. Useful
 
 ```yaml
 hawkscan:
-  image: stackhawk/hawkscan:5.5.11
+  image: stackhawk/hawkscan:latest
   services:
     - name: my-org/my-app:latest
       alias: app

@@ -163,14 +163,15 @@ Three tiers, prefer highest the provider supports:
 
 | Tier | Mechanism | When to use |
 |---|---|---|
-| 1. Native action | `stackhawk/hawkscan-action@vX.Y.Z` | GitHub Actions only |
-| 2. Docker image | `stackhawk/hawkscan:<version>` | Anywhere with Docker (GitLab, Jenkins, CircleCI, Azure, Bitbucket, Buildkite, AWS CodeBuild) |
+| 1. Native action | `stackhawk/hawkscan-action@v2` | GitHub Actions only |
+| 2. Docker image | `stackhawk/hawkscan:latest` | Anywhere with Docker (GitLab, Jenkins, CircleCI, Azure, Bitbucket, Buildkite, AWS CodeBuild) |
 | 3. CLI download | `download.stackhawk.com/hawk/cli/hawk-${VERSION}.zip` | Bare shell runners (Travis without sudo, some Spinnaker stages) |
 
-**Pin everything:**
-- Action: pin the major (`@v2`) for auto-minor-updates, or pin minor (`@v2.5.0`) for full determinism. Both acceptable.
-- Image: **never use `:latest` in CI.** Pin a version tag — resolve the current via `curl -s https://api.stackhawk.com/hawkscan/version` and hard-code (e.g., `stackhawk/hawkscan:5.5.11`).
-- CLI: resolve `${VERSION}` once at write-time, hard-code into the workflow.
+**Track the latest stable scanner:**
+- Image: use **`stackhawk/hawkscan:latest`** — HawkScan is a security scanner, so CI should run the newest stable build for the freshest checks.
+- Action: pin the major (`@v2`) — auto-receives the newest action within v2.
+- CLI: resolve the current version via `curl -s https://api.stackhawk.com/hawkscan/version` (the zip is version-numbered; there's no `hawk-latest.zip`).
+- **Need fully reproducible builds?** Pin an explicit version (`stackhawk/hawkscan:<X.Y.Z>`, `@vX.Y.Z`, or an image digest) instead — see [`references/execution-shapes.md`](references/execution-shapes.md).
 
 See [`references/execution-shapes.md`](references/execution-shapes.md) for the full per-provider mapping.
 
@@ -248,14 +249,19 @@ Per the Step 2b choice:
 - **Block:** let exit code propagate. Default behavior of all the
   invocation shapes — the action / docker / CLI all exit non-zero on
   42, the runner fails the job.
-- **Warn-only:** capture the exit code, echo a clear warning
-  (*"HawkScan found N findings — review at the platform URL"*), exit 0
-  from the wrapper.
+- **Warn-only:** downgrade only exit 42 to a warning; still fail on exit 1
+  (config error, app unreachable, auth failure) — never declare success
+  when the scan didn't run.
   Shell-based runners:
   ```bash
-  hawk scan || HAWK_EXIT=$?
-  [ "${HAWK_EXIT:-0}" -eq 42 ] && echo "::warning::HawkScan found findings — review at the platform URL" || true
-  exit 0
+  set +e
+  hawk scan
+  HAWK_EXIT=$?
+  case $HAWK_EXIT in
+    0)  ;;
+    42) echo "::warning::HawkScan found findings — review at the platform URL above." ;;
+    *)  exit $HAWK_EXIT ;;   # exit 1 = config error / unreachable / auth — never swallow
+  esac
   ```
   GitHub Actions has a native form (`continue-on-error: true`). Full per-provider warn-only patterns: [`references/failure-semantics.md`](references/failure-semantics.md).
 
@@ -301,7 +307,7 @@ After writing/patching the workflow file:
 
 - **Don't generate `stackhawk.yml`.** That's the `hawkscan` skill's surface. If the config is missing, hand off.
 - **Don't set `HAWK_AGENT`.** CI pipelines aren't agents; the `${HAWK_AGENT:none}` default resolves correctly without intervention.
-- **Don't pin to `:latest`.** Pin the action or image version explicitly. CI reproducibility matters more than convenience.
+- **Use `stackhawk/hawkscan:latest` for the scanner image.** It's a security scanner — CI should run the newest stable build for the best detection. Pin an explicit version only when an org reproducibility mandate requires it.
 - **Don't inline the API key.** Never, in any form. Always reference the provider's secret store or external secrets manager.
 - **Don't try to set the secret autonomously.** Prompt the user and tell them where to put it.
 - **Don't forget GitLab's key-split rule.** `HAWK_API_KEY` in the form `hawk.<id>.<secret>` triggers GitLab's variable-masking bug. Split into `HAWK_API_ID` + `HAWK_API_SECRET` and reassemble in the job.

@@ -65,7 +65,7 @@ The exit code propagates; the job fails; the pipeline fails; the PR check turns 
     # exit code handled explicitly below (do not use continue-on-error here)
   run: |
     set +e
-    docker run --rm ... stackhawk/hawkscan:5.5.11
+    docker run --rm ... stackhawk/hawkscan:latest
     EXIT_CODE=$?
     case $EXIT_CODE in
       0)  echo "HawkScan passed." ;;
@@ -125,7 +125,7 @@ Don't retry blindly. If retry succeeds, the original failure was a flake. If ret
 - name: Run HawkScan (with retry on transient errors)
   run: |
     for attempt in 1 2; do
-      docker run --rm ... stackhawk/hawkscan:5.5.11
+      docker run --rm ... stackhawk/hawkscan:latest
       EXIT=$?
       case $EXIT in
         0|42) exit $EXIT ;;
@@ -145,23 +145,29 @@ Don't retry blindly. If retry succeeds, the original failure was a flake. If ret
 
 ### GitHub Actions image cache
 
-GHA's `ubuntu-latest` runners cache popular images automatically. For pinned non-latest tags, an explicit cache step is unusual — image pull is ~5 seconds on a warm cache.
+GHA's `ubuntu-latest` runners cache popular images automatically. A `stackhawk/hawkscan:latest` pull is ~5 seconds on a warm cache, so an explicit image-cache step is rarely worth it.
 
 ### Caching the CLI download (Tier 3)
 
+The CLI zip is version-numbered (there's no `hawk-latest.zip`), so resolve the current version first and key the cache on it — that tracks the latest CLI while keeping a stable cache key:
+
 ```yaml
+- name: Resolve current hawk version
+  id: hawk
+  run: echo "version=$(curl -s https://api.stackhawk.com/hawkscan/version)" >> "$GITHUB_OUTPUT"
 - name: Cache hawk CLI
   uses: actions/cache@v4
   with:
-    path: ~/hawk
-    key: hawk-cli-5.5.11
+    path: ~/hawk-${{ steps.hawk.outputs.version }}
+    key: hawk-cli-${{ steps.hawk.outputs.version }}
 - name: Install hawk if not cached
   run: |
-    if [ ! -d ~/hawk ]; then
-      curl -Lo /tmp/hawk.zip https://download.stackhawk.com/hawk/cli/hawk-5.5.11.zip
+    V="${{ steps.hawk.outputs.version }}"
+    if [ ! -d ~/hawk-"$V" ]; then
+      curl -Lo /tmp/hawk.zip "https://download.stackhawk.com/hawk/cli/hawk-$V.zip"
       unzip -d ~/ /tmp/hawk.zip
     fi
-    echo "$HOME/hawk-5.5.11" >> $GITHUB_PATH
+    echo "$HOME/hawk-$V" >> $GITHUB_PATH
 ```
 
 ## Scheduled vs PR-Trigger Tradeoffs
@@ -182,4 +188,4 @@ GHA's `ubuntu-latest` runners cache popular images automatically. For pinned non
 - **Catching all non-zero exit codes and continuing.** Exit 1 means the scan didn't run — silently passing means CI claims a security check happened when none did.
 - **Setting `failureThreshold: All` on day 1.** Drowns the team in noise; the first real finding gets buried. Start at `High`.
 - **Using `continue-on-error: true` to ship warn-only.** That swallows exit 1 too. Use the explicit `case` pattern from Mode 2 instead.
-- **Tying CI to `:latest` and being surprised when a hawk release changes default behavior.** Pin the version.
+- **Hard-pinning an old scanner image and leaving it.** A frozen `stackhawk/hawkscan:<old>` misses newly-added checks. Track `:latest` so CI runs current detections; pin a specific version only when you have a reproducibility mandate (and bump it regularly).

@@ -7,20 +7,20 @@ This reference covers the three ways CI pipelines invoke HawkScan, per-provider 
 | Tier | Mechanism | Pros | Cons | When to use |
 |---|---|---|---|---|
 | **1. Native action** | `stackhawk/hawkscan-action@vX.Y.Z` | Richest input surface (SARIF upload, PR comments, Code Scanning, `commitShaCheck`, multi-file overlays). One-line invocation. Network plumbing for localhost handled automatically. | GitHub Actions only. | GitHub Actions runners. |
-| **2. Docker image** | `docker run stackhawk/hawkscan:<version>` | Works in any runner with Docker. Same binary as production scans. Easy to version-pin. | Networking-to-localhost requires `--network host` (Linux) or `host.docker.internal` (Mac/Windows runners). DinD setup on GitLab. | Anywhere Docker is available — GitLab, Jenkins, CircleCI, Azure, Bitbucket, Buildkite, AWS CodeBuild. |
+| **2. Docker image** | `docker run stackhawk/hawkscan:latest` | Works in any runner with Docker. Same binary as production scans. `:latest` tracks the newest stable scanner. | Networking-to-localhost requires `--network host` (Linux) or `host.docker.internal` (Mac/Windows runners). DinD setup on GitLab. | Anywhere Docker is available — GitLab, Jenkins, CircleCI, Azure, Bitbucket, Buildkite, AWS CodeBuild. |
 | **3. CLI download** | `curl -Lo hawk.zip https://download.stackhawk.com/hawk/cli/hawk-${VERSION}.zip` | No Docker required. Lightest footprint. | Java 17+ must be present (separate install for Linux runners). Slower bootstrap than image pull on warm cache. | Bare shell runners with no Docker — some Travis configs, restricted Spinnaker stages, locked-down corporate runners. |
 
-## Pinning Strategy
+## Versioning Strategy
 
-**Always pin.** `:latest` and unpinned actions break determinism.
+**Use `:latest` for the StackHawk scanner image.** HawkScan is a security scanner — the newest stable build carries the latest checks and detections, so CI should track it rather than freeze on an older release. StackHawk publishes `stackhawk/hawkscan:latest` as the current stable release.
 
-| Mechanism | Pin example | Rationale |
+| Mechanism | Recommended | Notes |
 |---|---|---|
-| Action major | `stackhawk/hawkscan-action@v2` | Auto-receive minor fixes and feature additions; major bumps are opt-in. |
-| Action minor | `stackhawk/hawkscan-action@v2.5.0` | Full reproducibility — every run uses the exact same action code. |
-| Image tag | `stackhawk/hawkscan:5.5.11` | Resolve current via `curl -s https://api.stackhawk.com/hawkscan/version` once at write-time. |
-| Image digest | `stackhawk/hawkscan@sha256:abc...` | Maximum determinism, immune to tag re-publication. Update via Dependabot or Renovate. |
-| CLI download | `?VERSION=5.5.11` | Same as image tag — resolve once at write-time. |
+| Scanner image | `stackhawk/hawkscan:latest` | Newest stable scanner — best detection coverage. |
+| Native action | `stackhawk/hawkscan-action@v2` | Major pin auto-receives the newest action within v2. |
+| CLI download | resolve via `curl -s https://api.stackhawk.com/hawkscan/version` | Downloads the current stable CLI. |
+
+**If your org mandates fully reproducible builds**, pin an explicit version instead — `stackhawk/hawkscan:<X.Y.Z>` (resolve the current via the version endpoint), `stackhawk/hawkscan-action@vX.Y.Z`, or an image digest (`stackhawk/hawkscan@sha256:...`, bumped via Dependabot/Renovate). The tradeoff is that a frozen scanner won't pick up newly-added checks until you bump it.
 
 ## Per-Provider Quick Reference
 
@@ -78,7 +78,7 @@ hawkscan:
   services:
     - docker:24-dind
   variables:
-    HAWK_VERSION: "5.5.11"
+    HAWK_VERSION: "latest"
   script:
     - docker pull stackhawk/hawkscan:${HAWK_VERSION}
     - |
@@ -111,7 +111,7 @@ pipeline {
   agent any
   environment {
     HAWK_API_KEY = credentials('HAWK_API_KEY')
-    HAWK_VERSION = '5.5.11'
+    HAWK_VERSION = 'latest'
     COMMIT_SHA   = "${env.GIT_COMMIT}"
     BRANCH_NAME  = "${env.BRANCH_NAME}"
   }
@@ -162,14 +162,14 @@ jobs:
       - run:
           name: Run HawkScan
           command: |
-            docker pull stackhawk/hawkscan:5.5.11
+            docker pull stackhawk/hawkscan:latest
             docker run --rm \
               -v "$(pwd):/hawk:rw" \
               -e API_KEY=$HAWK_API_KEY \
               -e COMMIT_SHA=$CIRCLE_SHA1 \
               -e BRANCH_NAME=$CIRCLE_BRANCH \
               --network host \
-              stackhawk/hawkscan:5.5.11
+              stackhawk/hawkscan:latest
       - store_artifacts:
           path: hawkscan/
 ```
@@ -190,7 +190,7 @@ jobs:
     pool:
       vmImage: 'ubuntu-latest'
     variables:
-      HAWK_VERSION: '5.5.11'
+      HAWK_VERSION: 'latest'
     steps:
       - checkout: self
       - script: docker compose up -d
@@ -229,16 +229,24 @@ pipelines:
   default:
     - step:
         name: HawkScan
-        image: stackhawk/hawkscan:5.5.11
+        image: atlassian/default-image:4
         services: [docker]
         script:
           - docker compose up -d
-          - hawk scan
+          - timeout 60 bash -c 'until curl -fsS http://localhost:8080/health; do sleep 2; done'
+          - >
+            docker run --rm
+            -v "$(pwd):/hawk:rw"
+            -e API_KEY=$HAWK_API_KEY
+            -e COMMIT_SHA=$BITBUCKET_COMMIT
+            -e BRANCH_NAME=$BITBUCKET_BRANCH
+            --network host
+            stackhawk/hawkscan:latest
         artifacts:
           - hawkscan/**
 ```
 
-**Gotchas:** Bitbucket's `services: [docker]` adds a 1GB memory allocation by default — bump to `step.size: 2x` if scans run out of memory.
+**Gotchas:** the step `image:` must include the Docker CLI (`atlassian/default-image:4` does) — the `stackhawk/hawkscan` image is a JVM scanner with no Docker client, so it can't be the step image that runs `docker compose`. Invoke HawkScan as a `docker run` container instead. Bitbucket's `services: [docker]` adds a 1GB memory allocation by default — bump to `step.size: 2x` if scans run out of memory.
 
 ### Buildkite
 
@@ -252,7 +260,7 @@ steps:
     command: hawk scan
     plugins:
       - docker#v5.10.0:
-          image: stackhawk/hawkscan:5.5.11
+          image: stackhawk/hawkscan:latest
           environment:
             - API_KEY
             - COMMIT_SHA=$BUILDKITE_COMMIT
@@ -278,7 +286,7 @@ script:
       -e COMMIT_SHA="$TRAVIS_COMMIT" \
       -e BRANCH_NAME="$TRAVIS_BRANCH" \
       --network host \
-      stackhawk/hawkscan:5.5.11
+      stackhawk/hawkscan:latest
 ```
 
 ### AWS CodeBuild
@@ -303,7 +311,7 @@ phases:
           -e COMMIT_SHA=$CODEBUILD_RESOLVED_SOURCE_VERSION \
           -e BRANCH_NAME=$CODEBUILD_WEBHOOK_HEAD_REF \
           --network host \
-          stackhawk/hawkscan:5.5.11
+          stackhawk/hawkscan:latest
 artifacts:
   files:
     - hawkscan/**/*
