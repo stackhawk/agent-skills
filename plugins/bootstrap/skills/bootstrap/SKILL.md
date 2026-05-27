@@ -119,17 +119,21 @@ Where each entity lives depends on Phase 1's per-service model. Auto-propose val
 - Org: `HawkScan Test Org`.
 - Resource: `target-app-1` (or whatever the target's vocabulary is).
 
+If discovery found a password storage column in the auth schema (e.g. `password VARCHAR` with bcrypt encoding in a `stackhawk_user`/`users` table), additionally propose seeding a known test password (default `HawkScanTest1!`) so downstream auth tools can use the simpler `usernamePassword` recipe rather than API-key-to-JWT exchange. Hash is bcrypt-encoded in SQL; plaintext lives only in `.bootstrap-credentials.env`. See `references/discovery.md` §Auth-Signal Detection for the grep commands that identify bcrypt usage, and `references/idempotency-patterns.md` §Password-Hash Seeding for the emit-time hashing strategy.
+
 ### 2.2 — Surface to user
 
 ```
 To make this scannable, you need:
-- 1 user (hawkscan-test@example.com / HawkScanTest1!)
+- 1 user (hawkscan-test@example.com / HawkScanTest1!)  ← password seeded into auth table
 - 1 org (HawkScan Test Org)
 - 1 app (target-app-1)
 
 I'll seed user + org in <service-A> via <type>, and app via <service-B> via <type>.
 OK to proceed, or expand? (e.g. need a READ_ONLY user, multiple apps, etc.)
 ```
+
+The `← password seeded into auth table` annotation appears only when discovery detected a password-storage column (e.g., `stackhawk_user.password` with BCrypt encoding). When present it signals that hawkscan can use the `usernamePassword` auth recipe rather than requiring a pre-fetched JWT.
 
 Use the actual service names + storage types from Phase 1.
 
@@ -197,10 +201,13 @@ Write `.bootstrap-credentials.env` (gitignored) with the chosen values:
 ```
 TEST_USER=hawkscan-test@example.com
 TEST_PASS=HawkScanTest1!
+TEST_PASSWORD=HawkScanTest1!  # alias for compatibility with hawkscan usernamePassword recipe
 TEST_ORG_ID=<id>
 TEST_APP_ID=<id>
 <any other outputs from the manifest>
 ```
+
+`TEST_PASSWORD` is emitted in addition to `TEST_PASS` whenever a password was seeded into an auth table. Both keys carry the same value. `TEST_PASS` preserves compatibility with existing hawkscan integration that predates the `usernamePassword` recipe; `TEST_PASSWORD` is the canonical key that hawkscan's `usernamePassword` auth block references.
 
 Write `bootstrap/credentials.env.example` (checked in) with the same keys but placeholder values, so future devs know the schema.
 

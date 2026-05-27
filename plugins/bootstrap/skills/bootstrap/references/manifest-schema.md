@@ -791,10 +791,16 @@ steps:
 outputs:
   TEST_USER: hawkscan-test@example.com
   TEST_PASS: HawkScanTest1!
+  TEST_PASSWORD: HawkScanTest1!  # alias for hawkscan usernamePassword recipe compatibility
   TEST_ORG_ID: 00000000-0000-0000-0000-000000000001
   TEST_APP_ID: 00000000-0000-0000-0000-000000000010
   FALCON_LOGIN_URL: ${FALCON_URL}/login
 ```
+
+`TEST_PASSWORD` is emitted whenever a password-storage column was detected and seeded (see
+`discovery.md` §Password-Storage Detection). Both `TEST_PASS` and `TEST_PASSWORD` carry the
+same plaintext value; `TEST_PASS` preserves backward compatibility with existing integrations
+while `TEST_PASSWORD` is the key hawkscan's `usernamePassword` auth recipe references.
 
 ### Referenced step files
 

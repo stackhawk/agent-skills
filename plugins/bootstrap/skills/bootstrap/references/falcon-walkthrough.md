@@ -148,6 +148,50 @@ Columns inspected:
 
 - `applications(id UUID PK, name TEXT, org_id UUID FK, created_at TIMESTAMP, UNIQUE(name, org_id))`
 
+### beak (`../beak`)
+
+Storage type detected: **Postgres + Liquibase**.
+
+Detection signals:
+
+```bash
+# Finds changelogs in beak's common module, e.g.:
+# ./common/src/main/resources/db/changelog/db.changelog-master.yaml
+find ../beak -not -path "*/target/*" -not -path "*/.git/*" \
+  \( -name "db.changelog-*.yaml" -o -name "db.changelog-*.xml" \) 2>/dev/null
+```
+
+Tables relevant for seed (from `beak/common/src/main/resources/db/changelog/db.changelog-master.yaml`, lines 170–210):
+
+| Table | Purpose |
+|---|---|
+| `stackhawk_user` | Stores email + BCrypt-hashed password for username/password auth |
+| `auth_user` | Stores identity references (`external_user_id`) that link to eyas users |
+| `api_key` | Stores SHA-256-hashed API keys scoped to an `auth_user` |
+
+Columns inspected (from Liquibase `createTable` entries):
+
+- `stackhawk_user(id BIGINT PK, email VARCHAR UNIQUE, password VARCHAR NOT NULL, full_name VARCHAR, email_validated BOOLEAN, created_date TIMESTAMP, updated_date TIMESTAMP)`
+- `auth_user(id BIGINT PK, external_user_id VARCHAR, ...)`
+- `api_key(id BIGINT PK, auth_user_id BIGINT FK, key_hash VARCHAR, ...)`
+
+Password encoding: **BCrypt strength 12** via `Utils.encodePassword()` in
+`beak/common/src/main/kotlin/com/stackhawk/beak/utilities/Utils.kt`.
+
+Password-storage detection signals (Phase 1 / discovery):
+
+```bash
+# BCryptPasswordEncoder usage in beak
+grep -rln "BCryptPasswordEncoder\|BCrypt\.hashpw" \
+  --include="*.java" --include="*.kt" \
+  --exclude-dir=target --exclude-dir=build \
+  ../beak 2>/dev/null | head -5
+```
+
+Because beak owns `stackhawk_user.password`, it is marked **"supports password auth"** and
+Phase 2 proposes seeding a known test password so hawkscan can use the `usernamePassword`
+recipe.
+
 ### falcon (`~/dev/falcon`)
 
 Storage type: **HTTP only — no own DB**.
@@ -167,14 +211,20 @@ Discovery summary:
   - falcon: HTTP gateway (no own DB)
   - eyas:   Postgres (Liquibase migrations); owns users + organizations
   - yarak:  Postgres (Liquibase migrations); owns applications
+  - beak:   Postgres (Liquibase migrations); owns stackhawk_user (email + bcrypt password)
+            and auth_user + api_key (API key identities)
 
 To make this scannable, you need:
   - 1 user (hawkscan-test@example.com / HawkScanTest1!)
+    ↳ identity in eyas (user table)
+    ↳ password in beak (stackhawk_user table, bcrypt-encoded)
+    ↳ API key in beak (api_key table, sha256-hashed)
   - 1 org (HawkScan Test Org)
   - 1 app (target-app-1)
 
 I'll seed:
   - user + org + membership in eyas via SQL
+  - stackhawk_user (password) + auth_user + api_key in beak via SQL
   - app in yarak via SQL
   - env link via falcon REST API
 
@@ -201,6 +251,9 @@ falcon/
 │   │   ├── 001-orgs.sql
 │   │   ├── 002-users.sql
 │   │   └── 003-memberships.sql
+│   ├── beak/
+│   │   ├── 001-auth-users-and-keys.sql
+│   │   └── 002-stackhawk-user.sql
 │   ├── yarak/
 │   │   └── 001-apps.sql
 │   └── falcon/
@@ -316,9 +369,36 @@ steps:
         expect_status: 200
         expect_jq: ".envs | length > 0"
 
+  - id: beak-auth-users-and-keys
+    description: Create auth_user and api_key rows in beak for the test user
+    service: beak
+    type: sql
+    file: beak/001-auth-users-and-keys.sql
+    target:
+      kind: postgres
+      connection: ${BEAK_DB_URL}
+    depends_on: [ eyas-users ]
+    creates: [ "auth_user:hawkscan-test@example.com", "apikey:hawkscan-scan-key" ]
+    idempotency:
+      check_sql: "SELECT 1 FROM auth_user WHERE external_user_id = '00000000-0000-0000-0000-000000000002';"
+
+  - id: beak-stackhawk-users
+    description: Create stackhawk_user with bcrypt-hashed password in beak (enables usernamePassword auth)
+    service: beak
+    type: sql
+    file: beak/002-stackhawk-user.sql
+    target:
+      kind: postgres
+      connection: ${BEAK_DB_URL}
+    depends_on: [ beak-auth-users-and-keys ]
+    creates: [ "password-user:owner@hawkscan.test", "password-user:member@hawkscan.test", "password-user:viewer@hawkscan.test" ]
+    idempotency:
+      on_conflict_do_nothing
+
 outputs:
   TEST_USER: hawkscan-test@example.com
   TEST_PASS: HawkScanTest1!
+  TEST_PASSWORD: HawkScanTest1!
   TEST_ORG_ID: 00000000-0000-0000-0000-000000000001
   TEST_APP_ID: 00000000-0000-0000-0000-000000000010
   FALCON_LOGIN_URL: ${FALCON_URL}/login
@@ -381,7 +461,35 @@ VALUES (
 ON CONFLICT (user_id, org_id) DO NOTHING;
 ```
 
-### 5. `bootstrap/yarak/001-apps.sql`
+### 5. `bootstrap/beak/002-stackhawk-user.sql`
+
+Seeds `stackhawk_user` with a BCrypt-hashed password so the `usernamePassword` hawkscan auth
+recipe can log in directly without a JWT pre-fetch step. The hash is **pre-computed at
+emission time** (see `idempotency-patterns.md` §Password-Hash Seeding) and embedded as a
+literal — Postgres's `pgcrypto.crypt()` is not used here because `BCryptPasswordEncoder`
+strength-12 output is not compatible with the `pgcrypto` `crypt()` function format.
+
+```sql
+-- Seed: stackhawk_user with bcrypt-hashed password for usernamePassword auth.
+-- Idempotent via ON CONFLICT DO NOTHING on email unique constraint.
+-- BCrypt hash precomputed from "HawkScanTest1!" with strength 12 (matches Utils.encodePassword).
+-- The plaintext lives in .bootstrap-credentials.env as TEST_PASSWORD.
+-- Hash generation (run once at skill-emission time):
+--   python3 -c "import bcrypt; print(bcrypt.hashpw(b'HawkScanTest1!', bcrypt.gensalt(rounds=12)).decode())"
+
+INSERT INTO stackhawk_user (id, email, password, full_name, email_validated, created_date, updated_date) VALUES
+  (1, 'owner@hawkscan.test',  '<precomputed-bcrypt-hash>', 'Bootstrap Owner',  true, now(), now()),
+  (2, 'member@hawkscan.test', '<precomputed-bcrypt-hash>', 'Bootstrap Member', true, now(), now()),
+  (3, 'viewer@hawkscan.test', '<precomputed-bcrypt-hash>', 'Bootstrap Viewer', true, now(), now())
+ON CONFLICT (email) DO NOTHING;
+```
+
+The `<precomputed-bcrypt-hash>` placeholder is replaced by the skill at emission time with a
+real BCrypt strength-12 hash of `HawkScanTest1!`. All three rows can share the same hash
+(same plaintext, same strength — only the salt differs per call, but for ephemeral seed data
+sharing the hash is acceptable and simpler). See Known Caveats §Hash generation strategy.
+
+### 6. `bootstrap/yarak/001-apps.sql`
 
 ```sql
 -- Bootstrap seed: create target-app-1 in yarak, owned by HawkScan Test Org
@@ -565,11 +673,13 @@ This file is written by the skill with the actual seed values. It is appended to
 ```
 TEST_USER=hawkscan-test@example.com
 TEST_PASS=HawkScanTest1!
+TEST_PASSWORD=HawkScanTest1!
 TEST_ORG_ID=00000000-0000-0000-0000-000000000001
 TEST_APP_ID=00000000-0000-0000-0000-000000000010
 FALCON_LOGIN_URL=http://localhost:9000/login
 EYAS_DB_URL=postgres://eyas_user:eyas_pass@localhost:5432/eyas
 YARAK_DB_URL=postgres://yarak_user:yarak_pass@localhost:5432/yarak
+BEAK_DB_URL=postgres://beak_user:beak_pass@localhost:5432/beak
 EYAS_URL=http://localhost:8080
 YARAK_URL=http://localhost:9090
 FALCON_URL=http://localhost:9000
@@ -777,3 +887,28 @@ not found error.
 
 TBD — populated by Task 12 validation. Mitigation if unavailable: pre-compute the bcrypt
 hash outside Postgres and embed the hash literal in the SQL (replacing the `crypt()` call).
+
+### Hash generation strategy for beak/002-stackhawk-user.sql
+
+The `stackhawk_user.password` column uses `BCryptPasswordEncoder` (strength 12), which is
+NOT compatible with Postgres `pgcrypto.crypt()` format. The skill must pre-compute the hash
+at emission time and embed it as a literal string in the SQL.
+
+TBD — the emission step that replaces `<precomputed-bcrypt-hash>` needs a concrete
+implementation. Current options:
+
+1. **Inline Python** (preferred if `bcrypt` is available in the skill environment):
+   ```python
+   import bcrypt
+   hashed = bcrypt.hashpw(b"HawkScanTest1!", bcrypt.gensalt(rounds=12)).decode()
+   ```
+2. **Inline Kotlin/Java** (if the skill is running inside a JVM context):
+   ```kotlin
+   BCryptPasswordEncoder(12).encode("HawkScanTest1!")
+   ```
+3. **Hardcoded known hash** (simplest for ephemeral seed; acceptable because the user
+   confirmed passwords are ephemeral): embed a single pre-verified hash at skill authoring
+   time. The hash verifies correctly against `HawkScanTest1!` at strength 12.
+
+The user confirmed: "these should be ephemeral so it shouldn't matter if the password is
+saved." A hardcoded known hash is therefore acceptable for the initial implementation.
