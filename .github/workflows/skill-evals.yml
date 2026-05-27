@@ -1,11 +1,6 @@
 name: Skill Evals
 
 on:
-  pull_request:
-    paths:
-      - "plugins/**"
-      - "evals/**"
-      - ".github/workflows/skill-evals.yml"
   workflow_dispatch:
     inputs:
       skill:
