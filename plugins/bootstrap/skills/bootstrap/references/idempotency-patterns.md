@@ -1,0 +1,664 @@
+# Idempotency Patterns Reference
+
+## Overview
+
+Idempotency operates at two independent layers.
+
+1. **The idempotency check** — the `check_command` / `check_sql` predicate in
+   `manifest.yaml`. The Runner evaluates this before the step. If it returns a
+   non-empty / zero-row / success result indicating the resource already exists,
+   the Runner skips the step body entirely. Declarative; lives in the manifest.
+
+2. **The step body itself** — the SQL, HTTP call, gRPC invocation, or shell
+   command. Even if the check is bypassed (manual replay, Runner bug, race
+   condition between parallel steps), the body should not corrupt state.
+
+**Belt-and-suspenders principle:** the check guards against wasted work; the body
+guards against data corruption. Both are required. A step body that silently
+double-inserts or overwrites a credential is not idempotent, regardless of how
+good the check predicate is.
+
+For the full field specification of `check_sql`, `check_http`, and `check_command` predicates, see `manifest-schema.md`.
+
+---
+
+## SQL — Postgres
+
+### Pattern: `INSERT ... ON CONFLICT DO NOTHING`
+
+Preferred when a unique or primary-key constraint already exists on the target
+column. The DB enforces the check; no race condition.
+
+```sql
+INSERT INTO organizations (id, name, slug, created_at)
+VALUES ('org-acme-01', 'Acme Corp', 'acme', NOW())
+ON CONFLICT (id) DO NOTHING;
+```
+
+### Pattern: `INSERT ... ON CONFLICT DO UPDATE SET`
+
+Use when the row should exist AND keep its values current (e.g., display name
+drifts over time).
+
+```sql
+INSERT INTO organizations (id, name, slug, created_at)
+VALUES ('org-acme-01', 'Acme Corp', 'acme', NOW())
+ON CONFLICT (id) DO UPDATE
+  SET name = EXCLUDED.name,
+      slug = EXCLUDED.slug;
+```
+
+Do not update `created_at`, `id`, or other stable identity columns in the
+`DO UPDATE` clause.
+
+### Pattern: `WHERE NOT EXISTS`
+
+Use when no unique constraint exists and you cannot add one (e.g., the table
+accepts duplicate names by design, but you only want one seed row per run).
+
+```sql
+INSERT INTO feature_flags (name, enabled, created_at)
+SELECT 'dark-mode', true, NOW()
+WHERE NOT EXISTS (
+  SELECT 1 FROM feature_flags WHERE name = 'dark-mode'
+);
+```
+
+This pattern is susceptible to a TOCTOU race under high concurrency; prefer
+adding a unique constraint and using `ON CONFLICT` when that is possible.
+
+### Password-Hash Seeding
+
+When seeding a table that stores bcrypt-hashed passwords (e.g., a `users` or `credentials`
+table with a `password_hash` column), hash the plaintext **at skill emission time** — NOT
+at SQL execution time. Postgres's `pgcrypto.crypt()` uses a different internal format than
+`BCryptPasswordEncoder` and is therefore not a valid substitute. The skill embeds the
+already-computed hash as a string literal in the emitted SQL.
+
+**Pseudocode — compute the hash once at emission:**
+
+```python
+# Pseudocode — skill computes the hash once at emission, embeds the result.
+# Plaintext password lives in .bootstrap-credentials.env (gitignored).
+import bcrypt
+hashed = bcrypt.hashpw(b"ExampleSeedPass1!", bcrypt.gensalt(rounds=12)).decode()
+# Embed `hashed` into the SQL INSERT VALUES.
+```
+
+**Emitted SQL (after hash substitution):**
+
+```sql
+-- Hash was computed at emission time; plaintext is in .bootstrap-credentials.env.
+INSERT INTO users (id, email, password_hash, created_at)
+VALUES ('00000000-0000-0000-0000-000000000002', 'test-owner@example.com', '$2a$12$<computed-hash>', now())
+ON CONFLICT (email) DO NOTHING;
+```
+
+**Idempotency check** — use the email unique constraint:
+
+```yaml
+idempotency:
+  check_sql: SELECT 1 FROM users WHERE email = 'test-owner@example.com';
+```
+
+**Anti-pattern: do not hash inside SQL with `crypt()`** unless you have confirmed that
+`pgcrypto` is installed AND that the application uses `crypt()`-compatible bcrypt. Spring
+Security's `BCryptPasswordEncoder` produces `$2a$` prefixed hashes that `crypt()` cannot
+verify. Embedding the wrong hash format causes silent auth failures — the row exists but
+passwords never match.
+
+```sql
+-- WRONG for BCryptPasswordEncoder applications:
+INSERT INTO users (email, password_hash)
+VALUES ('test-owner@example.com', crypt('ExampleSeedPass1!', gen_salt('bf')));
+-- crypt() produces $2$ format; BCryptPasswordEncoder expects $2a$/$2b$ — incompatible.
+```
+
+### Complete example — org + user seed
+
+```sql
+-- Step 1: seed the org
+INSERT INTO organizations (id, name, slug, plan, created_at)
+VALUES (
+  'org-acme-01',
+  'Acme Corp',
+  'acme',
+  'enterprise',
+  '2024-01-01T00:00:00Z'
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Step 2: seed the admin user (FK to org)
+INSERT INTO users (id, org_id, email, role, created_at)
+VALUES (
+  'user-admin-01',
+  'org-acme-01',
+  'admin@acme.example',
+  'owner',
+  '2024-01-01T00:00:00Z'
+)
+ON CONFLICT (id) DO NOTHING;
+```
+
+Manifest `check_sql` for step 1:
+
+```yaml
+check_sql: "SELECT 1 FROM organizations WHERE id = 'org-acme-01' LIMIT 1"
+```
+
+Manifest `check_sql` for step 2:
+
+```yaml
+check_sql: "SELECT 1 FROM users WHERE id = 'user-admin-01' LIMIT 1"
+```
+
+---
+
+## SQL — MySQL
+
+### Pattern: `INSERT IGNORE INTO`
+
+Drop the row silently on a duplicate-key violation. Equivalent to Postgres
+`ON CONFLICT DO NOTHING`. No-op if the row exists; no error surfaced.
+
+```sql
+INSERT IGNORE INTO organizations (id, name, slug, created_at)
+VALUES ('org-acme-01', 'Acme Corp', 'acme', '2024-01-01 00:00:00');
+```
+
+### Pattern: `INSERT ... ON DUPLICATE KEY UPDATE`
+
+Upsert: insert if new, update named columns if the key collides.
+
+```sql
+INSERT INTO organizations (id, name, slug, created_at)
+VALUES ('org-acme-01', 'Acme Corp', 'acme', '2024-01-01 00:00:00')
+ON DUPLICATE KEY UPDATE
+  name = VALUES(name),
+  slug = VALUES(slug);
+```
+
+### Complete example — org + API key
+
+```sql
+-- Org seed
+INSERT IGNORE INTO organizations (id, name, slug, created_at)
+VALUES ('org-acme-01', 'Acme Corp', 'acme', '2024-01-01 00:00:00');
+
+-- API key seed — keep the key value stable across replays
+INSERT INTO api_keys (id, org_id, key_hash, label, created_at)
+VALUES (
+  'key-bootstrap-01',
+  'org-acme-01',
+  SHA2('dev-key-acme-bootstrap', 256),
+  'bootstrap-seed',
+  '2024-01-01 00:00:00'
+)
+ON DUPLICATE KEY UPDATE
+  label = VALUES(label);
+-- Do NOT update key_hash on duplicate; the secret should never rotate on replay.
+```
+
+---
+
+## SQL — SQLite
+
+### Pattern: `INSERT OR IGNORE INTO`
+
+Skip silently on constraint violation. The SQLite equivalent of Postgres
+`ON CONFLICT DO NOTHING`.
+
+```sql
+INSERT OR IGNORE INTO organizations (id, name, slug)
+VALUES ('org-acme-01', 'Acme Corp', 'acme');
+```
+
+### Pattern: `INSERT OR REPLACE INTO`
+
+Delete the old row and insert a new one. Equivalent semantics to
+`ON CONFLICT DO UPDATE SET *` but triggers any ON DELETE cascades. Use
+cautiously with FK cascades.
+
+```sql
+INSERT OR REPLACE INTO feature_flags (name, enabled)
+VALUES ('dark-mode', 1);
+```
+
+### Complete example — SQLite seed
+
+```sql
+PRAGMA foreign_keys = ON;
+
+INSERT OR IGNORE INTO organizations (id, name, slug)
+VALUES ('org-acme-01', 'Acme Corp', 'acme');
+
+INSERT OR IGNORE INTO users (id, org_id, email, role)
+VALUES ('user-admin-01', 'org-acme-01', 'admin@acme.example', 'owner');
+
+-- Replace config values; no FK children, safe to replace.
+INSERT OR REPLACE INTO config (key, value)
+VALUES ('onboarding_complete', '0');
+```
+
+---
+
+## HTTP
+
+### Prefer PUT over POST
+
+`PUT /v1/orgs/{ORG_ID}` is idempotent by HTTP semantics (RFC 7231 §4.3.4).
+Sending the same PUT twice produces the same server state. `POST /v1/orgs`
+creates a new resource each time — never idempotent unless the server applies
+its own dedup logic.
+
+**Rule:** if the resource has a client-known stable ID, use PUT. Reserve POST
+for cases where the server assigns the ID and the manifest `check_command`
+performs a GET first.
+
+### Example `.http` file — PUT (preferred)
+
+```http
+### Seed Acme org
+PUT https://api.example.com/v1/orgs/org-acme-01
+Authorization: Bearer {{BOOTSTRAP_TOKEN}}
+Content-Type: application/json
+
+{
+  "name": "Acme Corp",
+  "slug": "acme",
+  "plan": "enterprise"
+}
+
+###
+```
+
+Manifest step:
+
+```yaml
+- id: seed-org
+  type: http
+  file: steps/seed-org.http
+  check_command: |
+    curl -sf -o /dev/null \
+      -H "Authorization: Bearer ${BOOTSTRAP_TOKEN}" \
+      https://api.example.com/v1/orgs/org-acme-01
+  depends_on: []
+```
+
+### When POST is unavoidable
+
+The manifest `check_command` must be a GET that confirms the resource exists.
+If the GET returns 200, the Runner skips the POST. The POST body should also
+include a stable client-side dedup key if the API supports one
+(`Idempotency-Key` header, `request_id` field, etc.).
+
+```yaml
+check_command: |
+  curl -sf -o /dev/null \
+    -H "Authorization: Bearer ${BOOTSTRAP_TOKEN}" \
+    "https://api.example.com/v1/orgs?slug=acme"
+```
+
+---
+
+## gRPC
+
+Server-side idempotency is service-dependent. Two patterns cover most cases.
+
+### Pattern 1: Get-then-Create via check_command
+
+The manifest `check_command` calls the Get RPC. If it returns NotFound (exit
+code non-zero after grpcurl parses the response), the Runner executes the
+Create step. If the Get succeeds, the step is skipped.
+
+Manifest step:
+
+```yaml
+- id: seed-user
+  type: shell
+  file: steps/seed-user.sh
+  check_command: |
+    grpcurl -plaintext \
+      -H "authorization: Bearer ${BOOTSTRAP_TOKEN}" \
+      -d '{"user_id": "user-admin-01"}' \
+      localhost:50051 \
+      acme.UserService/GetUser | grep -q '"id": "user-admin-01"'
+  depends_on: [seed-org]
+```
+
+Shell step (`steps/seed-user.sh`):
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Belt: check inside the step body too (the manifest check is the suspenders).
+RESPONSE=$(grpcurl -plaintext \
+  -H "authorization: Bearer ${BOOTSTRAP_TOKEN}" \
+  -d '{"user_id": "user-admin-01"}' \
+  localhost:50051 \
+  acme.UserService/GetUser 2>&1 || true)
+
+if echo "$RESPONSE" | grep -q '"id": "user-admin-01"'; then
+  echo "user-admin-01 already exists, skipping CreateUser"
+  exit 0
+fi
+
+grpcurl -plaintext \
+  -H "authorization: Bearer ${BOOTSTRAP_TOKEN}" \
+  -d '{
+    "user_id":  "user-admin-01",
+    "org_id":   "org-acme-01",
+    "email":    "admin@acme.example",
+    "role":     "OWNER"
+  }' \
+  localhost:50051 \
+  acme.UserService/CreateUser
+```
+
+### Pattern 2: Client-supplied dedup key
+
+If the server supports a stable `request_id` or `idempotency_key` field, pass
+a deterministic value (e.g., `"bootstrap-seed-user-admin-01"`). The server
+returns the same response on replay without creating a duplicate. This is the
+preferred pattern when the API supports it — no Get round-trip needed.
+
+```bash
+grpcurl -plaintext \
+  -H "authorization: Bearer ${BOOTSTRAP_TOKEN}" \
+  -d '{
+    "request_id": "bootstrap-seed-user-admin-01",
+    "user_id":    "user-admin-01",
+    "org_id":     "org-acme-01",
+    "email":      "admin@acme.example",
+    "role":       "OWNER"
+  }' \
+  localhost:50051 \
+  acme.UserService/CreateUser
+```
+
+---
+
+## Mongo
+
+### Pattern: upsert on update
+
+Pass `upsert: true` to any `updateOne` / `updateMany` call. The DB inserts if
+the filter matches nothing; updates if it does.
+
+```javascript
+db.organizations.updateOne(
+  { _id: "org-acme-01" },
+  { $set: { name: "Acme Corp", slug: "acme", plan: "enterprise" } },
+  { upsert: true }
+);
+```
+
+### Pattern: `findOneAndUpdate` with `$setOnInsert`
+
+Use `$setOnInsert` to write fields only on the initial insert, leaving
+subsequent replays no-op for those fields. Combine with `$set` for fields that
+should stay current.
+
+```javascript
+db.organizations.findOneAndUpdate(
+  { _id: "org-acme-01" },
+  {
+    $setOnInsert: {
+      createdAt: new Date("2024-01-01T00:00:00Z"),
+      plan:      "enterprise"
+    },
+    $set: {
+      name: "Acme Corp",
+      slug: "acme"
+    }
+  },
+  { upsert: true, returnDocument: "after" }
+);
+```
+
+`createdAt` and `plan` are written only on insert. `name` and `slug` are
+refreshed on every replay — safe because they are not secrets and drift is
+expected.
+
+### Complete example — Mongo seed script
+
+```javascript
+// seed.js — run with: mongosh "${MONGO_URI}" seed.js
+use acmedb;
+
+// Seed org
+db.organizations.findOneAndUpdate(
+  { _id: "org-acme-01" },
+  {
+    $setOnInsert: { createdAt: new Date("2024-01-01T00:00:00Z") },
+    $set:         { name: "Acme Corp", slug: "acme", plan: "enterprise" }
+  },
+  { upsert: true }
+);
+
+// Seed admin user (FK equivalent: org must exist)
+db.users.findOneAndUpdate(
+  { _id: "user-admin-01" },
+  {
+    $setOnInsert: { createdAt: new Date("2024-01-01T00:00:00Z"), orgId: "org-acme-01" },
+    $set:         { email: "admin@acme.example", role: "owner" }
+  },
+  { upsert: true }
+);
+
+print("seed complete");
+```
+
+Manifest `check_command`:
+
+```yaml
+check_command: |
+  mongosh "${MONGO_URI}" --quiet --eval \
+    'db.organizations.countDocuments({_id: "org-acme-01"})' | grep -q '^1$'
+```
+
+---
+
+## Shell Escape Hatch
+
+Shell steps must be idempotent internally. The manifest `check_command` runs
+before the step and usually prevents re-execution, but shell bodies carry the
+burden too (belt-and-suspenders).
+
+**Convention:** perform the existence check at the top of the script using the
+cheapest available API call (`curl + jq`, `psql -c`, `mongosh --eval`, etc.).
+Exit 0 without action if the resource exists. Print the credential or result to
+stdout only after creation (or on confirmation the existing value is retrievable).
+
+### Example — API key seed script
+
+```bash
+#!/usr/bin/env bash
+# steps/seed-api-key.sh
+# Creates a bootstrap API key for the dev environment.
+# Idempotent: exits 0 without action if the key already exists.
+
+set -euo pipefail
+
+BASE_URL="${API_BASE_URL:-https://api.example.com}"
+TOKEN="${BOOTSTRAP_TOKEN}"
+KEY_NAME="bootstrap-dev-${USER}"
+
+# Belt: check inside the step body.
+EXISTING=$(curl -sf \
+  -H "Authorization: Bearer ${TOKEN}" \
+  "${BASE_URL}/v1/api-keys?name=${KEY_NAME}" | jq -r '.items[0].name // empty')
+
+if [[ -n "$EXISTING" ]]; then
+  echo "API key '${KEY_NAME}' already exists — skipping creation"
+  # If the value is retrievable, print it so the Runner can capture it.
+  curl -sf \
+    -H "Authorization: Bearer ${TOKEN}" \
+    "${BASE_URL}/v1/api-keys?name=${KEY_NAME}" | jq -r '.items[0].value'
+  exit 0
+fi
+
+# Create the key.
+RESULT=$(curl -sf -X POST \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\": \"${KEY_NAME}\", \"scopes\": [\"read\", \"write\"]}" \
+  "${BASE_URL}/v1/api-keys")
+
+echo "$RESULT" | jq -r '.value'
+```
+
+Manifest step:
+
+```yaml
+- id: seed-api-key
+  type: shell
+  file: steps/seed-api-key.sh
+  check_command: |
+    curl -sf \
+      -H "Authorization: Bearer ${BOOTSTRAP_TOKEN}" \
+      "${API_BASE_URL}/v1/api-keys?name=bootstrap-dev-${USER}" \
+      | jq -e '.items | length > 0'
+  outputs:
+    - name: BOOTSTRAP_API_KEY
+      from_stdout: true
+  depends_on: [seed-org]
+```
+
+---
+
+## Predicate-Design Rules
+
+### Predicates must be cheap
+
+The `check_command` / `check_sql` runs before every step on every replay.
+Use indexed columns. Never issue a full table scan or an unqualified
+`SELECT COUNT(*)`.
+
+```sql
+-- BAD: full scan, no index
+SELECT COUNT(*) FROM users WHERE role = 'owner';
+
+-- GOOD: primary key lookup
+SELECT 1 FROM users WHERE id = 'user-admin-01' LIMIT 1;
+```
+
+If the lookup column is not indexed, add an index in the migration that
+precedes the seed step.
+
+### Predicates must match by a stable key
+
+Use the entity's deterministic identifier — `id`, `name`, `slug`, `email`.
+Never predicate on ephemeral fields: timestamps, sequence numbers, UUIDs
+generated at runtime, or derived fields that change between environments.
+
+```sql
+-- BAD: timestamp is environment-dependent
+SELECT 1 FROM users WHERE created_at > NOW() - INTERVAL '5 minutes';
+
+-- GOOD: stable natural key
+SELECT 1 FROM users WHERE email = 'admin@acme.example' LIMIT 1;
+```
+
+### Predicates must fail loudly if the table does not exist
+
+A missing table means migrations have not run. The predicate should surface
+this as a hard error, not a silent skip.
+
+In Postgres, a query against a non-existent table raises `42P01` and exits
+non-zero — correct behavior, no action needed. In shell predicates, do not
+swallow stderr:
+
+```bash
+# BAD: silences the "table not found" error — step looks like it passed
+check_command: psql "${DATABASE_URL}" -c "SELECT 1 FROM users LIMIT 1" 2>/dev/null
+
+# GOOD: stderr surfaces to the Runner as a step error
+check_command: psql "${DATABASE_URL}" -c "SELECT 1 FROM users LIMIT 1"
+```
+
+The Runner surfaces a non-zero exit from `check_command` as a step error
+(not a skip), so the user is told "your migrations haven't run yet" rather
+than silently skipping the seed step.
+
+---
+
+## Anti-Patterns to Avoid
+
+### Time-based predicates
+
+```yaml
+# NEVER — wall-clock-dependent, fails on re-runs hours later
+check_sql: "SELECT 1 FROM users WHERE created_at > NOW() - INTERVAL '1 hour'"
+```
+
+```yaml
+# DO INSTEAD: use a stable key
+check_sql: SELECT 1 FROM users WHERE email = 'test-owner@example.com';
+```
+
+### Predicates that rely on auto-increment IDs from a prior step
+
+Auto-increment IDs are not stable across environments or re-runs. Use
+deterministic natural keys or client-supplied UUIDs.
+
+```sql
+-- NEVER — id=42 may not exist in another environment
+SELECT 1 FROM users WHERE id = 42;
+
+-- GOOD — natural key
+SELECT 1 FROM users WHERE email = 'admin@acme.example';
+```
+
+### Step bodies hard-coding IDs that collide between dev machines
+
+Two engineers running the same seed against a shared dev DB will collide if
+they both insert `id = 1`. Use UUIDs, or namespace IDs with `${USER}` or a
+per-machine variable.
+
+```yaml
+# NEVER — will collide between developers on a shared DB
+- id: seed-key
+  type: sql
+  sql: "INSERT INTO api_keys (id, ...) VALUES (1, ...)"
+
+# GOOD — namespaced, stable per developer
+- id: seed-key
+  type: sql
+  sql: "INSERT INTO api_keys (id, ...) VALUES ('key-${USER}-dev', ...)"
+```
+
+### Mixing concerns in one step
+
+A step that INSERT-s data and DELETE-s old rows in the same body is hard to
+reason about idempotently. Split cleanup and creation into separate,
+sequentially dependent steps.
+
+```sql
+-- NEVER — cleanup + insert in one step; retry behavior is unpredictable
+DELETE FROM feature_flags WHERE name LIKE 'legacy-%';
+INSERT INTO feature_flags (name, enabled) VALUES ('dark-mode', true);
+```
+
+```yaml
+# DO INSTEAD: separate steps, each with one concern
+- id: cleanup-stale-users
+  description: Remove stale test users from previous run
+  type: sql
+  file: cleanup/001-purge-stale-users.sql
+  idempotency: { check_sql: "SELECT 1 FROM users WHERE last_login < NOW() - INTERVAL '7 days' LIMIT 1;" }
+
+- id: seed-test-user
+  description: Insert canonical test user
+  type: sql
+  file: seed/001-insert-test-user.sql
+  depends_on: [ cleanup-stale-users ]
+  idempotency: { check_sql: "SELECT 1 FROM users WHERE email = 'test-owner@example.com';" }
+```
+
+### Relying on retries to paper over non-idempotent bodies
+
+Writing to the same row twice in a step body and assuming "the second write is
+a no-op" is not idempotency — it is luck. Use `ON CONFLICT`, `upsert`, or PUT
+semantics explicitly. Do not rely on the next retry being suppressed.

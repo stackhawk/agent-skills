@@ -31,6 +31,14 @@
       "source": "./plugins/hawkscan-ci",
       "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/hawkscan-ci",
       "version": "1.8.0"
+    },
+    {
+      "name": "bootstrap",
+      "description": "Read a target repo and emit checked-in seed artifacts so HawkScan has data to scan. Generates SQL / HTTP / gRPC / Mongo / shell steps across the target repo and any upstream services it depends on, plus a manifest and a credentials handoff file that hawkscan consumes.",
+      "category": "security",
+      "source": "./plugins/bootstrap",
+      "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/bootstrap",
+      "version": "1.8.0"
     }
   ]
 }
