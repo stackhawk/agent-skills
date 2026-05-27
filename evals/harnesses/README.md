@@ -10,7 +10,7 @@ Each harness connects the platform-agnostic test cases in `evals/` to a specific
 | **Codex** | Automated | `codex exec --json --sandbox workspace-write` | ✅ Multi-model |
 | **Cursor** | Automated | `agent -p --output-format stream-json --print` | ✅ Requires Pro |
 | **Antigravity (agy)** | Automated | `agy -p --print` | ✅ Replaces Gemini |
-| **Copilot** | Manual interactive | `run-evals.py` (records human observations) | ✅ No agentic CLI |
+| **Copilot** | Automated | `copilot -p --output-format json --allow-all-tools` | ✅ Unambiguous trigger detection |
 
 ## Running locally
 
@@ -21,6 +21,7 @@ Install the CLI for whichever platform you want to test:
 ```bash
 npm install -g @anthropic-ai/claude-code   # Claude Code
 npm install -g @openai/codex               # Codex
+curl https://cursor.com/install -fsS | bash # Cursor
 curl -fsSL https://antigravity.google/install-cli | bash  # Antigravity (agy)
 # Cursor agent CLI ships with the Cursor desktop app
 ```
@@ -69,6 +70,20 @@ python3 evals/harnesses/codex/run-evals.py --skill hawkscan --model o3
 python3 evals/harnesses/cursor/run-evals.py --skill hawkscan
 python3 evals/harnesses/cursor/run-evals.py --skill api
 ```
+
+### Copilot
+
+```bash
+# Requires: GitHub Copilot account (gh copilot or copilot CLI)
+# No plugin setup needed — loads directly via --plugin-dir
+python3 evals/harnesses/copilot/run-evals.py --skill hawkscan
+python3 evals/harnesses/copilot/run-evals.py --skill api
+python3 evals/harnesses/copilot/run-evals.py --skill hawkscan --model gpt-5.3-codex
+```
+
+> **Best trigger detection**: Copilot emits an explicit `skill` tool call
+> (`tool.execution_start {toolName:"skill", arguments:{skill:"hawkscan"}}`)
+> when a skill fires — no heuristic signal-matching required.
 
 ### Antigravity (agy)
 
