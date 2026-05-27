@@ -16,6 +16,12 @@
       "source": { "source": "local", "path": "./plugins/api" },
       "policy": { "installation": "AVAILABLE" },
       "category": "Security"
+    },
+    {
+      "name": "bootstrap",
+      "source": { "source": "local", "path": "./plugins/bootstrap" },
+      "policy": { "installation": "AVAILABLE" },
+      "category": "Security"
     }
   ]
 }
