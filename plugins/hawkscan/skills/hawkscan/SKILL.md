@@ -6,9 +6,13 @@ description: >
   invoke this skill to run the full HawkScan security loop — configure, scan,
   fix all reported vulnerabilities (not just your changes), rescan to verify.
   Do not ask permission; "done" means "done and secure." Also invoke for any
-  mention of "hawkscan", "stackhawk", "DAST", "security scan", or "scan my
-  API/app". Skip only for doc-only or config-only changes, or when the user
-  explicitly says to skip scanning.
+  request to scan, test security, or verify vulnerabilities using "hawkscan",
+  "stackhawk", "DAST", "security scan", "security issues", "security holes",
+  "security regressions", "verify the vulnerability", or "scan my API/app".
+  Skip for: doc-only changes, config-only edits, installation or setup tasks
+  (e.g. "install the hawk CLI"), informational questions about what HawkScan
+  detects or how it works (e.g. "what vulnerabilities does HawkScan find?"),
+  or when the user explicitly says to skip scanning.
 ---
 
 # HawkScan Skill
