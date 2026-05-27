@@ -141,31 +141,49 @@ the unit of idempotency checking, dependency tracking, and retry in Tool C.
                                     # REQUIRED. Drives how the Runner interprets `file`.
   file: <relative/path>             # REQUIRED. Path relative to bootstrap/. Must exist in the
                                     #   emitted tree when the manifest is written.
-  target:                           # REQUIRED. Where to run the step.
-    kind: postgres | mysql | sqlite | mongo | http | grpc | none
-                                    # REQUIRED. Runner uses this to choose the execution driver.
-    connection: <URL or path>       # REQUIRED unless kind is `none`. Env interpolation supported.
-                                    #   For http: base_url key instead of connection.
+
+  # REQUIRED. Two forms supported:
+  # (a) Scalar — references an entry in the top-level `targets:` map (preferred for repo seeds
+  #     that touch the same service multiple times — DRY).
+  target: <service-name>
+  # (b) Object — inline target spec for single-use connections.
+  #     target:
+  #       kind: postgres | mysql | sqlite | mongo | http | grpc | none
+  #       connection: <URL or path; env interpolation supported>
+  #                   For http: base_url key instead of connection.
+
   depends_on: [ <id>, ... ]         # OPTIONAL. Explicit ordering. Topo-sorted by Runner.
                                     #   Absence ⇒ implicit dependency on previous step in list.
   creates: [ "<kind>:<name>", ... ] # OPTIONAL (recommended). Documents what the step produces.
                                     #   Examples: "org:example-test-org", "user:test-owner@example.com"
                                     #   v1: documentation only. v2 may enable typed cross-step refs.
-  idempotency:                      # REQUIRED. Exactly one primitive (see §6).
-    check_sql: "SELECT ..."
-    # OR
-    check_http:
-      method: GET
-      path: <path>
-      expect_status: <int>
-      expect_jq: <jq expression>
-    # OR
-    check_command: "..."
-    # OR
-    none: true                      # Runner refuses unless --allow-non-idempotent is passed.
+
+  # REQUIRED. Two forms supported:
+  # (a) Scalar — names a well-known strategy the runner understands directly:
+  #       on_conflict_do_nothing | insert_ignore | insert_or_ignore | upsert |
+  #       where_not_exists_and_on_conflict | on_conflict_and_upsert | custom_predicate | none
+  idempotency: on_conflict_do_nothing
+  # (b) Object — explicit predicate the runner evaluates before running the step:
+  #     idempotency:
+  #       check_sql: "SELECT 1 FROM ... WHERE ..."
+  #       # OR
+  #       check_http:
+  #         method: GET
+  #         path: <path>
+  #         expect_status: <int>
+  #         expect_jq: <jq expression>
+  #       # OR
+  #       check_command: "..."
+  #       # OR
+  #       none: true               # Runner refuses unless --allow-non-idempotent.
 ```
 
-The `target` sub-object uses `connection:` for database-style targets and
+Both forms are valid v1. The scalar form is more compact and is what the bootstrap skill emits by
+default when an entire seed run targets one service per row (matching the top-level `targets:` map).
+Use the object form when a single step needs a custom connection target or a predicate that isn't
+well-known to the runner.
+
+The `target` sub-object (form b) uses `connection:` for database-style targets and
 `base_url:` for HTTP-style targets. Only one of the two is used per step.
 
 ---
@@ -182,8 +200,12 @@ SQLite). The most common step type.
 
 **File extension:** `.sql`
 
-**Target shape:**
+**Target shape (either form is valid):**
 ```yaml
+# Scalar form — references top-level targets: map (preferred):
+target: auth-service
+
+# Object form — inline spec for single-use connections:
 target:
   kind: postgres | mysql | sqlite
   connection: ${DB_URL}
@@ -191,7 +213,20 @@ target:
 
 **Example — Postgres step creating a test organization:**
 
-Manifest fragment:
+Manifest fragment (scalar forms for target and idempotency — preferred):
+```yaml
+- id: auth-orgs
+  description: Create test organization in auth-service
+  service: auth-service
+  type: sql
+  file: auth-service/001-orgs.sql
+  target: auth-service
+  creates: [ "org:example-test-org" ]
+  idempotency: on_conflict_do_nothing
+  check_sql: "SELECT 1 FROM organizations WHERE name = 'Example Test Org';"
+```
+
+The object form is also accepted:
 ```yaml
 - id: auth-orgs
   description: Create test organization in auth-service
@@ -231,8 +266,12 @@ default).
 **File extension:** `.http` (REST Client format, compatible with VS Code REST
 Client extension and IntelliJ HTTP Client)
 
-**Target shape:**
+**Target shape (either form is valid):**
 ```yaml
+# Scalar form — references top-level targets: map (preferred):
+target: gateway-api
+
+# Object form — inline spec for single-use connections:
 target:
   kind: http
   base_url: ${SERVICE_URL:http://localhost:8080}
@@ -240,16 +279,14 @@ target:
 
 **Example — PUT to link an app to an environment:**
 
-Manifest fragment:
+Manifest fragment (scalar target; object idempotency for a bespoke HTTP check):
 ```yaml
 - id: gateway-link
   description: Link app to env via gateway-api REST API
   service: gateway-api
   type: http
   file: gateway-api/001-link-app-to-env.http
-  target:
-    kind: http
-    base_url: ${GATEWAY_URL:http://localhost:9000}
+  target: gateway-api
   depends_on: [ auth-users, inventory-apps ]
   creates: [ "env-link:target-app-1" ]
   idempotency:
@@ -258,6 +295,13 @@ Manifest fragment:
       path: /v1/apps/target-app-1/envs
       expect_status: 200
       expect_jq: ".envs | length > 0"
+```
+
+The object form for `target` is also accepted (used when no top-level `targets:` map exists):
+```yaml
+  target:
+    kind: http
+    base_url: ${GATEWAY_URL:http://localhost:9000}
 ```
 
 Referenced file — `bootstrap/gateway-api/001-link-app-to-env.http`:
@@ -284,8 +328,12 @@ appropriate proto descriptor, address, and JSON payload.
 
 **File extension:** `.sh` (grpcurl wrapper script)
 
-**Target shape:**
+**Target shape (either form is valid):**
 ```yaml
+# Scalar form — references top-level targets: map (preferred):
+target: registry
+
+# Object form — inline spec for single-use connections:
 target:
   kind: grpc
   connection: ${GRPC_SERVICE_ADDR:localhost:50051}
@@ -293,16 +341,14 @@ target:
 
 **Example — grpcurl step registering a test tenant:**
 
-Manifest fragment:
+Manifest fragment (scalar target; object idempotency with check_command for gRPC):
 ```yaml
 - id: registry-tenant
   description: Register test tenant via gRPC registry service
   service: registry
   type: grpc
   file: registry/001-create-tenant.sh
-  target:
-    kind: grpc
-    connection: ${REGISTRY_GRPC_ADDR:localhost:50051}
+  target: registry
   creates: [ "tenant:example-test-tenant" ]
   idempotency:
     check_command: >-
@@ -311,6 +357,13 @@ Manifest fragment:
       ${REGISTRY_GRPC_ADDR:-localhost:50051}
       registry.TenantService/GetTenant
       2>&1 | grep -q 'example-test-tenant'
+```
+
+The object form for `target` is also accepted:
+```yaml
+  target:
+    kind: grpc
+    connection: ${REGISTRY_GRPC_ADDR:localhost:50051}
 ```
 
 Referenced file — `bootstrap/registry/001-create-tenant.sh`:
@@ -345,8 +398,12 @@ instance. Scripts use the `db.*` API available in `mongosh`. Prefer
 
 **File extension:** `.js` (mongo shell / mongosh compatible)
 
-**Target shape:**
+**Target shape (either form is valid):**
 ```yaml
+# Scalar form — references top-level targets: map (preferred):
+target: catalog
+
+# Object form — inline spec for single-use connections:
 target:
   kind: mongo
   connection: ${MONGO_URI:mongodb://localhost:27017/appdb}
@@ -354,21 +411,26 @@ target:
 
 **Example — mongosh step upserting a test user document:**
 
-Manifest fragment:
+Manifest fragment (scalar target; object idempotency with check_command for Mongo):
 ```yaml
 - id: mongo-users
   description: Upsert test user document in MongoDB user collection
   service: catalog
   type: mongo
   file: catalog/001-users.js
-  target:
-    kind: mongo
-    connection: ${CATALOG_MONGO_URI:mongodb://localhost:27017/catalog}
+  target: catalog
   creates: [ "user:test-owner@example.com" ]
   idempotency:
     check_command: >-
       mongosh "${CATALOG_MONGO_URI:-mongodb://localhost:27017/catalog}" --quiet
       --eval 'db.users.countDocuments({email:"test-owner@example.com"})' | grep -q '^[1-9]'
+```
+
+The object form for `target` is also accepted:
+```yaml
+  target:
+    kind: mongo
+    connection: ${CATALOG_MONGO_URI:mongodb://localhost:27017/catalog}
 ```
 
 Referenced file — `bootstrap/catalog/001-users.js`:
@@ -405,8 +467,14 @@ runs with all prerequisite env vars present. Use sparingly; prefer `sql`,
 
 **Target shape:**
 ```yaml
+# Object form — the most common for shell steps, since kind: none has no connection URL
+# and is typically not placed in a top-level targets: map:
 target:
   kind: none
+
+# Scalar form — valid if the service IS declared in the top-level targets: map
+# (uncommon for shell steps but accepted by the Runner):
+# target: platform
 ```
 
 (`kind: none` means there is no discrete connection URL — the script manages
@@ -414,7 +482,7 @@ its own connectivity using env vars.)
 
 **Example — shell step calling a CLI to provision an API key:**
 
-Manifest fragment:
+Manifest fragment (object idempotency with check_command; object target since kind: none):
 ```yaml
 - id: apikey-provision
   description: Provision a scan API key via the internal admin CLI
@@ -454,6 +522,26 @@ exists), the step is skipped. If the check fails (entity absent or
 unreachable), the step executes. For per-dialect SQL guidance (Postgres
 `ON CONFLICT`, MySQL `INSERT IGNORE`, SQLite `INSERT OR IGNORE`), see
 `idempotency-patterns.md`.
+
+### Scalar strategy → underlying primitive mapping
+
+When `idempotency:` is a scalar string (the preferred compact form), the Runner
+maps it to the underlying primitive described in the subsections below:
+
+| Scalar strategy                      | Underlying primitive                                                    |
+|--------------------------------------|-------------------------------------------------------------------------|
+| `on_conflict_do_nothing`             | `check_sql` based on unique-key match                                   |
+| `insert_ignore`                      | `check_sql`                                                             |
+| `insert_or_ignore`                   | `check_sql`                                                             |
+| `upsert`                             | `check_sql`                                                             |
+| `where_not_exists_and_on_conflict`   | `check_sql`                                                             |
+| `on_conflict_and_upsert`             | `check_sql`                                                             |
+| `custom_predicate`                   | use the explicit object form (`check_sql` / `check_http` / `check_command`) |
+| `none`                               | `none: true`                                                            |
+
+Use the explicit object form (documented below) when the scalar strategies are not sufficient —
+for example, to write a bespoke `check_http` or `check_command` predicate, or whenever the step
+type (`grpc`, `mongo`, `shell`) requires a command-based check rather than SQL.
 
 ### check_sql
 
