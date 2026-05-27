@@ -371,6 +371,93 @@ grep -rn --include="*.js" --include="*.ts" \
 
 **Python / Ruby / Go** auth signals are not listed above — use env config (see the Environment Config Detection section below) to find JWT secrets, OAuth client IDs, or session cookie keys as auth indicators.
 
+### Password-Storage Detection
+
+When auth is required, also check whether the service stores passwords directly (as opposed to delegating entirely to an external IdP). A service that stores bcrypt-hashed passwords supports the simpler `usernamePassword` hawkscan auth recipe; one that only stores OAuth/OIDC subject IDs requires API-key-to-JWT exchange or a custom script recipe.
+
+#### Step 1 — Find a password column in migrations
+
+Look for `password`, `password_hash`, or `password_digest` column definitions in schema sources:
+
+```bash
+# Liquibase YAML changelogs
+grep -rln "password\|password_hash\|password_digest" \
+  --include="db.changelog-*.yaml" --include="db.changelog-*.xml" \
+  --exclude-dir=target --exclude-dir=build \
+  . 2>/dev/null | head -5
+
+# Flyway versioned SQL migrations
+grep -rln "password\|password_hash\|password_digest" \
+  --include="V*__*.sql" \
+  --exclude-dir=target --exclude-dir=build \
+  . 2>/dev/null | head -5
+
+# Prisma schema
+grep -n "password\|passwordHash\|passwordDigest" \
+  $(find . -name "schema.prisma" -not -path "*/node_modules/*" 2>/dev/null) 2>/dev/null | head -5
+
+# Django / Alembic models
+grep -rln "password\|password_hash" \
+  --include="models.py" --include="*.py" \
+  --exclude-dir=.venv --exclude-dir=venv --exclude-dir=__pycache__ \
+  . 2>/dev/null | head -5
+```
+
+A hit in a `createTable` block (Liquibase) or a `CREATE TABLE` statement (Flyway) that names the table `users`, `stackhawk_user`, `accounts`, or similar confirms a local password column.
+
+#### Step 2 — Identify the encoding mechanism
+
+```bash
+# BCrypt — Java/Kotlin Spring Security
+grep -rln "BCryptPasswordEncoder\|BCrypt\.hashpw" \
+  --include="*.java" --include="*.kt" \
+  --exclude-dir=target --exclude-dir=build \
+  . 2>/dev/null | head -5
+
+# BCrypt — Python
+grep -rln "bcrypt\.hashpw\|bcrypt\.checkpw\|from bcrypt" \
+  --include="*.py" \
+  --exclude-dir=.venv --exclude-dir=venv --exclude-dir=__pycache__ \
+  . 2>/dev/null | head -5
+
+# BCrypt — Node.js
+grep -rln "require\(['\"]bcrypt\|from ['\"]bcrypt\|from ['\"]bcryptjs" \
+  --include="*.js" --include="*.ts" \
+  --exclude-dir=node_modules --exclude-dir=dist \
+  . 2>/dev/null | head -5
+
+# Argon2 — any ecosystem
+grep -rln "argon2\|Argon2" \
+  --exclude-dir=target --exclude-dir=build --exclude-dir=node_modules \
+  --exclude-dir=.venv --exclude-dir=venv \
+  . 2>/dev/null | head -5
+
+# PBKDF2 — Django default (AbstractBaseUser / make_password)
+grep -rln "make_password\|check_password\|PBKDF2PasswordHasher" \
+  --include="*.py" \
+  --exclude-dir=.venv --exclude-dir=venv --exclude-dir=__pycache__ \
+  . 2>/dev/null | head -5
+```
+
+Combined BCrypt detection across all ecosystems:
+
+```bash
+grep -rln "BCryptPasswordEncoder\|BCrypt.hashpw\|require\(['\"]bcrypt\|from ['\"]bcrypt" \
+  --exclude-dir=target --exclude-dir=build --exclude-dir=node_modules --exclude-dir=vendor \
+  . 2>/dev/null | head -5
+```
+
+#### Step 3 — Mark the service and drive Phase 2
+
+| Detection result | Action |
+|---|---|
+| Password column found + BCrypt encoder found | Mark service as "supports password auth". Phase 2 proposes seeding a known test password (default `HawkScanTest1!`). Hash is computed at emission time and embedded in the SQL literal. |
+| Password column found + Argon2 or PBKDF2 | Mark service as "supports password auth (non-bcrypt)". Emit the same proposal but note the encoder so the hash is generated correctly. |
+| Password column found + encoder unknown | Ask the user what encoder is used before proposing password seeding. |
+| No password column (external IdP only) | Do not propose password seeding. The seed must supply an API key or OAuth credential instead. |
+
+When a service is marked "supports password auth", Phase 2 includes the password line in the proposal dialog (see SKILL.md §2.2) and Phase 3.6 emits `TEST_PASSWORD` in `.bootstrap-credentials.env` alongside `TEST_PASS`.
+
 ---
 
 ## Environment Config Detection
