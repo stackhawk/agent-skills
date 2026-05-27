@@ -8,7 +8,7 @@ Works with **Claude Code**, **Codex**, **Gemini CLI**, **GitHub Copilot**, **Ope
 
 ---
 
-## Two Skills, One Security Workflow
+## Three Skills, One Security Workflow
 
 ### [hawkscan](./plugins/hawkscan/) — Scan & Fix
 
@@ -30,6 +30,16 @@ Question → Authenticate → Query API → Present Results → Suggest Next Act
 
 **Use it when:** you want to know what needs attention, what changed since the last scan, or which apps are falling behind.
 
+### [hawkscan-ci](./plugins/hawkscan-ci/) — Wire It Into CI
+
+Once HawkScan works locally, this skill graduates it into your CI/CD pipeline. It detects your CI provider, prompts for trigger and blocking behavior, and writes or patches the workflow file. Provider-agnostic — works with GitHub Actions, GitLab, Jenkins, CircleCI, and more.
+
+```
+Local scan works → Detect CI provider → Plan integration → Set secret (CI store or external manager) → Write workflow → Verify and report
+```
+
+**Use it when:** you have `stackhawk.yml` working locally and want every PR or scheduled build to scan automatically.
+
 ---
 
 ## Quick Start
@@ -50,6 +60,7 @@ export HAWK_API_KEY=hawk.xxxxxxxxxxxx.xxxxxxxxxxxx
 /plugin marketplace add stackhawk/agent-skills
 /plugin install hawkscan@stackhawk
 /plugin install api@stackhawk
+/plugin install hawkscan-ci@stackhawk
 ```
 
 #### Codex
@@ -58,6 +69,7 @@ export HAWK_API_KEY=hawk.xxxxxxxxxxxx.xxxxxxxxxxxx
 /plugin marketplace add stackhawk/agent-skills
 /plugin install hawkscan@stackhawk
 /plugin install api@stackhawk
+/plugin install hawkscan-ci@stackhawk
 ```
 
 #### Gemini CLI

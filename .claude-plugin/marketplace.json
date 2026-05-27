@@ -14,7 +14,7 @@
       "category": "security",
       "source": "./plugins/hawkscan",
       "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/hawkscan",
-      "version": "1.8.0"
+      "version": "1.9.0"
     },
     {
       "name": "stackhawk-api",
@@ -22,7 +22,15 @@
       "category": "security",
       "source": "./plugins/api",
       "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/api",
-      "version": "1.8.0"
+      "version": "1.9.0"
+    },
+    {
+      "name": "hawkscan-ci",
+      "description": "Configure HawkScan in your CI/CD pipeline. Provider-agnostic: detects GitHub Actions, GitLab CI, Jenkins, CircleCI, Azure Pipelines, Bitbucket, Buildkite, and other CI systems from repo files, edits the pipeline file in place, and prompts for HAWK_API_KEY storage (CI-native secrets store or external secrets manager).",
+      "category": "security",
+      "source": "./plugins/hawkscan-ci",
+      "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/hawkscan-ci",
+      "version": "1.9.0"
     },
     {
       "name": "bootstrap",
@@ -30,7 +38,7 @@
       "category": "security",
       "source": "./plugins/bootstrap",
       "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/bootstrap",
-      "version": "1.8.0"
+      "version": "1.9.0"
     }
   ]
 }

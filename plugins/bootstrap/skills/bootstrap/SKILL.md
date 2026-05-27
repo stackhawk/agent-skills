@@ -1,6 +1,6 @@
 ---
 name: bootstrap
-version: 1.8.0
+version: 1.9.0
 description: >
   Read a target repo (and any upstream service repos it depends on),
   propose the minimum seed entities required for authenticated HawkScan

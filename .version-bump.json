@@ -12,6 +12,9 @@
     { "path": "gemini-extension.json", "field": "version", "type": "json" },
     { "path": "plugins/hawkscan/skills/hawkscan/SKILL.md", "field": "version", "type": "yaml-frontmatter" },
     { "path": "plugins/api/skills/api/SKILL.md", "field": "version", "type": "yaml-frontmatter" },
+    { "path": "plugins/hawkscan-ci/.claude-plugin/plugin.json", "field": "version", "type": "json" },
+    { "path": "plugins/hawkscan-ci/.codex-plugin/plugin.json", "field": "version", "type": "json" },
+    { "path": "plugins/hawkscan-ci/skills/hawkscan-ci/SKILL.md", "field": "version", "type": "yaml-frontmatter" },
     { "path": "plugins/bootstrap/skills/bootstrap/SKILL.md", "field": "version", "type": "yaml-frontmatter" }
   ],
   "marketplace_manifests": [
