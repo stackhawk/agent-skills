@@ -1,0 +1,629 @@
+---
+description: >
+  End-to-end worked example of the bootstrap skill: discovery output for a two-service architecture (gateway-api + auth-service + inventory-service), cross-repo dep resolution, minimal seed proposal dialog, full content of every emitted artifact (manifest.yaml + per-service SQL/HTTP files + credentials handoff), manual replay walkthrough, validation criteria.
+globs:
+alwaysApply: false
+---
+# Example Walkthrough
+
+## Overview
+
+This walkthrough shows a complete end-to-end run of the bootstrap skill against a
+two-service example architecture. Use it as a concrete reference for what the skill
+produces, what the confirmation dialogs look like, and how to replay the emitted
+artifacts manually.
+
+**Generic architecture used in this example:**
+
+- **`gateway-api`** — REST API gateway. No own database; all persistent data lives in
+  upstream services. HawkScan targets this service.
+- **`auth-service`** — Owns users, organizations, and passwords (Postgres + Liquibase).
+- **`inventory-service`** — Owns applications and resources (Postgres + Liquibase).
+
+---
+
+## Repo Profile
+
+What discovery finds when scanning the `gateway-api` repository.
+
+### Storage layer
+
+`gateway-api` has no database of its own. It is an API gateway that delegates to
+upstream services. When the skill runs `find` for Liquibase changelogs, Flyway
+migrations, Prisma schemas, or `.sql` files inside the target repo, all searches
+return empty. The skill records `storage: none` for the gateway service and moves
+on to upstream resolution.
+
+### Upstream deps
+
+The gateway repo references two upstream services via environment config:
+
+- **`auth-service`** — referenced via `AUTH_SERVICE_URL` in `.env.example`,
+  `application.yml`, and `docker-compose.yml`. The docker-compose service name is
+  `auth-service`.
+- **`inventory-service`** — referenced via `INVENTORY_SERVICE_URL` in the same files.
+  The docker-compose service name is `inventory-service`.
+
+The skill detects these by scanning:
+
+```bash
+# Detect upstream URL env var references
+grep -rn "_URL" .env.example docker-compose.yml \
+  src/main/resources/application.yml 2>/dev/null | grep -v "#"
+
+# Detect docker-compose service names
+grep -E '^  [a-zA-Z0-9_-]+:' docker-compose.yml 2>/dev/null
+```
+
+### Auth pattern
+
+Form login posting to `/login`, receiving a session cookie in response. The skill
+assumes this as the initial pattern and confirms with the user:
+
+1. `POST /login` with `Content-Type: application/json` and `{"email": ..., "password": ...}`
+2. Response sets a `session` cookie.
+3. Subsequent API calls carry `Cookie: session=<value>`.
+
+### API surface
+
+REST endpoints under `/v1/*`. OpenAPI spec served at `/v3/api-docs` (Spring Boot
+default). The skill probes:
+
+```bash
+curl -s http://localhost:9000/v3/api-docs | jq '.info.title' 2>/dev/null
+curl -s http://localhost:9000/api-docs     | jq '.info.title' 2>/dev/null
+```
+
+---
+
+## Cross-Repo Dep Resolution
+
+### Directory layout assumed
+
+The skill assumes sibling services live in sibling directories:
+
+```
+~/dev/
+├── gateway-api/        ← target repo
+├── auth-service/       ← sibling at ../auth-service
+└── inventory-service/  ← sibling at ../inventory-service
+```
+
+### Confirmation dialog
+
+Before descending into upstream repos, the skill surfaces a confirmation dialog (see
+`cross-repo-deps.md` §Step 2):
+
+```
+Discovered upstreams from (docker-compose, env URLs):
+  - auth-service      (resolved to ../auth-service via sibling search)
+  - inventory-service (resolved to ../inventory-service via sibling search)
+
+OK to explore these? Or are any of them wrong / missing / extra?
+```
+
+The user confirms. The skill then recurses into `../auth-service` and
+`../inventory-service` to run storage-layer discovery on each.
+
+---
+
+## Per-Upstream Discovery
+
+### auth-service (`../auth-service`)
+
+Storage type detected: **Postgres + Liquibase**.
+
+Detection signals:
+
+```bash
+find ../auth-service -not -path "*/target/*" -not -path "*/.git/*" \
+  \( -name "db.changelog-*.yaml" -o -name "db.changelog-*.xml" \) 2>/dev/null
+# e.g. ./src/main/resources/db/changelog/db.changelog-master.yaml
+```
+
+Tables relevant for seed (read from Liquibase changelogs):
+
+| Table | Purpose |
+|---|---|
+| `organizations` | Tenant-level grouping; every user belongs to one |
+| `users` | Login credentials; owns email + bcrypt password hash |
+| `user_org_memberships` | Many-to-many join; grants a user a role in an org |
+
+Column shapes (from `createTable` entries):
+
+- `organizations(id UUID PK, name TEXT, slug TEXT, created_at TIMESTAMP)`
+- `users(id UUID PK, email TEXT UNIQUE, password_hash TEXT, created_at TIMESTAMP)`
+- `user_org_memberships(user_id UUID FK, org_id UUID FK, role TEXT, PRIMARY KEY(user_id, org_id))`
+
+Password encoding: **BCrypt** detected via:
+
+```bash
+grep -rln "BCryptPasswordEncoder\|BCrypt\.hashpw" \
+  --include="*.java" --include="*.kt" \
+  --exclude-dir=target --exclude-dir=build \
+  ../auth-service 2>/dev/null | head -5
+```
+
+Because `auth-service` owns `users.password_hash`, it is marked **"supports
+password auth"** and Phase 2 proposes seeding a known test password.
+
+### inventory-service (`../inventory-service`)
+
+Storage type detected: **Postgres + Liquibase**.
+
+Tables relevant for seed:
+
+| Table | Purpose |
+|---|---|
+| `applications` | Scannable application records, owned by an org |
+
+Column shapes:
+
+- `applications(id UUID PK, name TEXT, org_id UUID FK, created_at TIMESTAMP, UNIQUE(name, org_id))`
+
+### gateway-api (target repo)
+
+Storage type: **HTTP only — no own DB**.
+
+The skill emits `http` steps for the gateway rather than `sql` steps. Data owned
+by the gateway is created through its REST API, which writes to upstream databases
+via `auth-service` and `inventory-service`.
+
+---
+
+## Minimal Seed Proposal
+
+After completing discovery across both upstream repos, the skill surfaces this
+summary dialog:
+
+```
+Discovery summary:
+  - gateway-api:       HTTP gateway (no own DB)
+  - auth-service:      Postgres (Liquibase); owns users + organizations + passwords
+  - inventory-service: Postgres (Liquibase); owns applications
+
+To make this scannable, you need:
+  - 1 user (test-owner@example.com / ExampleSeedPass1!)  ← password seeded into auth table
+  - 1 org  (Example Test Org)
+  - 1 app  (target-app-1)
+
+I'll seed:
+  - user + org + membership in auth-service via SQL
+  - app in inventory-service via SQL
+  - env link via gateway-api REST API
+
+OK to proceed, or expand? (e.g. need a READ_ONLY user, multiple apps, etc.)
+```
+
+The user confirms. The skill proceeds to emit all artifacts.
+
+---
+
+## Emitted Artifacts
+
+### Directory tree
+
+```
+gateway-api/
+├── bootstrap/
+│   ├── manifest.yaml
+│   ├── README.md
+│   ├── credentials.env.example
+│   ├── auth-service/
+│   │   ├── 001-orgs.sql
+│   │   ├── 002-users.sql
+│   │   └── 003-memberships.sql
+│   ├── inventory-service/
+│   │   └── 001-apps.sql
+│   └── gateway-api/
+│       └── 001-link-app-to-env.http
+├── .bootstrap-credentials.env  # gitignored
+└── .gitignore                  # .bootstrap-credentials.env appended
+```
+
+### 1. `bootstrap/manifest.yaml`
+
+```yaml
+version: 1
+name: gateway-api-hawkscan-bootstrap
+description: Seeds users, orgs, and apps required for authenticated HawkScan against gateway-api.
+
+targets:
+  auth-service:
+    kind: postgres
+    connection: ${AUTH_SERVICE_DB_URL}
+  inventory-service:
+    kind: postgres
+    connection: ${INVENTORY_SERVICE_DB_URL}
+  gateway-api:
+    kind: http
+    base_url: ${GATEWAY_URL:http://localhost:9000}
+
+prerequisites:
+  env:
+    - name: AUTH_SERVICE_DB_URL
+      description: "Postgres DSN for auth-service — e.g. postgres://user:pass@localhost:5432/auth_dev"
+    - name: INVENTORY_SERVICE_DB_URL
+      description: "Postgres DSN for inventory-service — e.g. postgres://user:pass@localhost:5432/inventory_dev"
+    - name: GATEWAY_URL
+      description: "Base URL for gateway-api — e.g. http://localhost:9000"
+    - name: TEST_USER
+      description: "Email address of the test user to create"
+    - name: TEST_PASS
+      description: "Password for the test user (stored in .bootstrap-credentials.env, gitignored)"
+  services:
+    - name: auth-service
+      url: ${AUTH_SERVICE_URL:http://localhost:8080}
+      check: http_ready
+    - name: inventory-service
+      url: ${INVENTORY_SERVICE_URL:http://localhost:9090}
+      check: http_ready
+    - name: gateway-api
+      url: ${GATEWAY_URL:http://localhost:9000}
+      check: http_ready
+  notes: |
+    Start the stack before running: `docker-compose up -d` or your env's equivalent.
+    Ensure AUTH_SERVICE_DB_URL and INVENTORY_SERVICE_DB_URL are set in your shell or
+    sourced from .bootstrap-credentials.env before invoking the Runner.
+    See bootstrap/credentials.env.example for a template.
+
+steps:
+  - id: auth-orgs
+    description: Create test organization in auth-service
+    service: auth-service
+    type: sql
+    file: auth-service/001-orgs.sql
+    target: auth-service
+    idempotency: check_sql
+    check_sql: "SELECT 1 FROM organizations WHERE name = 'Example Test Org';"
+    creates: [ "org:example-test-org" ]
+
+  - id: auth-users
+    description: Create test user in auth-service
+    service: auth-service
+    type: sql
+    file: auth-service/002-users.sql
+    target: auth-service
+    depends_on: [ auth-orgs ]
+    idempotency: check_sql
+    check_sql: "SELECT 1 FROM users WHERE email = 'test-owner@example.com';"
+    creates: [ "user:test-owner@example.com" ]
+
+  - id: auth-memberships
+    description: Link test user to test org with OWNER role
+    service: auth-service
+    type: sql
+    file: auth-service/003-memberships.sql
+    target: auth-service
+    depends_on: [ auth-users ]
+    idempotency: check_sql
+    check_sql: >
+      SELECT 1 FROM user_org_memberships
+      WHERE user_id = '00000000-0000-0000-0000-000000000002'
+        AND org_id  = '00000000-0000-0000-0000-000000000001';
+    creates: [ "membership:test-owner@example.com->example-test-org" ]
+
+  - id: inventory-apps
+    description: Create scannable app in inventory-service, owned by test org
+    service: inventory-service
+    type: sql
+    file: inventory-service/001-apps.sql
+    target: inventory-service
+    depends_on: [ auth-orgs ]
+    idempotency: check_sql
+    check_sql: "SELECT 1 FROM applications WHERE name = 'target-app-1';"
+    creates: [ "app:target-app-1" ]
+
+  - id: gateway-link
+    description: Link app to Development env via gateway-api REST API
+    service: gateway-api
+    type: http
+    file: gateway-api/001-link-app-to-env.http
+    target: gateway-api
+    depends_on: [ auth-memberships, inventory-apps ]
+    idempotency: check_http
+    check_http:
+      method: GET
+      path: /v1/apps/target-app-1/envs
+      expect_status: 200
+      expect_jq: ".envs | length > 0"
+    creates: [ "env-link:target-app-1/Development" ]
+
+outputs:
+  TEST_USER: test-owner@example.com
+  TEST_PASS: ExampleSeedPass1!
+  TEST_PASSWORD: ExampleSeedPass1!
+  TEST_ORG_ID: 00000000-0000-0000-0000-000000000001
+  TEST_APP_ID: 00000000-0000-0000-0000-000000000010
+  GATEWAY_LOGIN_URL: ${GATEWAY_URL}/login
+```
+
+### 2. `bootstrap/auth-service/001-orgs.sql`
+
+```sql
+-- Bootstrap seed: create Example Test Org in auth-service
+-- Idempotent via INSERT ... ON CONFLICT DO NOTHING
+
+INSERT INTO organizations (id, name, slug, created_at)
+VALUES (
+  '00000000-0000-0000-0000-000000000001',
+  'Example Test Org',
+  'example-test-org',
+  CURRENT_TIMESTAMP
+)
+ON CONFLICT (id) DO NOTHING;
+```
+
+### 3. `bootstrap/auth-service/002-users.sql`
+
+The password hash is **pre-computed at skill emission time** using bcrypt (rounds=12) and
+embedded as a string literal. This ensures compatibility with `BCryptPasswordEncoder`
+(Spring Security and equivalents), which uses the `$2a$` prefix — incompatible with
+Postgres `pgcrypto.crypt()`, which produces the older `$2$` format. The plaintext
+password lives only in `.bootstrap-credentials.env` (gitignored) and is never stored
+in a checked-in file. See `idempotency-patterns.md` §Password-Hash Seeding for the
+emit-time hashing strategy.
+
+```sql
+-- Bootstrap seed: create test user in auth-service.
+-- Hash computed at emit time (see idempotency-patterns.md §Password-Hash Seeding).
+-- Plaintext lives in .bootstrap-credentials.env as TEST_PASS.
+-- Idempotent via INSERT ... ON CONFLICT DO NOTHING
+
+INSERT INTO users (id, email, password_hash, created_at)
+VALUES (
+  '00000000-0000-0000-0000-000000000002',
+  'test-owner@example.com',
+  '$2a$12$<emit-time-computed-bcrypt-hash>',
+  CURRENT_TIMESTAMP
+)
+ON CONFLICT (email) DO NOTHING;
+```
+
+If your application uses Postgres-native bcrypt verification via `pgcrypto` (rare —
+only applicable when the app calls `crypt()` directly rather than a language-level
+`BCryptPasswordEncoder`), you can instead supply the password via psql variable
+substitution:
+
+```sql
+-- Fallback: only if your app verifies with pgcrypto crypt(), NOT BCryptPasswordEncoder.
+-- Supply password via: psql -v test_pass="$TEST_PASS" -f 002-users.sql
+-- Requires: pgcrypto extension (CREATE EXTENSION IF NOT EXISTS pgcrypto;)
+INSERT INTO users (id, email, password_hash, created_at)
+VALUES (
+  '00000000-0000-0000-0000-000000000002',
+  'test-owner@example.com',
+  crypt(:'test_pass', gen_salt('bf')),
+  CURRENT_TIMESTAMP
+)
+ON CONFLICT (email) DO NOTHING;
+```
+
+### 4. `bootstrap/auth-service/003-memberships.sql`
+
+```sql
+-- Bootstrap seed: link user to org in auth-service
+-- Idempotent via INSERT ... ON CONFLICT DO NOTHING
+
+INSERT INTO user_org_memberships (user_id, org_id, role)
+VALUES (
+  '00000000-0000-0000-0000-000000000002',
+  '00000000-0000-0000-0000-000000000001',
+  'OWNER'
+)
+ON CONFLICT (user_id, org_id) DO NOTHING;
+```
+
+### 5. `bootstrap/inventory-service/001-apps.sql`
+
+```sql
+-- Bootstrap seed: create target-app-1 in inventory-service, owned by Example Test Org
+-- Idempotent via INSERT ... ON CONFLICT DO NOTHING
+
+INSERT INTO applications (id, name, org_id, created_at)
+VALUES (
+  '00000000-0000-0000-0000-000000000010',
+  'target-app-1',
+  '00000000-0000-0000-0000-000000000001',
+  CURRENT_TIMESTAMP
+)
+ON CONFLICT (name, org_id) DO NOTHING;
+```
+
+### 6. `bootstrap/gateway-api/001-link-app-to-env.http`
+
+REST Client format (compatible with VS Code REST Client, IntelliJ HTTP Client).
+
+```http
+### Login to obtain session cookie
+POST {{GATEWAY_URL}}/login
+Content-Type: application/json
+
+{
+  "email": "{{TEST_USER}}",
+  "password": "{{TEST_PASS}}"
+}
+
+### Create Development env for target-app-1 (idempotent via PUT)
+PUT {{GATEWAY_URL}}/v1/apps/target-app-1/envs/Development
+Content-Type: application/json
+Cookie: session={{SESSION_ID}}
+
+{
+  "host": "http://localhost:9000",
+  "applicationId": "00000000-0000-0000-0000-000000000010"
+}
+```
+
+`{{SESSION_ID}}` is populated by the Runner from the `Set-Cookie` header of the
+login response. When replaying manually, extract it with the `curl` snippet in the
+Manual Replay section below.
+
+### 7. `bootstrap/credentials.env.example`
+
+```
+# Copy this file to .bootstrap-credentials.env and fill in real values.
+# .bootstrap-credentials.env is gitignored — never commit it.
+# Source with: set -a; . ./.bootstrap-credentials.env; set +a
+
+TEST_USER=test-owner@example.com
+TEST_PASS=<set-real-password>
+TEST_ORG_ID=00000000-0000-0000-0000-000000000001
+TEST_APP_ID=00000000-0000-0000-0000-000000000010
+GATEWAY_LOGIN_URL=http://localhost:9000/login
+
+# Database URLs (set per dev environment)
+AUTH_SERVICE_DB_URL=postgres://auth_user:auth_pass@localhost:5432/auth_dev
+INVENTORY_SERVICE_DB_URL=postgres://inv_user:inv_pass@localhost:5432/inventory_dev
+
+# Service base URLs (override defaults if your ports differ)
+AUTH_SERVICE_URL=http://localhost:8080
+INVENTORY_SERVICE_URL=http://localhost:9090
+GATEWAY_URL=http://localhost:9000
+```
+
+---
+
+## Manual Replay Walkthrough
+
+Step-by-step commands to apply the manifest manually, without the Runner.
+
+### Step 1 — Start the stack
+
+```bash
+docker-compose up -d
+```
+
+### Step 2 — Wait for services to be ready
+
+```bash
+echo "Waiting for auth-service..."
+until curl -sf http://localhost:8080/health >/dev/null; do sleep 1; done
+echo "auth-service ready"
+
+echo "Waiting for inventory-service..."
+until curl -sf http://localhost:9090/health >/dev/null; do sleep 1; done
+echo "inventory-service ready"
+
+echo "Waiting for gateway-api..."
+until curl -sf http://localhost:9000/health >/dev/null; do sleep 1; done
+echo "gateway-api ready"
+```
+
+### Step 3 — Source credentials
+
+```bash
+set -a
+. ./.bootstrap-credentials.env
+set +a
+```
+
+### Step 4 — Apply auth-service steps in order
+
+```bash
+# Create test org
+psql "${AUTH_SERVICE_DB_URL}" -f bootstrap/auth-service/001-orgs.sql
+
+# Create test user (-v passes the plaintext password so it never lives in a checked-in file)
+psql "${AUTH_SERVICE_DB_URL}" -v test_pass="${TEST_PASS}" -f bootstrap/auth-service/002-users.sql
+
+# Link user to org
+psql "${AUTH_SERVICE_DB_URL}" -f bootstrap/auth-service/003-memberships.sql
+```
+
+### Step 5 — Apply inventory-service steps
+
+```bash
+psql "${INVENTORY_SERVICE_DB_URL}" -f bootstrap/inventory-service/001-apps.sql
+```
+
+### Step 6 — Apply gateway-api steps (manual curl translation of the .http file)
+
+```bash
+# Login — extract session cookie from response headers
+SESSION=$(curl -s -D - -X POST "${GATEWAY_URL}/login" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"${TEST_USER}\",\"password\":\"${TEST_PASS}\"}" \
+  | grep -i "set-cookie: session=" \
+  | sed 's/.*session=\([^;]*\).*/\1/' \
+  | tr -d '[:space:]')
+
+echo "Session cookie: ${SESSION}"
+
+# Create Development env for target-app-1 (idempotent via PUT)
+curl -s -X PUT "${GATEWAY_URL}/v1/apps/target-app-1/envs/Development" \
+  -H "Content-Type: application/json" \
+  -H "Cookie: session=${SESSION}" \
+  -d "{
+    \"host\": \"http://localhost:9000\",
+    \"applicationId\": \"${TEST_APP_ID}\"
+  }"
+```
+
+---
+
+## Validation — What Success Looks Like
+
+Run these after applying the seed. Each must return the expected result.
+
+### auth-service — org exists
+
+```bash
+psql "${AUTH_SERVICE_DB_URL}" -c \
+  "SELECT 1 FROM organizations WHERE id='00000000-0000-0000-0000-000000000001';"
+# Expected: 1 row
+```
+
+### auth-service — user exists
+
+```bash
+psql "${AUTH_SERVICE_DB_URL}" -c \
+  "SELECT 1 FROM users WHERE email='test-owner@example.com';"
+# Expected: 1 row
+```
+
+### auth-service — membership exists
+
+```bash
+psql "${AUTH_SERVICE_DB_URL}" -c \
+  "SELECT 1 FROM user_org_memberships
+   WHERE user_id='00000000-0000-0000-0000-000000000002'
+     AND org_id='00000000-0000-0000-0000-000000000001';"
+# Expected: 1 row
+```
+
+### inventory-service — app exists
+
+```bash
+psql "${INVENTORY_SERVICE_DB_URL}" -c \
+  "SELECT 1 FROM applications WHERE name='target-app-1';"
+# Expected: 1 row
+```
+
+### gateway-api — env link exists
+
+> Requires the `SESSION` cookie obtained in Manual Replay Step 6. Run that step first.
+
+```bash
+curl -s -H "Cookie: session=${SESSION}" \
+  "${GATEWAY_URL}/v1/apps/target-app-1/envs" | jq '.envs | length'
+# Expected: ≥ 1
+```
+
+### Idempotency check
+
+Re-run all seed steps. Then re-run the validation commands. Row counts must not
+change.
+
+### HawkScan authentication check
+
+After bootstrap, with `.bootstrap-credentials.env` sourced, HawkScan configured
+against the running gateway should authenticate successfully and find > 1 path:
+
+```bash
+set -a; . ./.bootstrap-credentials.env; set +a
+hawk scan   # or: hawkscan --config stackhawk.yml
+```
+
+A successful scan completes without a 401/403 and reports at least the `/login`
+route plus one or more `/v1/*` routes.
