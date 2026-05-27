@@ -17,7 +17,7 @@
       "version": "1.9.0"
     },
     {
-      "name": "api",
+      "name": "stackhawk-api",
       "description": "Query the StackHawk platform API for security posture reporting, findings analysis, and app management.",
       "category": "security",
       "source": "./plugins/api",

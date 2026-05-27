@@ -1,0 +1,324 @@
+name: Skill Evals
+
+on:
+  workflow_dispatch:
+    inputs:
+      skill:
+        description: "Skill to evaluate"
+        required: true
+        default: "both"
+        type: choice
+        options: [hawkscan, api, both]
+      platform:
+        description: "Platform to run (all = claude-code + codex + agy + cursor)"
+        required: true
+        default: "all"
+        type: choice
+        options: [all, claude-code, codex, agy, cursor]
+      rubric:
+        description: "Run qualitative rubric grader (slower, ~$0.10 extra per run)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# ---------------------------------------------------------------------------
+# Required GitHub Actions secrets:
+#   ANTHROPIC_API_KEY  — Anthropic API key for Claude Code evals
+#   OPENAI_API_KEY     — OpenAI API key for Codex evals
+#   AGY_API_KEY        — Antigravity API key for agy evals (replaces Gemini)
+#   CURSOR_API_KEY     — Cursor API key for Cursor agent evals (Cursor Pro required)
+# ---------------------------------------------------------------------------
+
+jobs:
+
+  # ── Claude Code ──────────────────────────────────────────────────────────
+  eval-claude-code:
+    name: claude-code / ${{ matrix.skill }}
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      inputs.platform == 'all' ||
+      inputs.platform == 'claude-code'
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: [hawkscan, api]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Verify claude CLI
+        run: claude --version
+
+      - name: Run ${{ matrix.skill }} evals
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          RUBRIC_FLAG=""
+          if [ "${{ inputs.rubric }}" = "true" ]; then
+            RUBRIC_FLAG="--rubric"
+          fi
+          python3 evals/harnesses/claude-code/run-evals.py \
+            --skill ${{ matrix.skill }} \
+            --bare \
+            --max-budget 0.15 \
+            $RUBRIC_FLAG
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-claude-code-${{ matrix.skill }}
+          path: evals/harnesses/claude-code/results/${{ matrix.skill }}/
+          retention-days: 30
+
+  # ── Codex ─────────────────────────────────────────────────────────────────
+  eval-codex:
+    name: codex / ${{ matrix.skill }}
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      inputs.platform == 'all' ||
+      inputs.platform == 'codex'
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: [hawkscan, api]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
+
+      - name: Verify codex CLI
+        run: codex --version
+
+      - name: Install StackHawk skills (hawkscan + api)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          codex plugin marketplace add .
+          echo y | codex plugin add hawkscan@stackhawk
+          echo y | codex plugin add stackhawk-api@stackhawk
+
+      - name: Run ${{ matrix.skill }} evals
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python3 evals/harnesses/codex/run-evals.py \
+            --skill ${{ matrix.skill }}
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-codex-${{ matrix.skill }}
+          path: evals/harnesses/codex/results/${{ matrix.skill }}/
+          retention-days: 30
+
+  # ── Antigravity (agy) — replaces Gemini ───────────────────────────────────
+  eval-agy:
+    name: agy / ${{ matrix.skill }}
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      inputs.platform == 'all' ||
+      inputs.platform == 'agy'
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: [hawkscan, api]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install agy CLI
+        run: curl -fsSL https://antigravity.google/install-cli | bash
+
+      - name: Verify agy CLI
+        run: agy --version
+
+      - name: Install StackHawk plugins
+        env:
+          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+        run: |
+          echo y | agy plugin install plugins/hawkscan
+          echo y | agy plugin install plugins/api
+
+      - name: Run ${{ matrix.skill }} evals
+        env:
+          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+        run: |
+          python3 evals/harnesses/agy/run-evals.py \
+            --skill ${{ matrix.skill }} \
+            --print-timeout 240s
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-agy-${{ matrix.skill }}
+          path: evals/harnesses/agy/results/${{ matrix.skill }}/
+          retention-days: 30
+
+  # ── Cursor ────────────────────────────────────────────────────────────────
+  eval-cursor:
+    name: cursor / ${{ matrix.skill }}
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      inputs.platform == 'all' ||
+      inputs.platform == 'cursor'
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: [hawkscan, api]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Cursor CLI
+        run: npm install -g @cursor/cli || npm install -g cursor-agent
+        continue-on-error: true  # package name TBD; update when stable
+
+      - name: Verify agent CLI
+        run: agent --version
+
+      - name: Run ${{ matrix.skill }} evals
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: |
+          python3 evals/harnesses/cursor/run-evals.py \
+            --skill ${{ matrix.skill }}
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-cursor-${{ matrix.skill }}
+          path: evals/harnesses/cursor/results/${{ matrix.skill }}/
+          retention-days: 30
+
+  # ── PR comment ────────────────────────────────────────────────────────────
+  comment:
+    name: Post PR summary
+    needs: [eval-claude-code, eval-codex, eval-agy, eval-cursor]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: eval-*
+          merge-multiple: false
+          path: results/
+
+      - name: Build and post comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const needsResult = ${{ toJSON(needs) }};
+            const allSuccess = Object.values(needsResult).every(n => n.result === 'success');
+            const overallIcon = allSuccess ? '✅' : '❌';
+
+            let body = `## ${overallIcon} Skill Eval Results\n\n`;
+
+            const platforms = ['claude-code', 'codex', 'agy', 'cursor'];
+            const skills = ['hawkscan', 'api'];
+
+            for (const platform of platforms) {
+              body += `### Platform: \`${platform}\`\n\n`;
+              for (const skill of skills) {
+                const summaryPath = path.join(
+                  'results', `eval-${platform}-${skill}`, 'summary.json'
+                );
+
+                if (!fs.existsSync(summaryPath)) {
+                  body += `**\`${skill}\`**: ⚠️ No results\n`;
+                  continue;
+                }
+
+                const s = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
+                const ta = s.trigger_accuracy;
+                const triggerIcon = ta.correct === ta.total ? '✅' : '❌';
+
+                body += `**\`${skill}\`**: ${triggerIcon} Trigger ${ta.correct}/${ta.total}`;
+                if (s.process_avg_score !== null) {
+                  const scoreIcon = s.process_avg_score >= 70 && s.total_blocking_failures === 0 ? '✅' : '⚠️';
+                  body += ` | ${scoreIcon} Process ${s.process_avg_score}/100`;
+                }
+                if (s.false_positives?.length) body += ` | ⚠️ FP: ${s.false_positives.join(', ')}`;
+                if (s.false_negatives?.length) body += ` | ⚠️ FN: ${s.false_negatives.join(', ')}`;
+                body += '\n';
+              }
+              body += '\n';
+            }
+
+            body += `---\n_Commit ${context.sha.slice(0, 7)}. `;
+            body += `[Full results](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})_\n`;
+
+            const marker = '<!-- skill-eval-comment -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes(marker));
+            const fullBody = marker + '\n' + body;
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: fullBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: fullBody,
+              });
+            }

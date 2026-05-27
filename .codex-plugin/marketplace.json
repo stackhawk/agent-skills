@@ -12,7 +12,7 @@
       "category": "Security"
     },
     {
-      "name": "api",
+      "name": "stackhawk-api",
       "source": { "source": "local", "path": "./plugins/api" },
       "policy": { "installation": "AVAILABLE" },
       "category": "Security"

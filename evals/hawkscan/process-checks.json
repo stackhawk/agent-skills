@@ -1,0 +1,203 @@
+{
+  "skill": "hawkscan",
+  "version": "1.7.3",
+  "description": "Deterministic process checks for the hawkscan skill. Each check maps to a required behavior in SKILL.md. Harnesses should look for these signals in agent traces, command histories, or output text.",
+  "checks": [
+    {
+      "id": "preflight_version_check",
+      "phase": "preflight",
+      "description": "Agent verifies the hawk CLI is installed and meets the minimum version (5.5.11) before proceeding.",
+      "type": "command_executed",
+      "signals": ["hawk version", "hawk --version"],
+      "severity": "blocking",
+      "failure_guidance": "If hawk < 5.5.11, the agent must stop and tell the user to upgrade. Proceeding risks using stale inline auth recipes instead of 'hawk config show'."
+    },
+    {
+      "id": "preflight_config_command_available",
+      "phase": "preflight",
+      "description": "Agent confirms the 'hawk config' subcommand is available (required for Phase 1c auth recipes).",
+      "type": "command_executed",
+      "signals": ["hawk config --help"],
+      "severity": "blocking",
+      "failure_guidance": "hawk config show is the only source of canonical auth recipes. If unavailable, Phase 1c is not recoverable — agent must stop."
+    },
+    {
+      "id": "step1_app_existence_checked",
+      "phase": "step_1",
+      "description": "Agent queries existing apps before creating one, to avoid duplicate application records.",
+      "type": "command_executed",
+      "signals": ["hawkop app list"],
+      "severity": "blocking",
+      "failure_guidance": "Skipping this check and blindly creating a new app pollutes the org with duplicates and splits scan history."
+    },
+    {
+      "id": "step1_env_existence_checked",
+      "phase": "step_1",
+      "description": "Agent queries existing environments before creating one.",
+      "type": "command_executed",
+      "signals": ["hawkop env list"],
+      "severity": "blocking",
+      "failure_guidance": "Duplicate environments split finding history and break scan-to-scan comparison."
+    },
+    {
+      "id": "step1_credentials_verified",
+      "phase": "step_1",
+      "description": "Agent verifies hawk credentials exist (~/.hawk/hawk.properties) or runs hawk init before scanning.",
+      "type": "command_or_file_check",
+      "signals": ["hawk init", "hawk.properties", "~/.hawk/"],
+      "severity": "blocking",
+      "failure_guidance": "Scanning without credentials fails with 401. Better to verify credentials early and fail fast."
+    },
+    {
+      "id": "step1_app_running_confirmed",
+      "phase": "step_1",
+      "description": "Agent confirms the application is running and reachable before attempting to scan.",
+      "type": "output_contains",
+      "signals": ["running", "reachable", "localhost", "port", "host"],
+      "severity": "blocking",
+      "failure_guidance": "HawkScan requires a live target. Scanning a non-running app exits with code 1 (connection error), not useful findings."
+    },
+    {
+      "id": "step2_config_uses_interpolation",
+      "phase": "step_2",
+      "description": "stackhawk.yml uses ${VAR:default} env var interpolation for host, applicationId, and credentials — no hardcoded values.",
+      "type": "file_content",
+      "target_file": "stackhawk.yml",
+      "signals": ["${APP_ID", "${APP_HOST", "${HAWK_API_KEY"],
+      "anti_patterns": ["applicationId: [0-9a-f]{8}-", "host: http://localhost", "host: https://localhost"],
+      "severity": "warning",
+      "failure_guidance": "Hardcoded values break multi-environment use and risk committing credentials to source control. In observe mode this check applies to generated YAML shown in agent output."
+    },
+    {
+      "id": "step2_no_mid_value_interpolation",
+      "phase": "step_2",
+      "description": "stackhawk.yml does NOT use interpolation mid-string (e.g. host: \"https://${HOST}/api\" silently fails — the entire value must be the variable).",
+      "type": "file_content_negative",
+      "target_file": "stackhawk.yml",
+      "anti_patterns": ["\"https?://\\$\\{", "host:.*\\$\\{.*\\}/"],
+      "severity": "blocking",
+      "failure_guidance": "HawkScan only interpolates when the entire YAML value is the variable reference. Partial interpolation silently produces a broken URL."
+    },
+    {
+      "id": "step2_no_local_yml_created",
+      "phase": "step_2",
+      "description": "Agent does NOT create stackhawk.local.yml.",
+      "type": "file_absent",
+      "target_file": "stackhawk.local.yml",
+      "severity": "blocking",
+      "failure_guidance": "stackhawk.local.yml is an anti-pattern. Host overrides belong in ${APP_HOST:default} interpolation within the primary stackhawk.yml."
+    },
+    {
+      "id": "step2_config_validated_before_scan",
+      "phase": "step_2",
+      "description": "Agent runs 'hawk validate config stackhawk.yml' (no -c flag, no absolute path) before scanning.",
+      "type": "command_executed",
+      "signals": ["hawk validate config stackhawk.yml", "hawk validate config"],
+      "anti_patterns": ["hawk validate config -c", "hawk validate config --config", "hawk validate config /"],
+      "severity": "blocking",
+      "failure_guidance": "Config validation catches errors without burning a full scan run. The -c/--config flags do not exist and will cause the command to fail."
+    },
+    {
+      "id": "step2_auth_validated_when_present",
+      "phase": "step_2",
+      "description": "If an authentication: block exists in stackhawk.yml, agent runs 'hawk validate auth stackhawk.yml' before scanning.",
+      "type": "conditional_command",
+      "condition": "stackhawk.yml contains 'authentication:'",
+      "signals": ["hawk validate auth stackhawk.yml"],
+      "severity": "blocking",
+      "failure_guidance": "Skipping auth validation means auth failures surface mid-scan instead of in seconds. Mandatory when auth block is present."
+    },
+    {
+      "id": "step3_scan_run_synchronously",
+      "phase": "step_3",
+      "description": "hawk scan and hawk rescan are run synchronously — never backgrounded with & or nohup.",
+      "type": "command_negative",
+      "anti_patterns": ["hawk scan &", "hawk rescan &", "nohup hawk scan", "nohup hawk rescan"],
+      "severity": "blocking",
+      "failure_guidance": "Background scanning prevents reading the exit code. Exit code 42 (findings found) will be silently missed."
+    },
+    {
+      "id": "step3_json_output_used",
+      "phase": "step_3",
+      "description": "hawk scan is invoked with --json-output for structured findings parsing.",
+      "type": "command_executed",
+      "signals": ["hawk scan --json-output"],
+      "severity": "warning",
+      "failure_guidance": "Without --json-output, findings must be parsed from terminal stdout which is fragile. Use --json-output when hawk >= 5.3.41."
+    },
+    {
+      "id": "step3_commit_env_vars_set",
+      "phase": "step_3",
+      "description": "COMMIT_SHA and BRANCH_NAME env vars are exported before scanning so scan results are traceable to the commit.",
+      "type": "command_executed",
+      "signals": ["git rev-parse HEAD", "COMMIT_SHA=", "BRANCH_NAME=", "git rev-parse --abbrev-ref"],
+      "severity": "warning",
+      "failure_guidance": "Without commit tagging, scan results can't be linked to the code change. Required for traceability in CI."
+    },
+    {
+      "id": "step3_hawk_agent_detected",
+      "phase": "step_3",
+      "description": "HAWK_AGENT env var is detected and exported before scanning (populates the _STACKHAWK_AGENT tag).",
+      "type": "command_executed",
+      "signals": ["HAWK_AGENT", "_HAWK_PLATFORM", "CLAUDE_CODE", "CURSOR_TRACE_ID", "GEMINI_API_KEY"],
+      "severity": "warning",
+      "failure_guidance": "HAWK_AGENT populates the _STACKHAWK_AGENT tag for agent attribution in the StackHawk platform. Missing = 'none'."
+    },
+    {
+      "id": "step3_no_absolute_config_path",
+      "phase": "step_3",
+      "description": "hawk validate and hawk scan commands use bare filenames, not absolute paths.",
+      "type": "command_negative",
+      "anti_patterns": ["hawk validate config /", "hawk validate auth /", "hawk scan /home", "hawk scan /Users"],
+      "severity": "blocking",
+      "failure_guidance": "The hawk CLI prepends the working directory to config paths. Absolute paths produce broken double-paths that cause the command to fail."
+    },
+    {
+      "id": "step4_triage_filter_applied",
+      "phase": "step_4_5",
+      "description": "Before routing findings to the fix loop, agent checks per-path triage status and skips FALSE_POSITIVE and RISK_ACCEPTED paths. Only applicable after a scan completes with findings.",
+      "type": "output_contains",
+      "signals": ["FALSE_POSITIVE", "RISK_ACCEPTED", "ASSIGNED", "triage filter", "triage status"],
+      "severity": "warning",
+      "failure_guidance": "Routing FALSE_POSITIVE findings to the fix loop creates churn against deliberate human decisions. This check only fires in full-auto mode with real scan results."
+    },
+    {
+      "id": "step6_rescan_used_not_full_scan",
+      "phase": "step_6",
+      "description": "After fixing findings, agent uses 'hawk rescan --scan-id' rather than launching a new full 'hawk scan', unless a documented full-scan condition applies.",
+      "type": "command_executed",
+      "signals": ["hawk rescan --scan-id"],
+      "anti_patterns": ["hawk scan --json-output.*# verify", "hawk scan.*after fix"],
+      "severity": "warning",
+      "failure_guidance": "hawk rescan re-runs only the plugins that fired on the parent scan — faster than a full scan. Use full scan only if new endpoints were added or codebase changed substantially."
+    },
+    {
+      "id": "antipattern_no_zap_reference",
+      "phase": "any",
+      "description": "Agent never refers to the scanner as 'ZAP' or 'OWASP ZAP'.",
+      "type": "output_negative",
+      "anti_patterns": ["ZAP", "OWASP ZAP", "owasp zap"],
+      "severity": "warning",
+      "failure_guidance": "The product is HawkScan (CLI/runtime) and StackHawk (platform). The underlying engine is HSTE. ZAP references are inaccurate and confusing to users."
+    },
+    {
+      "id": "antipattern_no_hardcoded_api_key",
+      "phase": "any",
+      "description": "No API keys or credentials appear hardcoded in stackhawk.yml or commands.",
+      "type": "file_content_negative",
+      "target_file": "stackhawk.yml",
+      "anti_patterns": ["apiKey:", "hawk-[a-zA-Z0-9]{20,}"],
+      "severity": "blocking",
+      "failure_guidance": "Hardcoded API keys in stackhawk.yml will be committed to source control. Always use ${HAWK_API_KEY} interpolation."
+    },
+    {
+      "id": "antipattern_no_config_flag",
+      "phase": "any",
+      "description": "hawk validate and hawk scan commands do NOT use -c or --config flags (these flags don't exist).",
+      "type": "command_negative",
+      "anti_patterns": ["hawk validate.*-c ", "hawk validate.*--config ", "hawk scan.*-c ", "hawk scan.*--config "],
+      "severity": "blocking",
+      "failure_guidance": "The -c and --config flags do not exist in the hawk CLI. Inventing them causes the command to fail silently or with a confusing error."
+    }
+  ]
+}
