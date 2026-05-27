@@ -350,18 +350,39 @@ ON CONFLICT (id) DO NOTHING;
 
 ### 3. `bootstrap/auth-service/002-users.sql`
 
-The password is supplied via `psql -v test_pass="..."` substitution so the
-plaintext does not live in a checked-in file. The `pgcrypto` extension hashes it
-at insert time. If `pgcrypto` is unavailable, pre-compute a bcrypt hash at
-emission time and embed it as a literal (see `idempotency-patterns.md`
-§Password-Hash Seeding).
+The password hash is **pre-computed at skill emission time** using bcrypt (rounds=12) and
+embedded as a string literal. This ensures compatibility with `BCryptPasswordEncoder`
+(Spring Security and equivalents), which uses the `$2a$` prefix — incompatible with
+Postgres `pgcrypto.crypt()`, which produces the older `$2$` format. The plaintext
+password lives only in `.bootstrap-credentials.env` (gitignored) and is never stored
+in a checked-in file. See `idempotency-patterns.md` §Password-Hash Seeding for the
+emit-time hashing strategy.
 
 ```sql
--- Bootstrap seed: create test user in auth-service
+-- Bootstrap seed: create test user in auth-service.
+-- Hash computed at emit time (see idempotency-patterns.md §Password-Hash Seeding).
+-- Plaintext lives in .bootstrap-credentials.env as TEST_PASS.
 -- Idempotent via INSERT ... ON CONFLICT DO NOTHING
--- Requires: pgcrypto extension (CREATE EXTENSION IF NOT EXISTS pgcrypto;)
--- Supply password via: psql -v test_pass="$TEST_PASS" -f 002-users.sql
 
+INSERT INTO users (id, email, password_hash, created_at)
+VALUES (
+  '00000000-0000-0000-0000-000000000002',
+  'test-owner@example.com',
+  '$2a$12$<emit-time-computed-bcrypt-hash>',
+  CURRENT_TIMESTAMP
+)
+ON CONFLICT (email) DO NOTHING;
+```
+
+If your application uses Postgres-native bcrypt verification via `pgcrypto` (rare —
+only applicable when the app calls `crypt()` directly rather than a language-level
+`BCryptPasswordEncoder`), you can instead supply the password via psql variable
+substitution:
+
+```sql
+-- Fallback: only if your app verifies with pgcrypto crypt(), NOT BCryptPasswordEncoder.
+-- Supply password via: psql -v test_pass="$TEST_PASS" -f 002-users.sql
+-- Requires: pgcrypto extension (CREATE EXTENSION IF NOT EXISTS pgcrypto;)
 INSERT INTO users (id, email, password_hash, created_at)
 VALUES (
   '00000000-0000-0000-0000-000000000002',

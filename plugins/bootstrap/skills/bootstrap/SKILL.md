@@ -180,7 +180,7 @@ Write `bootstrap/manifest.yaml` per the Contract B schema.
 
 Before writing, verify:
 
-1. Every step has `id`, `type`, `target`, `idempotency`.
+1. Every step has `id`, `type`, `file`, `target`, `idempotency`.
 2. All `depends_on` references resolve to existing step IDs.
 3. No circular dependencies (topo-sort succeeds).
 4. Every referenced `file:` path exists in the emitted tree.

@@ -12,7 +12,7 @@ alwaysApply: false
 
 Idempotency operates at two independent layers.
 
-1. **The idempotency check** — the `check_command` / `check_query` predicate in
+1. **The idempotency check** — the `check_command` / `check_sql` predicate in
    `manifest.yaml`. The Runner evaluates this before the step. If it returns a
    non-empty / zero-row / success result indicating the resource already exists,
    the Runner skips the step body entirely. Declarative; lives in the manifest.
@@ -148,16 +148,16 @@ VALUES (
 ON CONFLICT (id) DO NOTHING;
 ```
 
-Manifest `check_query` for step 1:
+Manifest `check_sql` for step 1:
 
 ```yaml
-check_query: "SELECT 1 FROM organizations WHERE id = 'org-acme-01' LIMIT 1"
+check_sql: "SELECT 1 FROM organizations WHERE id = 'org-acme-01' LIMIT 1"
 ```
 
-Manifest `check_query` for step 2:
+Manifest `check_sql` for step 2:
 
 ```yaml
-check_query: "SELECT 1 FROM users WHERE id = 'user-admin-01' LIMIT 1"
+check_sql: "SELECT 1 FROM users WHERE id = 'user-admin-01' LIMIT 1"
 ```
 
 ---
@@ -540,7 +540,7 @@ Manifest step:
 
 ### Predicates must be cheap
 
-The `check_command` / `check_query` runs before every step on every replay.
+The `check_command` / `check_sql` runs before every step on every replay.
 Use indexed columns. Never issue a full table scan or an unqualified
 `SELECT COUNT(*)`.
 
@@ -598,7 +598,7 @@ than silently skipping the seed step.
 
 ```yaml
 # NEVER — wall-clock-dependent, fails on re-runs hours later
-check_query: "SELECT 1 FROM users WHERE created_at > NOW() - INTERVAL '1 hour'"
+check_sql: "SELECT 1 FROM users WHERE created_at > NOW() - INTERVAL '1 hour'"
 ```
 
 ```yaml

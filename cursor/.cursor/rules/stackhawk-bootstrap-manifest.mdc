@@ -46,6 +46,13 @@ prerequisites:                      # REQUIRED. Things that must be true before 
   notes: |                          # OPTIONAL. Free-form prose for humans. Markdown OK.
     <markdown ok>
 
+targets:                            # REQUIRED. Service-name → connection map. Each step's `target:` field
+                                    # (scalar form) references an entry here. Object-form `target:` on a step
+                                    # is an inline alternative — but using `targets:` is preferred for DRY.
+  <service-name>:
+    kind: postgres | mysql | sqlite | mongo | http | grpc | none
+    connection: <URL or path; env interpolation supported>
+
 steps: [ ... ]                      # REQUIRED. Ordered list. At least one step.
                                     #   Execution order: topo-sort over depends_on.
                                     #   Absence of depends_on means depends on previous entry.
@@ -54,8 +61,8 @@ outputs:                            # REQUIRED. Values the seed produced.
   KEY: value                        #   Skill A writes these to .bootstrap-credentials.env.
 ```
 
-All six top-level keys (`version`, `name`, `description`, `prerequisites`,
-`steps`, `outputs`) are required. The manifest is invalid without any of them.
+All seven top-level keys (`version`, `name`, `description`, `prerequisites`,
+`targets`, `steps`, `outputs`) are required. The manifest is invalid without any of them.
 
 ---
 
@@ -161,7 +168,10 @@ the unit of idempotency checking, dependency tracking, and retry in Tool C.
   # REQUIRED. Two forms supported:
   # (a) Scalar — names a well-known strategy the runner understands directly:
   #       on_conflict_do_nothing | insert_ignore | insert_or_ignore | upsert |
-  #       where_not_exists_and_on_conflict | on_conflict_and_upsert | custom_predicate | none
+  #       where_not_exists_and_on_conflict | on_conflict_and_upsert | custom_predicate | none |
+  #       check_sql | check_http | check_command
+  #     When using a `check_*` scalar, the step must also carry a sibling field of the same
+  #     name with the predicate (e.g., `idempotency: check_sql` + `check_sql: "SELECT 1 FROM ..."`).
   idempotency: on_conflict_do_nothing
   # (b) Object — explicit predicate the runner evaluates before running the step:
   #     idempotency:
@@ -443,7 +453,7 @@ db.users.findOneAndUpdate(
     $setOnInsert: {
       _id:       "00000000-0000-0000-0000-000000000020",
       email:     "test-owner@example.com",
-      password:  process.env.TEST_PASS || "ExampleSeedPass1!",
+      password:  process.env.TEST_PASS || (() => { throw new Error('TEST_PASS not set — source .bootstrap-credentials.env first'); })(),
       orgId:     "00000000-0000-0000-0000-000000000001",
       role:      "SCAN_USER",
       createdAt: new Date(),
@@ -772,7 +782,7 @@ Before writing the manifest to disk, Skill A performs these five checks. If any
 check fails, the skill surfaces the problem to the user and does not write a
 broken manifest.
 
-1. **Required step fields present.** Every step has `id`, `type`, `target`,
+1. **Required step fields present.** Every step has `id`, `type`, `file`, `target`,
    and `idempotency`. A step missing any of these is invalid.
 
 2. **`depends_on` references resolve.** Every ID listed in any step's
