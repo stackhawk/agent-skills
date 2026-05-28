@@ -51,12 +51,20 @@
     {
       "id": "phase3_emits_to_data_seed_dir",
       "phase": "phase_3",
-      "description": "Agent emits artifacts under data-seed/ — never bootstrap/ (legacy name) or any other directory (Phase 3.1).",
+      "description": "Agent emits artifacts under data-seed/ (Phase 3.1).",
       "type": "file_present",
       "signals": ["data-seed/manifest.yaml", "data-seed/README.md", "data-seed/credentials.env.example"],
+      "severity": "blocking",
+      "failure_guidance": "The output contract is data-seed/. Missing these files means downstream consumers (hawkscan reads .data-seed-credentials.env, the future Runner reads manifest.yaml) have nothing to consume."
+    },
+    {
+      "id": "phase3_no_legacy_bootstrap_dir",
+      "phase": "phase_3",
+      "description": "Agent does NOT emit artifacts under the legacy bootstrap/ directory or .bootstrap-credentials.env filename (Phase 3.1).",
+      "type": "file_absent",
       "anti_patterns": ["bootstrap/manifest.yaml", "bootstrap/README.md", ".bootstrap-credentials.env"],
       "severity": "blocking",
-      "failure_guidance": "The output contract is data-seed/. Emitting to bootstrap/ leaks the old skill name and breaks consumers (hawkscan reads .data-seed-credentials.env)."
+      "failure_guidance": "Emitting to bootstrap/ leaks the pre-1.10 skill name and produces a broken handoff — hawkscan looks for .data-seed-credentials.env and will not find anything."
     },
     {
       "id": "phase3_manifest_written",
