@@ -1,14 +1,8 @@
----
-description: >
-  Cross-repo upstream service dep resolution for the bootstrap skill: detection signals (docker-compose, env URLs, gRPC stubs, imported clients); resolution flow (sibling-directory search, BOOTSTRAP_REPO_<NAME> env vars, user-confirmation fallback); naming normalization rules; remote-only upstream handling; monorepo handling; confirmation patterns; edge cases.
-globs:
-alwaysApply: false
----
 # Cross-Repo Dependency Resolution Reference
 
 ## Overview
 
-A repo like `gateway-api` (API gateway, no DB of its own) cannot be bootstrapped
+A repo like `gateway-api` (API gateway, no DB of its own) cannot be seeded
 in isolation — the entities it serves live in upstream services such as
 `auth-service` or `inventory-service`. The skill must locate those upstream repos
 on disk to know where to read schemas, run migrations, and seed data. This
@@ -135,19 +129,19 @@ workspace path as a resolved local repo path.
 
 For each detected upstream name (after normalization), resolve in this order:
 
-### Step 1 — `BOOTSTRAP_REPO_<NAME>` env var (highest priority)
+### Step 1 — `DATA_SEED_REPO_<NAME>` env var (highest priority)
 
 The user can pre-set an env var to explicitly point to a non-conventional repo
 layout. The skill checks these first because explicit user input wins.
 
-Convention: `BOOTSTRAP_REPO_<NORMALIZED_NAME>` where the name is uppercased.
+Convention: `DATA_SEED_REPO_<NORMALIZED_NAME>` where the name is uppercased.
 
 ```bash
 # For a service named "auth-service" (normalized to "auth"), check:
-echo "${BOOTSTRAP_REPO_AUTH:-}"
+echo "${DATA_SEED_REPO_AUTH:-}"
 
 # For "inventory-service" (normalized to "inventory"):
-echo "${BOOTSTRAP_REPO_INVENTORY:-}"
+echo "${DATA_SEED_REPO_INVENTORY:-}"
 ```
 
 If the env var is set and the path exists, use it immediately — skip Steps 2
@@ -195,7 +189,7 @@ authoritative. Auto-resolution is a suggestion, not a decision.
 If neither Step 1 nor Step 2 yields a result, ask:
 
 > "I see this app calls `auth-service:8080`. I couldn't find a
-> `BOOTSTRAP_REPO_AUTH` env var or sibling directories like `../auth-service`.
+> `DATA_SEED_REPO_AUTH` env var or sibling directories like `../auth-service`.
 > Where does that service's repo live, or is it remote-only (in which case
 > we'll seed via API)?"
 
@@ -238,13 +232,13 @@ Examples:
 | `inventory-service` | `inventory` |
 
 **Practical example:** docker-compose declares a service `auth-service:8080`.
-The user has `BOOTSTRAP_REPO_AUTH=/repos/auth-service` set. Normalization maps
+The user has `DATA_SEED_REPO_AUTH=/repos/auth-service` set. Normalization maps
 `auth-service` → `auth`; the env var key suffix `AUTH` also normalizes to
 `auth`; they match and the env var wins (Step 1).
 
 Apply normalization before any lookup in Steps 1–3 and before deduplication
 across signals. Multiple signals pointing to `auth-service`, `AuthServiceClient`,
-and `BOOTSTRAP_REPO_AUTH` are all the same upstream entry after normalization.
+and `DATA_SEED_REPO_AUTH` are all the same upstream entry after normalization.
 
 ---
 
@@ -320,7 +314,7 @@ array in root `package.json`, a `lerna.json`, or a Bazel `WORKSPACE` file.
   and port assignments.
 - The manifest contains one service entry per subdirectory-service, with
   explicit `depends_on` ordering derived from the compose file.
-- No `BOOTSTRAP_REPO_*` env vars or sibling-directory searches are needed for
+- No `DATA_SEED_REPO_*` env vars or sibling-directory searches are needed for
   monorepo services — use the subdirectory path directly.
 
 ---

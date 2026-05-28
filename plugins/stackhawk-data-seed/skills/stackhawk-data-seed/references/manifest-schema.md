@@ -1,14 +1,7 @@
----
-description: >
-  Bootstrap manifest schema (Contract B) full reference: top-level structure (version, targets, prerequisites, steps, outputs); step schema with all fields (target as scalar string, idempotency as scalar strategy name); supported step types (sql, http, grpc, mongo, shell); idempotency primitives (check_sql, check_http, check_command, none); dependency model; self-validation rules; complete example; forbidden patterns.
-globs:
-  - "**/bootstrap/manifest.yaml"
-alwaysApply: false
----
-# Bootstrap Manifest Schema (Contract B)
+# Data Seed Manifest Schema (Contract B)
 
-`bootstrap/manifest.yaml` is the contract between Skill A (the authoring skill,
-"bootstrap"), human reviewers, and the future Runner (Tool C). It is the
+`data-seed/manifest.yaml` is the contract between Skill A (the authoring skill,
+"stackhawk-data-seed"), human reviewers, and the future Runner (Tool C). It is the
 authoritative runbook and dependency graph for seed operations: every step,
 every file reference, every idempotency predicate, and every emitted credential
 lives here. This document describes schema `version: 1`. Backward-compatible
@@ -36,9 +29,9 @@ execution semantics) requires `version: 2`.
 
 ```yaml
 version: 1                          # REQUIRED. Schema version. Currently 1.
-name: <repo>-hawkscan-bootstrap     # REQUIRED. Slug-style identifier; conventionally
-                                    #   <target-repo>-hawkscan-bootstrap. No spaces.
-description: <one sentence>         # REQUIRED. What this bootstrap creates and why.
+name: <repo>-hawkscan-data-seed     # REQUIRED. Slug-style identifier; conventionally
+                                    #   <target-repo>-hawkscan-data-seed. No spaces.
+description: <one sentence>         # REQUIRED. What this seed creates and why.
 
 prerequisites:                      # REQUIRED. Things that must be true before any step runs.
   env: [ ... ]                      # OPTIONAL. Required env vars. Each entry: name + description.
@@ -58,7 +51,7 @@ steps: [ ... ]                      # REQUIRED. Ordered list. At least one step.
                                     #   Absence of depends_on means depends on previous entry.
 
 outputs:                            # REQUIRED. Values the seed produced.
-  KEY: value                        #   Skill A writes these to .bootstrap-credentials.env.
+  KEY: value                        #   Skill A writes these to .data-seed-credentials.env.
 ```
 
 All seven top-level keys (`version`, `name`, `description`, `prerequisites`,
@@ -86,7 +79,7 @@ prerequisites:
     - name: AUTH_SERVICE_DB_URL
       description: "Postgres connection string for auth-service — e.g. postgres://user:pass@localhost:5432/auth_dev"
     - name: TEST_PASS
-      description: "Sourced from .bootstrap-credentials.env; the seeded user's password"
+      description: "Sourced from .data-seed-credentials.env; the seeded user's password"
 ```
 
 The Runner fails fast if any declared env var is absent or empty at launch time.
@@ -104,7 +97,7 @@ be reachable before any step runs. The Runner verifies each service's
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `name` | string | yes | Logical service name. Matches the subdirectory under `bootstrap/`. |
+| `name` | string | yes | Logical service name. Matches the subdirectory under `data-seed/`. |
 | `url` | string | yes | Full URL, with env interpolation via `${VAR:default}`. |
 | `check` | enum | yes | How the Runner verifies. v1 supports only `http_ready`. |
 
@@ -143,10 +136,10 @@ the unit of idempotency checking, dependency tracking, and retry in Tool C.
                                     #   Runner state tracking.
   description: <one line>           # REQUIRED. Human summary of what the step does.
   service: <service-name>           # REQUIRED. Logical service this step targets.
-                                    #   Matches the subdirectory name under bootstrap/.
+                                    #   Matches the subdirectory name under data-seed/.
   type: sql | http | grpc | mongo | shell
                                     # REQUIRED. Drives how the Runner interprets `file`.
-  file: <relative/path>             # REQUIRED. Path relative to bootstrap/. Must exist in the
+  file: <relative/path>             # REQUIRED. Path relative to data-seed/. Must exist in the
                                     #   emitted tree when the manifest is written.
 
   # REQUIRED. Two forms supported:
@@ -188,7 +181,7 @@ the unit of idempotency checking, dependency tracking, and retry in Tool C.
   #       none: true               # Runner refuses unless --allow-non-idempotent.
 ```
 
-Both forms are valid v1. The scalar form is more compact and is what the bootstrap skill emits by
+Both forms are valid v1. The scalar form is more compact and is what the stackhawk-data-seed skill emits by
 default when an entire seed run targets one service per row (matching the top-level `targets:` map).
 Use the object form when a single step needs a custom connection target or a predicate that isn't
 well-known to the runner.
@@ -251,7 +244,7 @@ The object form is also accepted:
     check_sql: "SELECT 1 FROM organizations WHERE name = 'Example Test Org';"
 ```
 
-Referenced file — `bootstrap/auth-service/001-orgs.sql`:
+Referenced file — `data-seed/auth-service/001-orgs.sql`:
 ```sql
 -- Seed test organization for scanning.
 -- Uses ON CONFLICT DO NOTHING so re-running is safe.
@@ -314,7 +307,7 @@ The object form for `target` is also accepted (used when no top-level `targets:`
     base_url: ${GATEWAY_URL:http://localhost:9000}
 ```
 
-Referenced file — `bootstrap/gateway-api/001-link-app-to-env.http`:
+Referenced file — `data-seed/gateway-api/001-link-app-to-env.http`:
 ```http
 ### Link target-app-1 to the default scan environment
 
@@ -376,7 +369,7 @@ The object form for `target` is also accepted:
     connection: ${REGISTRY_GRPC_ADDR:localhost:50051}
 ```
 
-Referenced file — `bootstrap/registry/001-create-tenant.sh`:
+Referenced file — `data-seed/registry/001-create-tenant.sh`:
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
@@ -443,7 +436,7 @@ The object form for `target` is also accepted:
     connection: ${CATALOG_MONGO_URI:mongodb://localhost:27017/catalog}
 ```
 
-Referenced file — `bootstrap/catalog/001-users.js`:
+Referenced file — `data-seed/catalog/001-users.js`:
 ```js
 // Upsert test user for HawkScan scanning.
 // findOneAndUpdate with upsert:true is safe to replay.
@@ -453,7 +446,7 @@ db.users.findOneAndUpdate(
     $setOnInsert: {
       _id:       "00000000-0000-0000-0000-000000000020",
       email:     "test-owner@example.com",
-      password:  process.env.TEST_PASS || (() => { throw new Error('TEST_PASS not set — source .bootstrap-credentials.env first'); })(),
+      password:  process.env.TEST_PASS || (() => { throw new Error('TEST_PASS not set — source .data-seed-credentials.env first'); })(),
       orgId:     "00000000-0000-0000-0000-000000000001",
       role:      "SCAN_USER",
       createdAt: new Date(),
@@ -502,12 +495,12 @@ Manifest fragment (object idempotency with check_command; object target since ki
   target:
     kind: none
   depends_on: [ auth-users ]
-  creates: [ "apikey:bootstrap-scan-key" ]
+  creates: [ "apikey:data-seed-scan-key" ]
   idempotency:
-    check_command: "platform-admin apikey list --user test-owner@example.com | grep -q bootstrap-scan-key"
+    check_command: "platform-admin apikey list --user test-owner@example.com | grep -q data-seed-scan-key"
 ```
 
-Referenced file — `bootstrap/platform/001-provision-apikey.sh`:
+Referenced file — `data-seed/platform/001-provision-apikey.sh`:
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
@@ -517,7 +510,7 @@ set -euo pipefail
 
 platform-admin apikey create \
   --user  "test-owner@example.com" \
-  --name  "bootstrap-scan-key" \
+  --name  "data-seed-scan-key" \
   --scope "scan:read scan:write" \
   --token "${PLATFORM_ADMIN_TOKEN}"
 ```
@@ -741,7 +734,7 @@ expands these at write time. Keys must be SCREAMING_SNAKE_CASE.
 
 ### How Skill A writes outputs
 
-Skill A writes each key-value pair to `.bootstrap-credentials.env` in the
+Skill A writes each key-value pair to `.data-seed-credentials.env` in the
 target repo root, one pair per line:
 
 ```
@@ -753,22 +746,22 @@ GATEWAY_LOGIN_URL=http://localhost:9000/login
 ```
 
 No quoting unless values contain spaces. No `export` prefix. The file is
-sourced by downstream tools via `. .bootstrap-credentials.env` (POSIX) or
-`source .bootstrap-credentials.env` (bash).
+sourced by downstream tools via `. .data-seed-credentials.env` (POSIX) or
+`source .data-seed-credentials.env` (bash).
 
-`.bootstrap-credentials.env` is gitignored. The repo carries
-`bootstrap/credentials.env.example` (a checked-in template with placeholder
+`.data-seed-credentials.env` is gitignored. The repo carries
+`data-seed/credentials.env.example` (a checked-in template with placeholder
 values) for discoverability.
 
 ### How downstream tools consume outputs
 
-- **hawkscan:** detects `.bootstrap-credentials.env` in the repo root at
+- **hawkscan:** detects `.data-seed-credentials.env` in the repo root at
   Phase 1c / Phase 1c.5 and substitutes `${TEST_USER}`, `${TEST_PASS}`, etc.
-  into the auth block of `stackhawk.yml`. The bootstrap skill's parent SKILL.md
+  into the auth block of `stackhawk.yml`. The stackhawk-data-seed skill's parent SKILL.md
   (`../SKILL.md`) documents the handoff to hawkscan; see also
   `idempotency-patterns.md` for how steps should preserve idempotency when they
   write to outputs.
-- **Tool C (future Runner):** sources `.bootstrap-credentials.env` before
+- **Tool C (future Runner):** sources `.data-seed-credentials.env` before
   executing any step, making the values available for env interpolation in
   step files and `target.connection` fields.
 - **CI:** sources the file (generated by a CI-aware run of the Runner) before
@@ -794,7 +787,7 @@ broken manifest.
    edges must succeed. If a cycle is detected (e.g., A → B → A), the skill
    reports the cycle members and stops.
 
-4. **Every `file:` path exists.** For each step, the path `bootstrap/<file>`
+4. **Every `file:` path exists.** For each step, the path `data-seed/<file>`
    must exist in the emitted tree at the moment the manifest is written. A
    manifest pointing to a nonexistent file is invalid.
 
@@ -823,7 +816,7 @@ above is equivalent and accepted by the Runner.
 
 ```yaml
 version: 1
-name: gateway-api-hawkscan-bootstrap
+name: gateway-api-hawkscan-data-seed
 description: Seeds users, orgs, and apps required for authenticated HawkScan against gateway-api.
 
 targets:
@@ -859,7 +852,7 @@ prerequisites:
     Start the stack before running: `docker-compose up -d` or your env's equivalent.
     Ensure AUTH_SERVICE_DB_URL and INVENTORY_SERVICE_DB_URL are set in your shell
     or .env file before invoking the Runner.
-    See bootstrap/credentials.env.example for a template.
+    See data-seed/credentials.env.example for a template.
 
 steps:
   - id: auth-orgs
@@ -925,7 +918,7 @@ while `TEST_PASSWORD` is the key hawkscan's `usernamePassword` auth recipe refer
 
 ### Referenced step files
 
-**`bootstrap/auth-service/001-orgs.sql`**
+**`data-seed/auth-service/001-orgs.sql`**
 ```sql
 -- Seed test organization.
 INSERT INTO organizations (id, name, created_at)
@@ -937,7 +930,7 @@ VALUES (
 ON CONFLICT (id) DO NOTHING;
 ```
 
-**`bootstrap/auth-service/002-users.sql`**
+**`data-seed/auth-service/002-users.sql`**
 ```sql
 -- Seed test user bound to the test organization.
 -- Supply password via: psql -v test_pass="$TEST_PASS" -f 002-users.sql
@@ -953,7 +946,7 @@ VALUES (
 ON CONFLICT (email) DO NOTHING;
 ```
 
-**`bootstrap/inventory-service/001-apps.sql`**
+**`data-seed/inventory-service/001-apps.sql`**
 ```sql
 -- Seed scannable application owned by the test org.
 INSERT INTO applications (id, name, org_id, created_at)
@@ -966,7 +959,7 @@ VALUES (
 ON CONFLICT (name, org_id) DO NOTHING;
 ```
 
-**`bootstrap/gateway-api/001-link-app-to-env.http`**
+**`data-seed/gateway-api/001-link-app-to-env.http`**
 ```http
 ### Link target-app-1 to the default scan environment
 
@@ -1017,14 +1010,14 @@ path; the files own their content.
 INSERT INTO users (email, password) VALUES ('test-owner@example.com', 'ExampleSeedPass1!');
 ```
 
-**Right:** use env interpolation and store values in `.bootstrap-credentials.env` (gitignored):
+**Right:** use env interpolation and store values in `.data-seed-credentials.env` (gitignored):
 ```sql
 INSERT INTO users (email, password_hash)
 VALUES ('test-owner@example.com', crypt(current_setting('app.test_pass'), gen_salt('bf')))
 ON CONFLICT (email) DO NOTHING;
 ```
 
-Or pass the password via the Runner's env substitution. `.bootstrap-credentials.env`
+Or pass the password via the Runner's env substitution. `.data-seed-credentials.env`
 is the handoff point; step files reference `${TEST_PASS}` or a connection-level
 session setting. The checked-in `credentials.env.example` contains only
 placeholder values.

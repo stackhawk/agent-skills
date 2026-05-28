@@ -24,8 +24,8 @@
       "category": "Security"
     },
     {
-      "name": "bootstrap",
-      "source": { "source": "local", "path": "./plugins/bootstrap" },
+      "name": "stackhawk-data-seed",
+      "source": { "source": "local", "path": "./plugins/stackhawk-data-seed" },
       "policy": { "installation": "AVAILABLE" },
       "category": "Security"
     }

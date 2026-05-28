@@ -8,7 +8,7 @@
   "properties": {
     "skill": {
       "type": "string",
-      "description": "Skill name being evaluated ('hawkscan' or 'api')"
+      "description": "Skill name being evaluated ('hawkscan', 'api', or 'stackhawk-data-seed')"
     },
     "run_id": {
       "type": "string",
