@@ -1,6 +1,6 @@
 # Skill Evals
 
-Evaluation assets for the `hawkscan` and `api` skills. The structure follows the pattern: **prompt → captured run → deterministic checks + rubric score → comparable number over time.**
+Evaluation assets for the `hawkscan`, `api`, and `stackhawk-data-seed` skills. The structure follows the pattern: **prompt → captured run → deterministic checks + rubric score → comparable number over time.**
 
 ## Structure
 
@@ -13,6 +13,10 @@ evals/
   api/
     prompts.csv          # 16 trigger/no-trigger test cases for the api skill
     process-checks.json  # Deterministic checks
+    rubric-items.json    # Qualitative rubric check definitions
+  stackhawk-data-seed/
+    prompts.csv          # Trigger/no-trigger cases for the stackhawk-data-seed skill
+    process-checks.json  # Deterministic checks for discovery, dialog, artifact emission, and contract boundaries
     rubric-items.json    # Qualitative rubric check definitions
   rubric-schema.json     # Shared JSON Schema — constrains rubric grader output format
   harnesses/

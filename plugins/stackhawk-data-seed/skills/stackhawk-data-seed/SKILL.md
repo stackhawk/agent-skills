@@ -1,22 +1,22 @@
 ---
-name: bootstrap
-version: 1.9.0
+name: stackhawk-data-seed
+version: 1.10.0
 description: >
   Read a target repo (and any upstream service repos it depends on),
   propose the minimum seed entities required for authenticated HawkScan
   to find non-trivial paths, dialog with the user to confirm/adjust,
   then emit checked-in artifacts: per-service SQL / HTTP / gRPC / Mongo /
   shell scripts, a manifest.yaml that orders them, and a
-  .bootstrap-credentials.env handoff file that hawkscan consumes.
+  .data-seed-credentials.env handoff file that hawkscan consumes.
   Use when the user says "set up data for HawkScan", "my scan has no
-  data to hit", "bootstrap this repo for scanning", or as a planned
+  data to hit", "seed this repo for scanning", or as a planned
   first-time-setup step before invoking hawkscan on a fresh repo. NOT
   autonomous — the user explicitly asks.
 ---
 
-# Bootstrap Skill
+# StackHawk Data Seed Skill
 
-This skill produces checked-in, reproducible seed-data artifacts for a target repository so HawkScan has authenticated entities to scan. It runs once per repo (or once per major data-shape change) and emits files under `bootstrap/` that humans review, commit, and eventually replay via the future Runner (Tool C).
+This skill produces checked-in, reproducible seed-data artifacts for a target repository so HawkScan has authenticated entities to scan. It runs once per repo (or once per major data-shape change) and emits files under `data-seed/` that humans review, commit, and eventually replay via the future Runner (Tool C).
 
 It does NOT run the artifacts. It does NOT start the environment. It does NOT write `stackhawk.yml`. Those concerns belong to the human, the user's environment tooling, and the `hawkscan` skill respectively.
 
@@ -26,9 +26,9 @@ It does NOT run the artifacts. It does NOT start the environment. It does NOT wr
 
 Invoke explicitly when one of these is true:
 
-- User says "set up data for HawkScan" / "bootstrap this repo" / "my scan has no data to hit."
+- User says "set up data for HawkScan" / "seed this repo" / "my scan has no data to hit."
 - User is configuring HawkScan against a repo for the first time and the app needs authenticated routes to scan.
-- A previous `bootstrap/` exists but the data shape has changed (new entity types, new upstream service added).
+- A previous `data-seed/` exists but the data shape has changed (new entity types, new upstream service added).
 
 Do NOT run autonomously after code changes — this skill is a setup tool, not a per-commit safety net.
 
@@ -49,15 +49,15 @@ pwd
 
 If not in a git repo, ask the user to `cd` to the correct directory and re-invoke.
 
-### 0.2 — Check for existing bootstrap
+### 0.2 — Check for existing data-seed
 
 ```bash
-test -d bootstrap && echo "EXISTS"
+test -d data-seed && echo "EXISTS"
 ```
 
-If `bootstrap/` already exists, ask the user whether to:
+If `data-seed/` already exists, ask the user whether to:
 - **Augment** — read the existing manifest and only propose additions for new entities.
-- **Replace** — back up the existing dir (`mv bootstrap bootstrap.bak-$(date +%s)`) and start fresh.
+- **Replace** — back up the existing dir (`mv data-seed data-seed.bak-$(date +%s)`) and start fresh.
 - **Cancel** — exit without changes.
 
 ### 0.3 — Confirm scanning intent
@@ -89,7 +89,7 @@ Cover at minimum:
 
 Identify upstream services referenced (host:port literals, URL env vars, gRPC client stubs, service-name conventions). Resolve to local repo paths.
 
-See `references/cross-repo-deps.md` for the full resolution flow (sibling-directory search, `BOOTSTRAP_REPO_<NAME>` env var convention, user-confirmation fallback).
+See `references/cross-repo-deps.md` for the full resolution flow (sibling-directory search, `DATA_SEED_REPO_<NAME>` env var convention, user-confirmation fallback).
 
 → Deep reference: [`references/cross-repo-deps.md`](references/cross-repo-deps.md)
 
@@ -119,7 +119,7 @@ Where each entity lives depends on Phase 1's per-service model. Auto-propose val
 - Org: `Example Test Org`.
 - Resource: `target-app-1` (or whatever the target's vocabulary is).
 
-If discovery found a password storage column in the auth schema (e.g. `password VARCHAR` with bcrypt encoding in a `users` or `credentials` table), additionally propose seeding a known test password (default `ExampleSeedPass1!`) so downstream auth tools can use the simpler `usernamePassword` recipe rather than API-key-to-JWT exchange. Hash is bcrypt-encoded in SQL; plaintext lives only in `.bootstrap-credentials.env`. See `references/discovery.md` §Auth-Signal Detection for the grep commands that identify bcrypt usage, and `references/idempotency-patterns.md` §Password-Hash Seeding for the emit-time hashing strategy.
+If discovery found a password storage column in the auth schema (e.g. `password VARCHAR` with bcrypt encoding in a `users` or `credentials` table), additionally propose seeding a known test password (default `ExampleSeedPass1!`) so downstream auth tools can use the simpler `usernamePassword` recipe rather than API-key-to-JWT exchange. Hash is bcrypt-encoded in SQL; plaintext lives only in `.data-seed-credentials.env`. See `references/discovery.md` §Auth-Signal Detection for the grep commands that identify bcrypt usage, and `references/idempotency-patterns.md` §Password-Hash Seeding for the emit-time hashing strategy.
 
 ### 2.2 — Surface to user
 
@@ -145,12 +145,12 @@ If the user expands, repeat 2.1 / 2.2 with the additions. Loop until the user co
 
 ## Phase 3: Emit artifacts
 
-Write the artifacts to disk under `bootstrap/`.
+Write the artifacts to disk under `data-seed/`.
 
 ### 3.1 — Create directory layout
 
 ```
-bootstrap/
+data-seed/
 ├── manifest.yaml
 ├── README.md
 ├── credentials.env.example
@@ -159,7 +159,7 @@ bootstrap/
     └── 002-<entity>.<ext>
 ```
 
-Plus a sibling `.bootstrap-credentials.env` in the repo root (gitignored).
+Plus a sibling `.data-seed-credentials.env` in the repo root (gitignored).
 
 ### 3.2 — Per-step file emission
 
@@ -172,7 +172,7 @@ For each step in the plan:
 
 ### 3.3 — Manifest emission
 
-Write `bootstrap/manifest.yaml` per the Contract B schema.
+Write `data-seed/manifest.yaml` per the Contract B schema.
 
 → Full schema reference: [`references/manifest-schema.md`](references/manifest-schema.md)
 
@@ -190,13 +190,13 @@ If any check fails, STOP, surface the problem to the user, do NOT write a half-b
 
 ### 3.5 — README + .gitignore
 
-Write `bootstrap/README.md` covering: prerequisites (env vars, running services), how to manually replay each step (the future Runner will automate this; for now humans replay), what entities got created, where credentials live.
+Write `data-seed/README.md` covering: prerequisites (env vars, running services), how to manually replay each step (the future Runner will automate this; for now humans replay), what entities got created, where credentials live.
 
-Append `.bootstrap-credentials.env` to the repo's `.gitignore` if not already present.
+Append `.data-seed-credentials.env` to the repo's `.gitignore` if not already present.
 
 ### 3.6 — Credentials handoff
 
-Write `.bootstrap-credentials.env` (gitignored) with the chosen values:
+Write `.data-seed-credentials.env` (gitignored) with the chosen values:
 
 ```
 TEST_USER=test-owner@example.com
@@ -209,7 +209,7 @@ TEST_APP_ID=<id>
 
 `TEST_PASSWORD` is emitted in addition to `TEST_PASS` whenever a password was seeded into an auth table. Both keys carry the same value. `TEST_PASS` preserves compatibility with existing hawkscan integration that predates the `usernamePassword` recipe; `TEST_PASSWORD` is the canonical key that hawkscan's `usernamePassword` auth block references.
 
-Write `bootstrap/credentials.env.example` (checked in) with the same keys but placeholder values, so future devs know the schema.
+Write `data-seed/credentials.env.example` (checked in) with the same keys but placeholder values, so future devs know the schema.
 
 ---
 
@@ -220,16 +220,16 @@ Report to the user what was created and what to do next.
 ### 4.1 — Summarize emitted artifacts
 
 ```
-Bootstrap complete. Created:
-- bootstrap/manifest.yaml (<N> steps across <M> services)
-- bootstrap/<service>/<files>
-- .bootstrap-credentials.env (gitignored)
+Data seed complete. Created:
+- data-seed/manifest.yaml (<N> steps across <M> services)
+- data-seed/<service>/<files>
+- .data-seed-credentials.env (gitignored)
 
 Next steps:
-1. Review bootstrap/manifest.yaml and the per-service files.
+1. Review data-seed/manifest.yaml and the per-service files.
 2. Start your stack: <suggest command from docker-compose.yml / Makefile if found, otherwise leave blank>
-3. Replay the manifest manually (see bootstrap/README.md). The Runner that automates this is a future tool.
-4. Invoke hawkscan to configure stackhawk.yml. It will read .bootstrap-credentials.env automatically.
+3. Replay the manifest manually (see data-seed/README.md). The Runner that automates this is a future tool.
+4. Invoke hawkscan to configure stackhawk.yml. It will read .data-seed-credentials.env automatically.
 ```
 
 ### 4.2 — Commit reminder
@@ -237,11 +237,11 @@ Next steps:
 Suggest:
 
 ```bash
-git add bootstrap/ .gitignore
-git commit -m "chore: add bootstrap seed artifacts for HawkScan"
+git add data-seed/ .gitignore
+git commit -m "chore: add data seed artifacts for HawkScan"
 ```
 
-`.bootstrap-credentials.env` is gitignored and will not be committed.
+`.data-seed-credentials.env` is gitignored and will not be committed.
 
 ---
 
@@ -252,7 +252,7 @@ This skill never:
 - Selects authentication recipes (`cookieAuthorization` vs `tokenExtraction` vs `script`).
 - Creates Apps or Envs on the StackHawk platform.
 
-Hawkscan's Phase 1c / 1c.5 owns all of that. The handoff is one file: `.bootstrap-credentials.env`. Hawkscan reads it and plugs values into whatever auth recipe it selects.
+Hawkscan's Phase 1c / 1c.5 owns all of that. The handoff is one file: `.data-seed-credentials.env`. Hawkscan reads it and plugs values into whatever auth recipe it selects.
 
 ---
 
@@ -260,7 +260,7 @@ Hawkscan's Phase 1c / 1c.5 owns all of that. The handoff is one file: `.bootstra
 
 - **Do not silently guess.** If discovery is ambiguous, ask the user.
 - **Do not emit non-idempotent steps without flagging.** Every step needs an idempotency check; if the user accepts `none: true`, surface a warning in the manifest comment.
-- **Do not commit `.bootstrap-credentials.env`.** Always append to `.gitignore`.
+- **Do not commit `.data-seed-credentials.env`.** Always append to `.gitignore`.
 - **Do not write `stackhawk.yml`.** Hawkscan owns that. The handoff is the env file.
 - **Do not run `docker-compose up` or any startup command.** Document the prereq; let the human or future Runner execute.
 - **Do not skip self-validation.** A half-broken manifest is worse than a clear error.

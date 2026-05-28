@@ -1,0 +1,66 @@
+{
+  "skill": "stackhawk-data-seed",
+  "grader_prompt": "You are evaluating whether a stackhawk-data-seed skill run produced correct, high-quality output. Review the agent's output text, the contents of data-seed/ (manifest.yaml, README.md, per-service step files, credentials.env.example), the .data-seed-credentials.env file, and the .gitignore. For each check below, determine pass/fail and write a one-sentence explanation. Return a JSON object conforming to rubric-schema.json.",
+  "checks": [
+    {
+      "id": "discovery_is_grounded_not_guessed",
+      "description": "The discovery summary cites specific files, schemas, ports, or env vars actually found in the repo — not generic boilerplate. When something couldn't be determined, the skill asked the user rather than inventing a value.",
+      "focus": "Agent output during Phase 1 — concrete file paths and signals vs. invented details"
+    },
+    {
+      "id": "minimum_seed_dialog_present",
+      "description": "Phase 2 surfaced an explicit proposal listing the entities (1 user, 1 org, 1 resource) with the proposed default values and waited for the user to confirm or expand before emitting files.",
+      "focus": "Agent output for the Phase 2 proposal block and the pause for user confirmation"
+    },
+    {
+      "id": "manifest_has_required_fields",
+      "description": "data-seed/manifest.yaml has version, name, description, prerequisites, targets, steps, and outputs at the top level. Every step has id, type, file, target, and idempotency. No step is missing a required field.",
+      "focus": "data-seed/manifest.yaml structure"
+    },
+    {
+      "id": "manifest_dependencies_resolve",
+      "description": "Every depends_on entry in data-seed/manifest.yaml references an existing step id, and the dependency graph is acyclic.",
+      "focus": "data-seed/manifest.yaml steps[].depends_on"
+    },
+    {
+      "id": "manifest_paths_exist",
+      "description": "Every steps[].file path in data-seed/manifest.yaml corresponds to an actual file that was emitted under data-seed/.",
+      "focus": "Cross-reference between manifest entries and emitted artifact files"
+    },
+    {
+      "id": "seed_steps_are_idempotent",
+      "description": "Each emitted SQL / HTTP / gRPC / Mongo / shell step uses a per-dialect idempotency idiom (ON CONFLICT, PUT, upsert, check-then-create) so re-running the manifest is safe. Any 'none: true' is intentional and called out in the manifest comment.",
+      "focus": "Contents of data-seed/<service>/*.{sql,http,sh,js,json}"
+    },
+    {
+      "id": "credentials_handoff_correct",
+      "description": ".data-seed-credentials.env exists, contains the values produced by the manifest (TEST_USER, TEST_PASS/TEST_PASSWORD, TEST_ORG_ID, TEST_APP_ID, plus any manifest outputs), and a matching data-seed/credentials.env.example is committed with the same keys but placeholder values.",
+      "focus": ".data-seed-credentials.env and data-seed/credentials.env.example"
+    },
+    {
+      "id": "gitignore_protects_credentials",
+      "description": ".gitignore contains an entry that matches .data-seed-credentials.env (exact path or wildcard). The agent verified or added the entry before suggesting any git commit.",
+      "focus": ".gitignore content"
+    },
+    {
+      "id": "no_stackhawk_yml_touched",
+      "description": "The agent did not create or modify stackhawk.yml. The handoff to hawkscan is via the credentials env file only.",
+      "focus": "stackhawk.yml absence/unchanged"
+    },
+    {
+      "id": "no_services_started",
+      "description": "The agent did not run docker-compose up, npm start, gradlew bootRun, or any other command that starts services. It only emitted artifacts and documented the prerequisite startup commands in data-seed/README.md.",
+      "focus": "Commands executed during the run"
+    },
+    {
+      "id": "phase_order_respected",
+      "description": "Phases executed in order: Phase 0 (preflight) → Phase 1 (discover) → Phase 2 (propose + confirm) → Phase 3 (emit) → Phase 4 (handoff). No phase was skipped; Phase 3 did not start before Phase 2 confirmation.",
+      "focus": "Sequence of agent decisions and outputs"
+    },
+    {
+      "id": "handoff_to_hawkscan_explicit",
+      "description": "The Phase 4 summary explicitly mentions that hawkscan is the next step and that it will read .data-seed-credentials.env automatically.",
+      "focus": "Final agent output"
+    }
+  ]
+}
