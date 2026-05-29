@@ -1,6 +1,12 @@
 name: Skill Evals
 
 on:
+  pull_request:
+    paths:
+      - "plugins/**"
+      - "evals/**"
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       skill:
@@ -35,26 +41,35 @@ permissions:
 
 jobs:
 
+  # ── Config validation (no API keys; runs on every PR including forks) ──────
+  validate-config:
+    name: validate eval config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Validate prompts.yaml + process-checks.json
+        run: uv run validate
+
   # ── Claude Code ──────────────────────────────────────────────────────────
   eval-claude-code:
-    name: claude-code / ${{ matrix.skill }}
+    name: claude-code / ${{ matrix.skill }} / ${{ matrix.model }}
     runs-on: ubuntu-latest
+    needs: validate-config
     if: |
-      github.event_name != 'workflow_dispatch' ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'push' ||
       inputs.platform == 'all' ||
       inputs.platform == 'claude-code'
     strategy:
       fail-fast: false
       matrix:
         skill: [hawkscan, api]
+        model: ${{ github.event_name == 'pull_request' && fromJSON('["claude-haiku-4-5-20251001"]') || fromJSON('["claude-sonnet-4-6","claude-opus-4-7","claude-haiku-4-5-20251001"]') }}
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
+      - uses: astral-sh/setup-uv@v5
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -65,7 +80,7 @@ jobs:
       - name: Verify claude CLI
         run: claude --version
 
-      - name: Run ${{ matrix.skill }} evals
+      - name: Run ${{ matrix.skill }} evals (${{ matrix.model }})
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -73,17 +88,14 @@ jobs:
           if [ "${{ inputs.rubric }}" = "true" ]; then
             RUBRIC_FLAG="--rubric"
           fi
-          python3 evals/harnesses/claude-code/run-evals.py \
-            --skill ${{ matrix.skill }} \
-            --bare \
-            --max-budget 0.15 \
-            $RUBRIC_FLAG
+          uv run evals --harness claude-code --skill ${{ matrix.skill }} \
+            --model ${{ matrix.model }} --bare --max-budget 0.15 $RUBRIC_FLAG
 
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: eval-claude-code-${{ matrix.skill }}
+          name: eval-claude-code-${{ matrix.skill }}-${{ matrix.model }}
           path: evals/harnesses/claude-code/results/${{ matrix.skill }}/
           retention-days: 30
 
@@ -91,10 +103,10 @@ jobs:
   eval-codex:
     name: codex / ${{ matrix.skill }}
     runs-on: ubuntu-latest
+    needs: validate-config
     if: |
-      github.event_name != 'workflow_dispatch' ||
-      inputs.platform == 'all' ||
-      inputs.platform == 'codex'
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' && (inputs.platform == 'all' || inputs.platform == 'codex')
     strategy:
       fail-fast: false
       matrix:
@@ -102,11 +114,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
+      - uses: astral-sh/setup-uv@v5
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -129,8 +137,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          python3 evals/harnesses/codex/run-evals.py \
-            --skill ${{ matrix.skill }}
+          uv run evals --harness codex --skill ${{ matrix.skill }}
 
       - name: Upload results
         if: always()
@@ -144,10 +151,10 @@ jobs:
   eval-agy:
     name: agy / ${{ matrix.skill }}
     runs-on: ubuntu-latest
+    needs: validate-config
     if: |
-      github.event_name != 'workflow_dispatch' ||
-      inputs.platform == 'all' ||
-      inputs.platform == 'agy'
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' && (inputs.platform == 'all' || inputs.platform == 'agy')
     strategy:
       fail-fast: false
       matrix:
@@ -155,10 +162,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
 
       - name: Install agy CLI
         run: curl -fsSL https://antigravity.google/install-cli | bash
@@ -177,9 +181,7 @@ jobs:
         env:
           AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
         run: |
-          python3 evals/harnesses/agy/run-evals.py \
-            --skill ${{ matrix.skill }} \
-            --print-timeout 240s
+          uv run evals --harness agy --skill ${{ matrix.skill }}
 
       - name: Upload results
         if: always()
@@ -193,10 +195,10 @@ jobs:
   eval-cursor:
     name: cursor / ${{ matrix.skill }}
     runs-on: ubuntu-latest
+    needs: validate-config
     if: |
-      github.event_name != 'workflow_dispatch' ||
-      inputs.platform == 'all' ||
-      inputs.platform == 'cursor'
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' && (inputs.platform == 'all' || inputs.platform == 'cursor')
     strategy:
       fail-fast: false
       matrix:
@@ -204,11 +206,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
+      - uses: astral-sh/setup-uv@v5
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -224,8 +222,7 @@ jobs:
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
         run: |
-          python3 evals/harnesses/cursor/run-evals.py \
-            --skill ${{ matrix.skill }}
+          uv run evals --harness cursor --skill ${{ matrix.skill }}
 
       - name: Upload results
         if: always()
@@ -238,7 +235,7 @@ jobs:
   # ── PR comment ────────────────────────────────────────────────────────────
   comment:
     name: Post PR summary
-    needs: [eval-claude-code, eval-codex, eval-agy, eval-cursor]
+    needs: [validate-config, eval-claude-code, eval-codex, eval-agy, eval-cursor]
     if: always() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -270,9 +267,16 @@ jobs:
             for (const platform of platforms) {
               body += `### Platform: \`${platform}\`\n\n`;
               for (const skill of skills) {
-                const summaryPath = path.join(
-                  'results', `eval-${platform}-${skill}`, 'summary.json'
-                );
+                let summaryPath;
+                if (platform === 'claude-code') {
+                  summaryPath = path.join(
+                    'results', `eval-claude-code-${skill}-claude-haiku-4-5-20251001`, 'summary.json'
+                  );
+                } else {
+                  summaryPath = path.join(
+                    'results', `eval-${platform}-${skill}`, 'summary.json'
+                  );
+                }
 
                 if (!fs.existsSync(summaryPath)) {
                   body += `**\`${skill}\`**: ⚠️ No results\n`;
