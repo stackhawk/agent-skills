@@ -256,9 +256,25 @@ jobs:
           path: results/
 
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
+      - name: Fetch released baseline (best-effort)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          mkdir -p baseline
+          TAG=$(gh release view --json tagName -q .tagName 2>/dev/null)
+          if [ -z "$TAG" ]; then echo "no release yet"; exit 0; fi
+          SHA=$(git rev-list -n 1 "$TAG" 2>/dev/null)
+          RUN=$(gh run list --workflow capture-baseline.yml --json databaseId,headSha \
+                 -q "map(select(.headSha==\"$SHA\")) | .[0].databaseId" 2>/dev/null)
+          if [ -z "$RUN" ] || [ "$RUN" = "null" ]; then echo "no capture run for $TAG"; exit 0; fi
+          gh run download "$RUN" -p 'baseline-*' -D baseline 2>/dev/null || echo "download failed"
+          echo "baseline fetched for $TAG (run $RUN)"
       - name: Build digest
-        run: uv run report --pr --results-dir results --out digest.md
+        run: uv run report --pr --results-dir results --baseline-dir baseline --out digest.md
       - name: Post digest comment
         uses: actions/github-script@v7
         with:

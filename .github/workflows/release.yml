@@ -127,6 +127,24 @@ jobs:
         if: inputs.dry_run == true
         run: echo "DRY RUN complete — all checks passed for ${{ steps.version.outputs.tag }}"
 
+  capture-baseline:
+    name: Trigger baseline capture
+    needs: release
+    if: inputs.dry_run != true
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dispatch capture-baseline
+        # GITHUB_TOKEN can dispatch workflows in the same repo for most orgs.
+        # If org policy blocks it, swap to the TF_GITHUB_TOKEN PAT that
+        # update-marketplace pulls from SSM (aws ssm get-parameter --name TF_GITHUB_TOKEN).
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+        run: gh workflow run capture-baseline.yml -f tag="$RELEASE_TAG"
+
   update-marketplace:
     name: Update marketplace pin
     needs: release
@@ -139,7 +157,7 @@ jobs:
       - name: Resolve cache
         run: |
           biodome ci restore-cache
-          rm -rf *.tar.lz4
+          rm -rf ./*.tar.lz4
 
       - name: Pull secrets
         run: biodome ci save-secrets
@@ -158,7 +176,7 @@ jobs:
           echo "::add-mask::${GH_PAT}"
           git clone https://github.com/stackhawk/agent-skills-marketplace.git /tmp/marketplace
           git -C /tmp/marketplace remote set-url origin \
-            https://x-access-token:${GH_PAT}@github.com/stackhawk/agent-skills-marketplace.git
+            "https://x-access-token:${GH_PAT}@github.com/stackhawk/agent-skills-marketplace.git"
 
       - name: Update marketplace.json
         run: |

@@ -1,0 +1,39 @@
+name: Capture Eval Baseline
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to baseline (e.g. v1.9.0)"
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: [hawkscan, api]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Run baseline eval (haiku)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          uv run evals --harness claude-code --skill ${{ matrix.skill }} \
+            --model claude-haiku-4-5-20251001 --bare --max-budget 0.15 || true
+      - name: Upload baseline artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-claude-code-${{ matrix.skill }}-haiku
+          path: evals/harnesses/claude-code/results/${{ matrix.skill }}/cell.json
+          retention-days: 90
