@@ -91,18 +91,26 @@ def write_github_summary(md: str) -> None:
 
 
 def render_digest(cells, baselines=None, lift=None) -> str:
-    from evals.lib.baseline import diff as _diff
+    from evals.lib.baseline import diff as _diff, score_delta
     out = ["<!-- skill-eval-comment -->", "## Skill Eval Results\n"]
-    out.append("| platform | skill | model | trigger | ✅/◆/❌ | score |")
-    out.append("|---|---|---|---|---|---|")
+    out.append("| platform | skill | model | trigger | ✅/◆/❌ | score | vs base |")
+    out.append("|---|---|---|---|---|---|---|")
     for cell in cells:
         c = Counter(r.verdict.value for r in cell.results)
         n = len(cell.results); trig = sum(1 for r in cell.results if r.trigger_correct)
         graded = [r for r in cell.results if r.did_trigger and r.should_trigger]
         avg = sum(r.score for r in graded) // len(graded) if graded else 0
         ticon = "✅" if trig == n else "❌"
+        vs = "—"
+        if baselines is not None:
+            b = baselines.get((cell.platform, cell.skill, cell.model))
+            if b is not None:
+                bg = [r for r in b.results if r.did_trigger and r.should_trigger]
+                bavg = sum(r.score for r in bg) // len(bg) if bg else 0
+                delta = score_delta(avg, bavg)
+                vs = f"{badge(delta, delta)}"
         out.append(f"| {cell.platform} | {cell.skill} | {cell.model} | {ticon} {trig}/{n} | "
-                   f"{c.get('pass',0)}/{c.get('pass-slow',0)}/{c.get('fail',0)} | {avg} |")
+                   f"{c.get('pass',0)}/{c.get('pass-slow',0)}/{c.get('fail',0)} | {avg} | {vs} |")
     out.append("")
     if baselines is None:
         out.append("_No baseline available — showing absolute results only._\n")

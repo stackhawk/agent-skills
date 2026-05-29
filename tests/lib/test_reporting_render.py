@@ -76,6 +76,22 @@ def test_render_digest_overview_and_per_cell():
     assert "no baseline" in md.lower()   # no baseline supplied
 
 
+def test_digest_overview_shows_score_delta_vs_baseline():
+    from evals.lib.models import CellReport, EvalResult, Verdict
+    from evals.lib.reporting import render_digest
+
+    def cell(score):
+        r = EvalResult(platform="claude-code", skill="hawkscan", run_id="hw-01",
+                       should_trigger=True, did_trigger=True, trigger_correct=True,
+                       verdict=Verdict.PASS, score=score)
+        return CellReport(platform="claude-code", skill="hawkscan", model="haiku",
+                          commit="c", results=[r])
+    cur = cell(70)
+    base = {("claude-code", "hawkscan", "haiku"): cell(90)}
+    md = render_digest([cur], baselines=base)
+    assert "worse" in md.lower()   # 70 vs 90 -> worse
+
+
 def test_digest_renders_lift_section():
     from evals.lib.models import CellReport, EvalResult, Verdict
     from evals.lib.reporting import render_digest

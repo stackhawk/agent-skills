@@ -232,12 +232,14 @@ jobs:
 
       - name: Verify agent CLI
         run: agent --version
+        continue-on-error: true  # CLI package name TBD; skip if unavailable
 
       - name: Run ${{ matrix.skill }} evals
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
         run: |
           uv run evals --harness cursor --skill ${{ matrix.skill }}
+        continue-on-error: true  # best-effort; digest degrades gracefully
 
       - name: Upload results
         if: always()
@@ -257,15 +259,14 @@ jobs:
       pull-requests: write
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           pattern: eval-*
           merge-multiple: false
           path: results/
-
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
       - name: Fetch released baseline (best-effort)
         env:
