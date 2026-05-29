@@ -1,11 +1,27 @@
 """cursor Harness adapter. Parsing + signals ported from pre-shim run-evals.py."""
 from __future__ import annotations
 import json
+import os
 import shutil
 import subprocess
 import tempfile
+from pathlib import Path
 
 from evals.lib.models import ParsedRun
+
+# adapter.py -> cursor -> harnesses -> evals -> repo root
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+# cursor/.cursor/rules/ holds the alwaysApply .mdc skill rules (pre-shim path).
+CURSOR_RULES_DIR = REPO_ROOT / "cursor" / ".cursor" / "rules"
+
+
+def _setup_skill(target_dir: str) -> None:
+    """Copy cursor/.cursor/rules/*.mdc into the run's workspace so alwaysApply
+    rules load. Mirrors the pre-shim run-evals.py _setup_workspace()."""
+    dst = Path(target_dir) / ".cursor" / "rules"
+    dst.mkdir(parents=True, exist_ok=True)
+    for mdc in CURSOR_RULES_DIR.glob("*.mdc"):
+        shutil.copy2(mdc, dst / mdc.name)
 
 # CLI signals — checked against bash_commands only.
 # Cursor goes directly into execution, so CLI signals are the primary trigger
@@ -156,11 +172,19 @@ class CursorAdapter:
                max_budget, bare, full_auto) -> ParsedRun:
         tmpdir = tempfile.mkdtemp(prefix=f"hawkeval_{run_id}_")
         try:
+            # With/without-skill switch: only install the cursor rules when the
+            # skill should be loaded (pre-shim always installed them).
+            if load_skill:
+                _setup_skill(tmpdir)
+            api_key = os.environ.get("CURSOR_API_KEY", "")
             cmd = [
                 "agent", "-p", prompt,
                 "--output-format", "stream-json",
                 "--print",
+                "--trust",
             ]
+            if api_key:
+                cmd += ["--api-key", api_key]
             if model:
                 cmd += ["--model", model]
             if full_auto:
