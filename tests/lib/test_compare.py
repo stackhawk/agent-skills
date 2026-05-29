@@ -41,3 +41,25 @@ def test_compare_shows_lift(monkeypatch):
     assert row["without_verdict"] == Verdict.FAIL          # no skill -> blocking checks fail
     assert row["with_verdict"] in (Verdict.PASS, Verdict.PASS_SLOW)  # skill -> workflow satisfied
     assert row["with_cost"] == 0.05 and row["without_cost"] == 0.02
+
+
+def test_compare_skill_returns_lift_effect(monkeypatch):
+    from evals.lib.models import ParsedRun, Verdict
+    from evals.lib import compare as compare_mod
+
+    class Stub:
+        platform = "stub"
+        def cli_signals(self, s): return ["hawk scan"]
+        def invocation_signals(self, s): return []
+        def parse_stream(self, raw): return ParsedRun()
+        def detect_trigger(self, run, s): return any("hawk scan" in c for c in run.bash_commands)
+        def launch(self, prompt, skill, run_id, plugin_dirs, *, model, load_skill,
+                   max_budget, bare, full_auto):
+            return (ParsedRun(bash_commands=["hawk version","hawk config --help",
+                    "hawkop app list","hawkop env list","hawk init",
+                    "hawk validate config stackhawk.yml","hawk scan"],
+                    output_text="reachable on localhost:8080") if load_skill
+                    else ParsedRun(bash_commands=["echo idk"]))
+    monkeypatch.setattr(compare_mod, "get_adapter", lambda p: Stub())
+    rows = compare_mod.compare_skill("hawkscan", "stub", only_id="hw-01")
+    assert rows[0]["effect"] == "lift"

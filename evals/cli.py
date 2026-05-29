@@ -81,6 +81,13 @@ def compare() -> None:
     rows = compare_skill(args.skill, args.harness, model=args.model,
                          max_budget=args.max_budget, bare=args.bare,
                          full_auto=args.full_auto, only_id=args.prompt_id)
+    import json
+    from pathlib import Path
+    out_dir = Path(__file__).resolve().parent / "harnesses" / args.harness / "results" / args.skill
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "lift.json").write_text(json.dumps(
+        [{**r, "with_verdict": r["with_verdict"].value,
+          "without_verdict": r["without_verdict"].value} for r in rows], indent=2))
     render_compare(rows)
 
 
