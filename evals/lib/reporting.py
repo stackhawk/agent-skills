@@ -91,24 +91,36 @@ def write_github_summary(md: str) -> None:
 
 
 def render_digest(cells, baselines=None, lift=None) -> str:
+    from evals.lib.baseline import diff as _diff
     out = ["<!-- skill-eval-comment -->", "## Skill Eval Results\n"]
     out.append("| platform | skill | model | trigger | ✅/◆/❌ | score |")
     out.append("|---|---|---|---|---|---|")
     for cell in cells:
         c = Counter(r.verdict.value for r in cell.results)
-        n = len(cell.results)
-        trig = sum(1 for r in cell.results if r.trigger_correct)
+        n = len(cell.results); trig = sum(1 for r in cell.results if r.trigger_correct)
         graded = [r for r in cell.results if r.did_trigger and r.should_trigger]
         avg = sum(r.score for r in graded) // len(graded) if graded else 0
         ticon = "✅" if trig == n else "❌"
-        out.append(f"| {cell.platform} | {cell.skill} | {cell.model} | "
-                   f"{ticon} {trig}/{n} | {c.get('pass',0)}/{c.get('pass-slow',0)}/"
-                   f"{c.get('fail',0)} | {avg} |")
+        out.append(f"| {cell.platform} | {cell.skill} | {cell.model} | {ticon} {trig}/{n} | "
+                   f"{c.get('pass',0)}/{c.get('pass-slow',0)}/{c.get('fail',0)} | {avg} |")
     out.append("")
     if baselines is None:
         out.append("_No baseline available — showing absolute results only._\n")
     for cell in cells:
         out.append(render_job_summary(cell))
+        if baselines is not None:
+            base = baselines.get((cell.platform, cell.skill, cell.model))
+            if base is None:
+                out.append("_no baseline for this cell._\n")
+            else:
+                d = _diff(cell, base)
+                changed = {k: v for k, v in d.items()
+                           if v in ("regressed", "fixed", "changed")}
+                if changed:
+                    out.append("**vs baseline:** " + ", ".join(
+                        f"{badge(v, v)} {k}" for k, v in sorted(changed.items())) + "\n")
+                else:
+                    out.append("_vs baseline: no changes._\n")
     return "\n".join(out) + "\n"
 
 

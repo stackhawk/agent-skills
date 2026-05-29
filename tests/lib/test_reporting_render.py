@@ -45,6 +45,23 @@ def test_write_github_summary_noop_when_unset(monkeypatch):
     write_github_summary("nothing")   # must not raise
 
 
+def test_digest_shows_regression_vs_baseline():
+    from evals.lib.models import CellReport, EvalResult, Verdict
+    from evals.lib.reporting import render_digest
+
+    def cell(v):
+        r = EvalResult(platform="claude-code", skill="hawkscan", run_id="hw-01",
+                       should_trigger=True, did_trigger=True, trigger_correct=True,
+                       verdict=v, score=100 if v != Verdict.FAIL else 0)
+        return CellReport(platform="claude-code", skill="hawkscan", model="haiku",
+                          commit="c", results=[r])
+    cur = cell(Verdict.FAIL)
+    base = {("claude-code", "hawkscan", "haiku"): cell(Verdict.PASS)}
+    md = render_digest([cur], baselines=base)
+    assert "regressed" in md.lower()
+    assert "no baseline" not in md.lower()
+
+
 def test_render_digest_overview_and_per_cell():
     from pathlib import Path
     from evals.lib.models import CellReport

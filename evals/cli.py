@@ -112,7 +112,9 @@ def report() -> None:
             cells.append(CellReport.model_validate_json(cj.read_text()))
         except Exception:
             continue
-    md = render_digest(cells)
+    from evals.lib.baseline import load_baseline_dir
+    baselines = load_baseline_dir(args.baseline_dir) or None
+    md = render_digest(cells, baselines=baselines)
     args.out.write_text(md)
     print(f"wrote {args.out} ({len(cells)} cells)")
 
