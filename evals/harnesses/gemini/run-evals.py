@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+FROZEN/LEGACY: superseded by the agy harness and the unified 'uv run evals' CLI. Not wired into CI. References the removed prompts.csv and will not run as-is. Kept for historical reference only.
+
 Gemini CLI eval harness for StackHawk agent skills.
 
 Uses `gemini -p --output-format stream-json` (Gemini's headless CLI).
