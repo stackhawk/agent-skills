@@ -29,3 +29,17 @@ def test_job_summary_has_counts_and_all_rows_failures_first():
         assert rid in md
     # failing row appears before the first passing row
     assert md.index("hw-14") < md.index("hw-01")
+
+
+def test_write_github_summary_appends(tmp_path, monkeypatch):
+    from evals.lib.reporting import write_github_summary
+    f = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(f))
+    write_github_summary("## hello\n")
+    assert "## hello" in f.read_text()
+
+
+def test_write_github_summary_noop_when_unset(monkeypatch):
+    from evals.lib.reporting import write_github_summary
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    write_github_summary("nothing")   # must not raise

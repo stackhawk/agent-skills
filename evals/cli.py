@@ -66,6 +66,9 @@ def main() -> None:
                       model=args.model or "default", commit=commit, results=results)
     (out_dir / "cell.json").write_text(cell.model_dump_json(indent=2))
 
+    from evals.lib.reporting import render_job_summary, write_github_summary
+    write_github_summary(render_job_summary(cell))
+
     if summary["false_positives"] or summary["false_negatives"] or \
             summary["total_blocking_failures"] > 0:
         sys.exit(1)

@@ -1,5 +1,6 @@
 """Summaries + rich rendering for eval runs."""
 from __future__ import annotations
+import os
 from collections import Counter
 
 from rich.console import Console
@@ -79,6 +80,14 @@ def _row_rank(r: EvalResult) -> int:
     if r.verdict.value == "pass-slow":
         return 1
     return 2
+
+
+def write_github_summary(md: str) -> None:
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not path:
+        return
+    with open(path, "a", encoding="utf-8") as fp:
+        fp.write(md)
 
 
 def render_job_summary(cell: CellReport) -> str:
