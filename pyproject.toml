@@ -1,0 +1,29 @@
+[project]
+name = "agent-skills-evals"
+version = "0.1.0"
+description = "Eval harness + shared grading lib for StackHawk agent skills"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.6",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+evals = "evals.cli:main"
+compare = "evals.cli:compare"
+regrade = "evals.cli:regrade"
+validate = "evals.cli:validate"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["evals"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
