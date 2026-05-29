@@ -20,3 +20,15 @@ def test_codex_detect_trigger():
     run = ParsedRun(bash_commands=["hawk scan --env Development"])
     assert cx.detect_trigger(run, "hawkscan") is True
     assert cx.detect_trigger(ParsedRun(bash_commands=["echo hi"]), "hawkscan") is False
+
+
+def test_cursor_parse_stream():
+    cu = get_adapter("cursor")
+    run = cu.parse_stream((FIX / "cursor.txt").read_text())
+    assert "hawk scan --env Development" in run.bash_commands
+    assert "localhost:8080" in run.output_text
+
+
+def test_cursor_detect_trigger():
+    cu = get_adapter("cursor")
+    assert cu.detect_trigger(ParsedRun(bash_commands=["hawk scan x"]), "hawkscan") is True

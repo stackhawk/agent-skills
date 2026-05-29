@@ -1,0 +1,3 @@
+{"type":"tool_call","subtype":"started","tool_call":{"shellToolCall":{"args":{"command":"hawk scan --env Development"}}}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Running HawkScan against the app on localhost:8080."}]}}
+{"type":"result","usage":{"inputTokens":950,"outputTokens":210},"is_error":false}
