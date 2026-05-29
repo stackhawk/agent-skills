@@ -66,6 +66,16 @@ INVOCATION_SIGNALS: dict[str, list[str]] = {
 # Matches pre-shim default --print-timeout (180s); bumped slightly for safety.
 PRINT_TIMEOUT = "240s"
 
+# Appended to every prompt before invoking agy (verbatim from pre-shim
+# 5472ed2~1:evals/harnesses/agy/run-evals.py). In --print mode agy hangs on tool
+# approvals, so this asks the agent to declare its skill choice up front — that
+# declaration is what the SKILL: signals in INVOCATION_SIGNALS detect. Without
+# it, live agy runs produce no detectable trigger text (all false-negatives).
+OBSERVE_SUFFIX = (
+    "\n\n(Eval mode: before responding, state which skill you would invoke: "
+    "'SKILL: hawkscan', 'SKILL: api', or 'SKILL: none'. Then proceed with your response.)"
+)
+
 
 def parse_stream(raw: str) -> ParsedRun:
     """agy outputs plain text — wrap entirely in output_text; no commands to parse."""
@@ -110,7 +120,10 @@ class AgyAdapter:
         # load_skill toggling is a no-op here.
         tmpdir = tempfile.mkdtemp(prefix=f"hawkeval_{run_id}_")
         try:
-            cmd = ["agy", "-p", prompt, "--print-timeout", PRINT_TIMEOUT]
+            # --print mode hangs on tool approvals; the suffix makes agy declare
+            # its skill choice up front so detect_trigger has text to match.
+            effective_prompt = prompt + OBSERVE_SUFFIX
+            cmd = ["agy", "-p", effective_prompt, "--print-timeout", PRINT_TIMEOUT]
             if model:
                 cmd += ["--model", model]
             try:

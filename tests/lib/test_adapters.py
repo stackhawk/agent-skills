@@ -1,8 +1,18 @@
+import importlib.util
 from pathlib import Path
 from evals.lib.harness import get_adapter
 from evals.lib.models import ParsedRun
 
 FIX = Path(__file__).parent.parent / "fixtures" / "streams"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def _load_adapter_module(platform: str):
+    path = REPO_ROOT / "evals" / "harnesses" / platform / "adapter.py"
+    spec = importlib.util.spec_from_file_location(f"_t_adapter_{platform}", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def test_codex_parse_stream():
@@ -45,3 +55,15 @@ def test_agy_detect_trigger_via_text():
     ag = get_adapter("agy")
     run = ag.parse_stream((FIX / "agy.txt").read_text())
     assert ag.detect_trigger(run, "hawkscan") is True
+
+
+def test_agy_observe_suffix_and_skill_signal():
+    ag = get_adapter("agy")
+    # The pre-shim SKILL: declaration format (emitted because of OBSERVE_SUFFIX)
+    # must still be detected by detect_trigger.
+    run = ag.parse_stream("I would use SKILL: hawkscan for this task.")
+    assert ag.detect_trigger(run, "hawkscan") is True
+    # OBSERVE_SUFFIX must be present, non-empty, and request the SKILL: declaration.
+    mod = _load_adapter_module("agy")
+    assert mod.OBSERVE_SUFFIX.strip()
+    assert "SKILL: hawkscan" in mod.OBSERVE_SUFFIX
