@@ -92,6 +92,14 @@ jobs:
           uv run evals --harness claude-code --skill ${{ matrix.skill }} \
             --model ${{ matrix.model }} --bare --max-budget 0.15
 
+      - name: Skill lift (compare with/without)
+        if: github.event_name == 'pull_request'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          uv run compare --harness claude-code --skill ${{ matrix.skill }} \
+            --model ${{ matrix.model }} --bare --max-budget 0.15 || true
+
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
@@ -274,7 +282,7 @@ jobs:
           gh run download "$RUN" -p 'baseline-*' -D baseline 2>/dev/null || echo "download failed"
           echo "baseline fetched for $TAG (run $RUN)"
       - name: Build digest
-        run: uv run report --pr --results-dir results --baseline-dir baseline --out digest.md
+        run: uv run report --pr --results-dir results --baseline-dir baseline --lift-dir results --out digest.md
       - name: Post digest comment
         uses: actions/github-script@v7
         with:

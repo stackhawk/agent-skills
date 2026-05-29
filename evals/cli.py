@@ -121,7 +121,17 @@ def report() -> None:
             continue
     from evals.lib.baseline import load_baseline_dir
     baselines = load_baseline_dir(args.baseline_dir) or None
-    md = render_digest(cells, baselines=baselines)
+    lift = None
+    if args.lift_dir and args.lift_dir.exists():
+        lift = {}
+        for lj in args.lift_dir.rglob("lift.json"):
+            sib = lj.parent / "cell.json"
+            if not sib.exists():
+                continue
+            cell = CellReport.model_validate_json(sib.read_text())
+            lift[(cell.platform, cell.skill, cell.model)] = json.loads(lj.read_text())
+        lift = lift or None
+    md = render_digest(cells, baselines=baselines, lift=lift)
     args.out.write_text(md)
     print(f"wrote {args.out} ({len(cells)} cells)")
 

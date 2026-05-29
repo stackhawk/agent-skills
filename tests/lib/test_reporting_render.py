@@ -74,3 +74,18 @@ def test_render_digest_overview_and_per_cell():
     assert "claude-code" in md and "codex" in md
     assert "hw-14" in md            # failing test surfaced
     assert "no baseline" in md.lower()   # no baseline supplied
+
+
+def test_digest_renders_lift_section():
+    from evals.lib.models import CellReport, EvalResult, Verdict
+    from evals.lib.reporting import render_digest
+    r = EvalResult(platform="claude-code", skill="hawkscan", run_id="hw-01",
+                   should_trigger=True, did_trigger=True, trigger_correct=True,
+                   verdict=Verdict.PASS, score=100)
+    cell = CellReport(platform="claude-code", skill="hawkscan", model="haiku",
+                      commit="c", results=[r])
+    lift = {("claude-code", "hawkscan", "haiku"): [
+        {"id": "hw-01", "without_verdict": "fail", "with_verdict": "pass", "effect": "lift"}]}
+    md = render_digest([cell], lift=lift)
+    assert "lift" in md.lower() and "hw-01" in md
+    assert "1/1" in md or "1 of 1" in md.lower()

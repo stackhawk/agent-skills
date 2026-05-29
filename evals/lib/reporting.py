@@ -121,6 +121,21 @@ def render_digest(cells, baselines=None, lift=None) -> str:
                         f"{badge(v, v)} {k}" for k, v in sorted(changed.items())) + "\n")
                 else:
                     out.append("_vs baseline: no changes._\n")
+    if lift:
+        out.append("\n### Skill lift (with vs without)\n")
+        for key, rows in lift.items():
+            lifted = sum(1 for r in rows if r["effect"] == "lift")
+            out.append(f"**{key[0]} · {key[1]} · {key[2]}** — "
+                       f"{lifted}/{len(rows)} prompts lifted FAIL→PASS\n")
+            out.append("| test | without | with | |")
+            out.append("|---|---|---|---|")
+            for r in rows:
+                eff = {"lift": badge('fixed', '↑ lift'),
+                       "regress": badge('regressed', '↓ regress'),
+                       "none": ""}[r["effect"]]
+                out.append(f"| {r['id']} | {r['without_verdict']} | "
+                           f"{r['with_verdict']} | {eff} |")
+            out.append("")
     return "\n".join(out) + "\n"
 
 
