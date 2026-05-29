@@ -1,0 +1,4 @@
+{"type":"item.started","item":{"type":"command_execution","command":"hawk validate config stackhawk.yml"}}
+{"type":"item.started","item":{"type":"command_execution","command":"hawk scan --env Development"}}
+{"type":"item.completed","item":{"type":"agent_message","text":"Running the security scan; app reachable on localhost:8080."}}
+{"type":"turn.completed","usage":{"input_tokens":1200,"output_tokens":340}}
