@@ -255,81 +255,25 @@ jobs:
           merge-multiple: false
           path: results/
 
-      - name: Build and post comment
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Build digest
+        run: uv run report --pr --results-dir results --out digest.md
+      - name: Post digest comment
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            const path = require('path');
-
-            const needsResult = ${{ toJSON(needs) }};
-            const allSuccess = Object.values(needsResult).every(n => n.result === 'success');
-            const overallIcon = allSuccess ? '✅' : '❌';
-
-            let body = `## ${overallIcon} Skill Eval Results\n\n`;
-
-            const platforms = ['claude-code', 'codex', 'agy', 'cursor'];
-            const skills = ['hawkscan', 'api'];
-
-            for (const platform of platforms) {
-              body += `### Platform: \`${platform}\`\n\n`;
-              for (const skill of skills) {
-                let summaryPath;
-                if (platform === 'claude-code') {
-                  summaryPath = path.join(
-                    'results', `eval-claude-code-${skill}-claude-haiku-4-5-20251001`, 'summary.json'
-                  );
-                } else {
-                  summaryPath = path.join(
-                    'results', `eval-${platform}-${skill}`, 'summary.json'
-                  );
-                }
-
-                if (!fs.existsSync(summaryPath)) {
-                  body += `**\`${skill}\`**: ⚠️ No results\n`;
-                  continue;
-                }
-
-                const s = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
-                const ta = s.trigger_accuracy;
-                const triggerIcon = ta.correct === ta.total ? '✅' : '❌';
-
-                body += `**\`${skill}\`**: ${triggerIcon} Trigger ${ta.correct}/${ta.total}`;
-                if (s.process_avg_score !== null) {
-                  const scoreIcon = s.process_avg_score >= 70 && s.total_blocking_failures === 0 ? '✅' : '⚠️';
-                  body += ` | ${scoreIcon} Process ${s.process_avg_score}/100`;
-                }
-                if (s.false_positives?.length) body += ` | ⚠️ FP: ${s.false_positives.join(', ')}`;
-                if (s.false_negatives?.length) body += ` | ⚠️ FN: ${s.false_negatives.join(', ')}`;
-                body += '\n';
-              }
-              body += '\n';
-            }
-
-            body += `---\n_Commit ${context.sha.slice(0, 7)}. `;
-            body += `[Full results](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})_\n`;
-
+            const body = fs.readFileSync('digest.md', 'utf8');
             const marker = '<!-- skill-eval-comment -->';
             const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.issue.number });
             const existing = comments.find(c => c.body.includes(marker));
-            const fullBody = marker + '\n' + body;
-
             if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body: fullBody,
-              });
+              await github.rest.issues.updateComment({ owner: context.repo.owner,
+                repo: context.repo.repo, comment_id: existing.id, body });
             } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: fullBody,
-              });
+              await github.rest.issues.createComment({ owner: context.repo.owner,
+                repo: context.repo.repo, issue_number: context.issue.number, body });
             }

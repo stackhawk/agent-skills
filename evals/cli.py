@@ -94,6 +94,29 @@ def regrade() -> None:
     render_table([res])
 
 
+def report() -> None:
+    import argparse
+    from pathlib import Path
+    from evals.lib.models import CellReport
+    from evals.lib.reporting import render_digest
+    ap = argparse.ArgumentParser(prog="report")
+    ap.add_argument("--pr", action="store_true")
+    ap.add_argument("--results-dir", type=Path, default=Path("results"))
+    ap.add_argument("--baseline-dir", type=Path, default=None)
+    ap.add_argument("--lift-dir", type=Path, default=None)
+    ap.add_argument("--out", type=Path, default=Path("digest.md"))
+    args = ap.parse_args()
+    cells = []
+    for cj in sorted(args.results_dir.rglob("cell.json")):
+        try:
+            cells.append(CellReport.model_validate_json(cj.read_text()))
+        except Exception:
+            continue
+    md = render_digest(cells)
+    args.out.write_text(md)
+    print(f"wrote {args.out} ({len(cells)} cells)")
+
+
 def validate() -> None:
     ap = argparse.ArgumentParser(prog="validate")
     ap.add_argument("--skill", choices=["hawkscan", "api"])

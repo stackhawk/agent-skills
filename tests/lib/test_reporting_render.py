@@ -43,3 +43,17 @@ def test_write_github_summary_noop_when_unset(monkeypatch):
     from evals.lib.reporting import write_github_summary
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
     write_github_summary("nothing")   # must not raise
+
+
+def test_render_digest_overview_and_per_cell():
+    from pathlib import Path
+    from evals.lib.models import CellReport
+    from evals.lib.reporting import render_digest
+    root = Path(__file__).parent.parent / "fixtures" / "results"
+    cells = [CellReport.model_validate_json((p / "cell.json").read_text())
+             for p in sorted(root.iterdir()) if (p / "cell.json").exists()]
+    md = render_digest(cells)
+    assert "Skill Eval" in md
+    assert "claude-code" in md and "codex" in md
+    assert "hw-14" in md            # failing test surfaced
+    assert "no baseline" in md.lower()   # no baseline supplied

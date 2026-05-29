@@ -90,6 +90,28 @@ def write_github_summary(md: str) -> None:
         fp.write(md)
 
 
+def render_digest(cells, baselines=None, lift=None) -> str:
+    out = ["<!-- skill-eval-comment -->", "## Skill Eval Results\n"]
+    out.append("| platform | skill | model | trigger | ✅/◆/❌ | score |")
+    out.append("|---|---|---|---|---|---|")
+    for cell in cells:
+        c = Counter(r.verdict.value for r in cell.results)
+        n = len(cell.results)
+        trig = sum(1 for r in cell.results if r.trigger_correct)
+        graded = [r for r in cell.results if r.did_trigger and r.should_trigger]
+        avg = sum(r.score for r in graded) // len(graded) if graded else 0
+        ticon = "✅" if trig == n else "❌"
+        out.append(f"| {cell.platform} | {cell.skill} | {cell.model} | "
+                   f"{ticon} {trig}/{n} | {c.get('pass',0)}/{c.get('pass-slow',0)}/"
+                   f"{c.get('fail',0)} | {avg} |")
+    out.append("")
+    if baselines is None:
+        out.append("_No baseline available — showing absolute results only._\n")
+    for cell in cells:
+        out.append(render_job_summary(cell))
+    return "\n".join(out) + "\n"
+
+
 def render_job_summary(cell: CellReport) -> str:
     c = Counter(r.verdict.value for r in cell.results)
     trig_ok = sum(1 for r in cell.results if r.trigger_correct)
