@@ -43,11 +43,18 @@ def run_process_checks(run: ParsedRun, checks: list[dict]) -> list[ProcessCheckR
         elif ctype == "conditional_command":
             condition_str = check.get("condition", "")
             m = re.search(r"'([^']+)'", condition_str)
+            if condition_str and m is None:
+                raise ValueError(
+                    f"conditional_command check '{check['id']}': condition "
+                    f"'{condition_str}' has no single-quoted keyword")
             keyword = m.group(1).lower() if m else None
             passed = True if (keyword and keyword not in haystack) else signal_hit is not None
         elif ctype == "command_preference":
             preferred = [p.lower() for p in check.get("preferred", [])]
-            passed = any(p in haystack for p in preferred) and anti_hit is None
+            if preferred:
+                passed = any(p in haystack for p in preferred) and anti_hit is None
+            else:
+                passed = anti_hit is None  # no preference expressed; only anti-patterns matter
         else:
             passed = signal_hit is not None and (anti_hit is None if antis else True)
 
@@ -83,13 +90,13 @@ def run_adhoc_expected(run: ParsedRun, expected: list[ExpectedCheck]) -> list[Pr
 def check_budget(run: ParsedRun, budget: BudgetSpec) -> list[str]:
     breaches: list[str] = []
     if budget.cost_usd is not None and run.cost_usd > budget.cost_usd:
-        breaches.append(f"cost_usd {run.cost_usd:.3f} > {budget.cost_usd}")
+        breaches.append(f"cost_usd {run.cost_usd:.3f} > {budget.cost_usd:.3f}")
     if budget.bash_commands is not None and len(run.bash_commands) > budget.bash_commands:
         breaches.append(f"bash_commands {len(run.bash_commands)} > {budget.bash_commands}")
     if budget.output_tokens is not None and (run.output_tokens or 0) > budget.output_tokens:
         breaches.append(f"output_tokens {run.output_tokens} > {budget.output_tokens}")
     if budget.wall_seconds is not None and (run.wall_seconds or 0) > budget.wall_seconds:
-        breaches.append(f"wall_seconds {run.wall_seconds:.0f} > {budget.wall_seconds}")
+        breaches.append(f"wall_seconds {run.wall_seconds:.0f} > {budget.wall_seconds:.0f}")
     return breaches
 
 

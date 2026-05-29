@@ -96,3 +96,71 @@ def test_grade_pass_slow_on_budget_breach():
                    did_trigger=True)
     assert result.verdict == Verdict.PASS_SLOW
     assert any("bash_commands" in b for b in result.budget_breaches)
+
+
+def test_process_check_conditional_command_enforced_when_keyword_present():
+    run = ParsedRun(bash_commands=["cat stackhawk.yml: authentication: enabled"],
+                    output_text="hawk validate ran")
+    checks = [{"id": "c1", "type": "conditional_command",
+               "condition": "stackhawk.yml contains 'authentication:'",
+               "signals": ["hawk validate"], "severity": "warning"}]
+    assert run_process_checks(run, checks)[0].passed is True
+
+
+def test_process_check_conditional_command_skipped_when_keyword_absent():
+    run = ParsedRun(bash_commands=["echo nothing relevant"])
+    checks = [{"id": "c1", "type": "conditional_command",
+               "condition": "stackhawk.yml contains 'authentication:'",
+               "signals": ["hawk validate"], "severity": "warning"}]
+    # keyword not in haystack -> check is not applicable -> passes
+    assert run_process_checks(run, checks)[0].passed is True
+
+
+def test_process_check_conditional_command_raises_without_quoted_keyword():
+    import pytest
+    run = ParsedRun(bash_commands=["x"])
+    checks = [{"id": "c1", "type": "conditional_command",
+               "condition": "no quotes here", "signals": ["x"], "severity": "warning"}]
+    with pytest.raises(ValueError, match="single-quoted keyword"):
+        run_process_checks(run, checks)
+
+
+def test_process_check_command_preference_normal():
+    run = ParsedRun(bash_commands=["hawkop scan get 123"])
+    checks = [{"id": "c1", "type": "command_preference",
+               "preferred": ["hawkop scan get"], "anti_patterns": ["curl"],
+               "severity": "warning"}]
+    assert run_process_checks(run, checks)[0].passed is True
+
+
+def test_process_check_command_preference_empty_is_unconstrained():
+    run = ParsedRun(bash_commands=["anything"])
+    checks = [{"id": "c1", "type": "command_preference", "preferred": [],
+               "anti_patterns": ["curl"], "severity": "warning"}]
+    assert run_process_checks(run, checks)[0].passed is True
+
+
+def test_process_check_file_absent():
+    run = ParsedRun(files_written=["stackhawk.yml"])
+    present = [{"id": "c1", "type": "file_absent", "target_file": "stackhawk.yml",
+                "severity": "warning"}]
+    absent = [{"id": "c2", "type": "file_absent", "target_file": "secrets.env",
+               "severity": "warning"}]
+    assert run_process_checks(run, present)[0].passed is False
+    assert run_process_checks(run, absent)[0].passed is True
+
+
+def test_adhoc_expected_check_id_is_skipped():
+    run = ParsedRun(bash_commands=["x"])
+    assert run_adhoc_expected(run, [ExpectedCheck(check_id="step1")]) == []
+
+
+def test_score_deductions():
+    from evals.lib.grading import _score
+    from evals.lib.models import ProcessCheckResult
+    def pc(passed, sev): return ProcessCheckResult(id="x", passed=passed, severity=sev)
+    assert _score([pc(True, "blocking")]) == 100
+    assert _score([pc(False, "blocking")]) == 85
+    assert _score([pc(False, "warning")]) == 95
+    assert _score([pc(False, "blocking"), pc(False, "warning")]) == 80
+    assert _score([pc(False, "blocking")] * 8) == 0  # floored
