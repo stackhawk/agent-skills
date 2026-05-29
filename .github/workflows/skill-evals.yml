@@ -100,15 +100,16 @@ jobs:
           path: evals/harnesses/claude-code/results/${{ matrix.skill }}/
           retention-days: 30
 
-  # NOTE: dispatch-only until evals/harnesses/codex/adapter.py exists (see harnesses/README.md).
   # ── Codex ─────────────────────────────────────────────────────────────────
   eval-codex:
     name: codex / ${{ matrix.skill }}
     runs-on: ubuntu-latest
     needs: validate-config
     if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.platform == 'all' || inputs.platform == 'codex')
+      github.event_name == 'pull_request' ||
+      github.event_name == 'push' ||
+      inputs.platform == 'all' ||
+      inputs.platform == 'codex'
     strategy:
       fail-fast: false
       matrix:
@@ -149,15 +150,16 @@ jobs:
           path: evals/harnesses/codex/results/${{ matrix.skill }}/
           retention-days: 30
 
-  # NOTE: dispatch-only until evals/harnesses/agy/adapter.py exists (see harnesses/README.md).
   # ── Antigravity (agy) — replaces Gemini ───────────────────────────────────
   eval-agy:
     name: agy / ${{ matrix.skill }}
     runs-on: ubuntu-latest
     needs: validate-config
     if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.platform == 'all' || inputs.platform == 'agy')
+      github.event_name == 'pull_request' ||
+      github.event_name == 'push' ||
+      inputs.platform == 'all' ||
+      inputs.platform == 'agy'
     strategy:
       fail-fast: false
       matrix:
@@ -194,15 +196,16 @@ jobs:
           path: evals/harnesses/agy/results/${{ matrix.skill }}/
           retention-days: 30
 
-  # NOTE: dispatch-only until evals/harnesses/cursor/adapter.py exists (see harnesses/README.md).
   # ── Cursor ────────────────────────────────────────────────────────────────
   eval-cursor:
     name: cursor / ${{ matrix.skill }}
     runs-on: ubuntu-latest
     needs: validate-config
     if: |
-      github.event_name == 'workflow_dispatch' &&
-      (inputs.platform == 'all' || inputs.platform == 'cursor')
+      github.event_name == 'pull_request' ||
+      github.event_name == 'push' ||
+      inputs.platform == 'all' ||
+      inputs.platform == 'cursor'
     strategy:
       fail-fast: false
       matrix:
