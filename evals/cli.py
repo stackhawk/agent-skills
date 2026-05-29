@@ -58,6 +58,14 @@ def main() -> None:
     summary["timestamp"] = datetime.now(timezone.utc).isoformat()
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
 
+    from evals.lib.models import CellReport
+    import subprocess as _sp
+    commit = _sp.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True,
+                     text=True).stdout.strip() or "unknown"
+    cell = CellReport(platform=args.harness, skill=args.skill,
+                      model=args.model or "default", commit=commit, results=results)
+    (out_dir / "cell.json").write_text(cell.model_dump_json(indent=2))
+
     if summary["false_positives"] or summary["false_negatives"] or \
             summary["total_blocking_failures"] > 0:
         sys.exit(1)

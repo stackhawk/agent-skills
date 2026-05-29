@@ -78,3 +78,20 @@ class EvalResult(BaseModel):
     process_checks: list[ProcessCheckResult] = []
     score: int
     cost_usd: float = 0.0
+
+
+class CellReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    platform: str
+    skill: str
+    model: str
+    commit: str
+    results: list[EvalResult]
+
+
+class LiftRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    without_verdict: Verdict
+    with_verdict: Verdict
+    effect: Literal["lift", "regress", "none"]

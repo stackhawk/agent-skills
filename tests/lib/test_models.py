@@ -52,3 +52,23 @@ def test_parsed_run_defaults():
     assert r.bash_commands == []
     assert r.cost_usd == 0.0
     assert r.output_tokens is None
+
+
+def test_cellreport_roundtrips():
+    from evals.lib.models import CellReport, EvalResult, Verdict
+    r = EvalResult(platform="codex", skill="hawkscan", run_id="hw-01",
+                   should_trigger=True, did_trigger=True, trigger_correct=True,
+                   verdict=Verdict.PASS, score=100)
+    cell = CellReport(platform="codex", skill="hawkscan", model="haiku",
+                      commit="abc1234", results=[r])
+    again = CellReport.model_validate_json(cell.model_dump_json())
+    assert again.results[0].run_id == "hw-01"
+    assert again.model == "haiku"
+
+
+def test_cellreport_rejects_unknown_field():
+    import pytest
+    from pydantic import ValidationError
+    from evals.lib.models import CellReport
+    with pytest.raises(ValidationError):
+        CellReport(platform="x", skill="y", model="m", commit="c", results=[], extra=1)
