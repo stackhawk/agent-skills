@@ -106,10 +106,10 @@ uv run evals --harness agy --skill hawkscan --print-timeout 300s
 
 > **Shims vs adapters**: The per-platform `run-evals.py` scripts are back-compat
 > shims that forward to `uv run evals`. Full stream-parsing adapter logic lives in
-> `evals/harnesses/<platform>/adapter.py`; currently only **claude-code** has a
-> full adapter. The other platforms (codex, cursor, copilot, agy) forward through
-> the same CLI path and will gain dedicated adapters as output formats are
-> stabilised.
+> `evals/harnesses/<platform>/adapter.py`; **claude-code, codex, cursor, and agy**
+> all have real `adapter.py` implementations. Copilot and Gemini use the legacy
+> shim path (Gemini is frozen). The per-platform `run-evals.py` files remain thin
+> forwarding shims for back-compat.
 
 ## How it works
 
@@ -133,8 +133,15 @@ For each entry in `evals/<skill>/prompts.yaml`, each harness:
 
 The `.github/workflows/skill-evals.yml` workflow is tiered:
 
-- **Every PR**: runs `uv run validate` (no API keys required) + a cheap claude-code / Haiku run
-- **Merge to main + manual dispatch**: runs the full model matrix across all platforms
+- **Every PR + push**: runs `uv run validate` (no API keys required), then runs
+  **all four platforms** (claude-code, codex, agy, cursor). On PRs, claude-code
+  uses the Haiku model to stay within budget; the other platforms run their
+  default model.
+- **Merge to main + manual dispatch**: runs the full multi-model matrix across
+  all platforms.
+- **PR comment job**: collects `cell.json` artifacts from all platform jobs,
+  fetches the released-tag baseline (best-effort), and posts a consolidated
+  digest comment via `uv run report --pr`.
 
 Required GitHub secrets:
 - `ANTHROPIC_API_KEY` — Claude Code

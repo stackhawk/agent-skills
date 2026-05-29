@@ -67,6 +67,39 @@ specific prompts (absent = applies to all).
 
 See `harnesses/README.md` for per-platform instructions and CI setup.
 
+### Reports
+
+**Per-job summaries.** Each `uv run evals` run writes a JUnit-style table to
+`$GITHUB_STEP_SUMMARY`: one row per test, failures-first ordering,
+`✅ PASS / ◆ PASS-SLOW / ❌ FAIL` verdicts. It also writes a `cell.json`
+artifact in the results directory so downstream steps can aggregate across
+jobs.
+
+**PR digest comment.** When a PR lands, the `comment` CI job collects all
+`cell.json` artifacts and runs:
+
+```
+uv run report --pr [--results-dir DIR] [--baseline-dir DIR] [--lift-dir DIR] [--out FILE]
+```
+
+This produces a consolidated Markdown digest posted as a sticky PR comment.
+The digest contains:
+
+- **Matrix overview** — one row per (platform × skill × model) cell showing
+  trigger accuracy, ✅/◆/❌ verdict mix, and aggregate score.
+- **Per-cell tables** — the same failures-first rows from each job summary.
+- **Regression vs released-tag baseline** — the `comment` job fetches the
+  baseline from the most recent release's `capture-baseline.yml` run
+  (best-effort; missing baseline degrades gracefully to "no baseline
+  available"). Comparison is pure deterministic threshold math: per-test
+  verdict-flips (fixed / regressed) and aggregate score deltas with a ±3
+  band → better / worse / no-change. No AI or LLM calls are used.
+- **Skill lift section** — with-skill vs without-skill verdict comparison
+  showing how many prompts move from FAIL→PASS when the skill is active.
+
+Baselines are captured at release tags by `capture-baseline.yml`, which is
+triggered automatically from `release.yml`.
+
 ## Adding test cases
 
 When a skill bug or regression is discovered:
