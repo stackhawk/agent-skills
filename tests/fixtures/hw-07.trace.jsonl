@@ -1,0 +1,2 @@
+{"type":"assistant","message":{"content":[{"type":"text","text":"`hawkscan:hawkscan`: YES — running the security scan"},{"type":"tool_use","name":"Bash","input":{"command":"hawk validate"}},{"type":"tool_use","name":"Bash","input":{"command":"hawk scan --env Development"}}]}}
+{"type":"result","result":"Scan complete.","cost_usd":0.07,"subtype":"success"}

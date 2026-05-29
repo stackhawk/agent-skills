@@ -1,0 +1,107 @@
+- id: hw-01
+  should_trigger: true
+  invocation_type: explicit
+  prompt: Use $hawkscan to scan my API running on localhost:8080
+  notes: Direct skill reference by name; baseline — if this fails everything else is moot
+- id: hw-02
+  should_trigger: true
+  invocation_type: explicit
+  prompt: Run the hawkscan skill against my running application
+  notes: hawkscan keyword in natural language
+- id: hw-03
+  should_trigger: true
+  invocation_type: implicit
+  prompt: Run a DAST scan on my running application
+  notes: DAST keyword from skill description
+- id: hw-04
+  should_trigger: true
+  invocation_type: implicit
+  prompt: Scan my app for security vulnerabilities
+  notes: '''security scan'' + ''app'' language'
+- id: hw-05
+  should_trigger: true
+  invocation_type: implicit
+  prompt: Use StackHawk to check my service on port 8080
+  notes: StackHawk platform keyword
+- id: hw-06
+  should_trigger: true
+  invocation_type: implicit
+  prompt: I need to run a security scan on my API
+  notes: '''security scan'' + ''API'' language'
+- id: hw-07
+  should_trigger: true
+  invocation_type: contextual
+  prompt: I just finished implementing the payment processing endpoint. Run a security scan before we
+    deploy.
+  notes: Explicit scan request after code change
+  budget:
+    bash_commands: 15
+    cost_usd: 0.15
+  expected:
+  - signal: hawk validate
+- id: hw-08
+  should_trigger: true
+  invocation_type: contextual
+  prompt: I added OAuth2 support to the auth service. Check it for security issues.
+  notes: Implicit security check after feature; tests autonomous trigger
+- id: hw-09
+  should_trigger: true
+  invocation_type: contextual
+  prompt: The SQL injection fix is in. Verify the vulnerability is actually resolved.
+  notes: Fix verification — should route to rescan path not a fresh scan
+- id: hw-10
+  should_trigger: true
+  invocation_type: contextual
+  prompt: I refactored the API gateway — check it hasn't introduced any security regressions.
+  notes: Post-refactor security check; tests autonomous trigger on refactor
+- id: hw-11
+  should_trigger: true
+  invocation_type: contextual
+  prompt: My API spec is at ./openapi.yaml and the service is running on port 3000. Check for security
+    holes before I merge.
+  notes: Pre-merge gate with OpenAPI spec context
+- id: hw-12
+  should_trigger: true
+  invocation_type: contextual
+  prompt: Feature is done. Let's make sure it's secure.
+  notes: Vague post-feature prompt; tests whether autonomous trigger fires on minimal phrasing
+- id: hw-13
+  should_trigger: false
+  invocation_type: negative
+  prompt: Show me my security findings from the last StackHawk scan
+  notes: Reporting query → api skill; hawkscan must NOT trigger
+- id: hw-14
+  should_trigger: false
+  invocation_type: negative
+  prompt: What's my security posture across all my applications?
+  notes: Posture dashboard → api skill; 'security' keyword alone should not trigger hawkscan
+- id: hw-15
+  should_trigger: false
+  invocation_type: negative
+  prompt: How many HIGH severity findings do I have untriaged?
+  notes: Finding count query → api skill
+- id: hw-16
+  should_trigger: false
+  invocation_type: negative
+  prompt: Update the README with instructions for running security scans
+  notes: Doc-only change; skill explicitly excludes doc-only changes
+- id: hw-17
+  should_trigger: false
+  invocation_type: negative
+  prompt: Don't run a security scan after this change — just commit it
+  notes: Explicit user skip; skill must respect user's explicit opt-out
+- id: hw-18
+  should_trigger: false
+  invocation_type: negative
+  prompt: Change the host in stackhawk.yml from localhost:8080 to localhost:3000
+  notes: Config-only edit to stackhawk.yml; not a code change, not a scan trigger
+- id: hw-19
+  should_trigger: false
+  invocation_type: negative
+  prompt: Install the hawk CLI on my machine
+  notes: Installation task with no scan intent
+- id: hw-20
+  should_trigger: false
+  invocation_type: negative
+  prompt: What types of vulnerabilities does HawkScan detect?
+  notes: Research question; no scan intent, no code change
