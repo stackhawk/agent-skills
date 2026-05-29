@@ -3,12 +3,12 @@ Shared interactive evaluation loop for manual harnesses (Copilot, Cursor).
 Import this from platform-specific run-evals.py files.
 """
 
-import csv
 import json
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+from evals.lib.config import load_skill
 
 
 HARNESS_ROOT = Path(__file__).parent.resolve()
@@ -36,23 +36,22 @@ def run_manual_evals(
     prompt_id: str | None,
     rubric: bool,
 ) -> None:
-    prompts_path = EVALS_DIR / skill / "prompts.csv"
-    checks_path  = EVALS_DIR / skill / "process-checks.json"
     results_dir  = HARNESS_ROOT / platform / "results" / skill
 
-    with open(prompts_path) as f:
-        all_prompts = list(csv.DictReader(f))
-    checks = json.loads(checks_path.read_text())["checks"]
+    cfg = load_skill(skill)
+    all_prompts = cfg.prompts
+    checks = cfg.checks
     blocking_checks = [c for c in checks if c.get("severity") == "blocking"]
 
     rubric_items = None
     if rubric:
+        # rubric-items.json is not yet part of evals.lib — loaded directly for now
         rubric_path = EVALS_DIR / skill / "rubric-items.json"
         if rubric_path.exists():
             rubric_items = json.loads(rubric_path.read_text())["checks"]
 
     if prompt_id:
-        prompts = [p for p in all_prompts if p["id"] == prompt_id]
+        prompts = [p for p in all_prompts if p.id == prompt_id]
         if not prompts:
             print(f"ERROR: No prompt with id '{prompt_id}'", file=sys.stderr)
             sys.exit(1)
@@ -70,11 +69,11 @@ def run_manual_evals(
     all_results = []
 
     for row in prompts:
-        run_id         = row["id"]
-        prompt         = row["prompt"]
-        should_trigger = row["should_trigger"].lower() == "true"
-        itype          = row.get("invocation_type", "")
-        notes          = row.get("notes", "")
+        run_id         = row.id
+        prompt         = row.prompt
+        should_trigger = row.should_trigger
+        itype          = row.invocation_type
+        notes          = row.notes
 
         print(f"\n{'─' * 68}")
         print(f"[{run_id}]  {itype:<12}  should_trigger={'Y' if should_trigger else 'N'}")
