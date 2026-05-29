@@ -25,7 +25,6 @@ def _common_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--max-budget", type=float, default=0.20)
     p.add_argument("--bare", action="store_true")
     p.add_argument("--full-auto", action="store_true")
-    p.add_argument("--rubric", action="store_true")
 
 
 def main() -> None:

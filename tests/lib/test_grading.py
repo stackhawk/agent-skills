@@ -164,3 +164,40 @@ def test_score_deductions():
     assert _score([pc(False, "warning")]) == 95
     assert _score([pc(False, "blocking"), pc(False, "warning")]) == 80
     assert _score([pc(False, "blocking")] * 8) == 0  # floored
+
+
+def test_grade_correct_negative_passes_without_process_checks():
+    # should_trigger=False, did_trigger=False -> correct -> PASS, no process checks run
+    run = ParsedRun(bash_commands=["echo not relevant"])
+    checks = [{"id": "c1", "type": "command_executed", "signals": ["hawk scan"],
+               "severity": "blocking"}]
+    p = _prompt(should_trigger=False)
+    res = grade(p, run, checks, platform="claude-code", skill="demo", did_trigger=False)
+    assert res.verdict == Verdict.PASS
+    assert res.trigger_correct is True
+    assert res.process_checks == []
+    assert res.score == 100
+
+
+def test_grade_false_negative_fails():
+    # should_trigger=True but did_trigger=False -> incorrect -> FAIL, no process checks
+    run = ParsedRun(bash_commands=["echo nothing"])
+    checks = [{"id": "c1", "type": "command_executed", "signals": ["hawk scan"],
+               "severity": "blocking"}]
+    p = _prompt(should_trigger=True)
+    res = grade(p, run, checks, platform="claude-code", skill="demo", did_trigger=False)
+    assert res.verdict == Verdict.FAIL
+    assert res.trigger_correct is False
+    assert res.process_checks == []
+
+
+def test_grade_false_positive_fails_without_process_checks():
+    # should_trigger=False but did_trigger=True -> incorrect -> FAIL, no process checks
+    run = ParsedRun(bash_commands=["hawk scan"])
+    checks = [{"id": "c1", "type": "command_executed", "signals": ["hawk scan"],
+               "severity": "blocking"}]
+    p = _prompt(should_trigger=False)
+    res = grade(p, run, checks, platform="claude-code", skill="demo", did_trigger=True)
+    assert res.verdict == Verdict.FAIL
+    assert res.trigger_correct is False
+    assert res.process_checks == []

@@ -108,6 +108,21 @@ def _score(checks: list[ProcessCheckResult]) -> int:
 
 def grade(prompt: PromptConfig, run: ParsedRun, checks: list[dict], *,
           platform: str, skill: str, did_trigger: bool) -> EvalResult:
+    trigger_correct = (did_trigger == prompt.should_trigger)
+
+    # Process checks, ad-hoc expectations, and budgets only apply when the skill
+    # should have fired AND did. For correct non-triggers, false positives, and
+    # false negatives, the verdict is purely the trigger outcome (no process grading).
+    if not (prompt.should_trigger and did_trigger):
+        return EvalResult(
+            platform=platform, skill=skill, run_id=prompt.id,
+            should_trigger=prompt.should_trigger, did_trigger=did_trigger,
+            trigger_correct=trigger_correct,
+            verdict=Verdict.PASS if trigger_correct else Verdict.FAIL,
+            budget_breaches=[], process_checks=[],
+            score=100 if trigger_correct else 0, cost_usd=run.cost_usd,
+        )
+
     proc = run_process_checks(run, applicable_checks(checks, prompt.id))
     proc += run_adhoc_expected(run, prompt.expected)
 
@@ -123,7 +138,7 @@ def grade(prompt: PromptConfig, run: ParsedRun, checks: list[dict], *,
     return EvalResult(
         platform=platform, skill=skill, run_id=prompt.id,
         should_trigger=prompt.should_trigger, did_trigger=did_trigger,
-        trigger_correct=(did_trigger == prompt.should_trigger),
+        trigger_correct=trigger_correct,
         verdict=verdict, budget_breaches=breaches, process_checks=proc,
         score=_score(proc), cost_usd=run.cost_usd,
     )
