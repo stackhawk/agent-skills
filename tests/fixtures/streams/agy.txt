@@ -1,0 +1,2 @@
+`hawkscan:hawkscan`: YES — running the security scan.
+I ran `hawk scan --env Development`; the app was reachable on localhost:8080.

@@ -1,0 +1,131 @@
+"""agy Harness adapter. Plain-text output (no structured stream).
+
+Pre-shim (5472ed2~1:evals/harnesses/agy/run-evals.py) notes:
+- agy outputs plain text — no --output-format flag available.
+- Trigger detection scans output_text only; no bash_commands ever populated.
+- Skills installed globally via `agy plugin install` (done in CI); load_skill
+  toggling is a no-op here.
+- AGY_API_KEY passed via os.environ (CI sets it); no special env handling needed.
+- Launch: agy -p <prompt> --print-timeout <timeout> [--model M]
+- The pre-shim used a unified ALL_SIGNALS dict (no CLI/INVOCATION split) with
+  SKILL: prefix signals.  Those are carried in INVOCATION_SIGNALS below alongside
+  the backtick-evaluation-format signals shared by codex/cursor adapters.
+"""
+from __future__ import annotations
+import shutil
+import subprocess
+import tempfile
+
+from evals.lib.models import ParsedRun
+
+# CLI_SIGNALS: agy emits plain text — there are no shell commands to scan.
+CLI_SIGNALS: dict[str, list[str]] = {
+    "hawkscan": [],
+    "api": [],
+}
+
+# INVOCATION_SIGNALS: checked against output_text.
+# Combines the pre-shim ALL_SIGNALS (SKILL: prefix variants) with the
+# evaluation-format backtick signals used by the shared skill prompts.
+INVOCATION_SIGNALS: dict[str, list[str]] = {
+    "hawkscan": [
+        # Pre-shim ALL_SIGNALS (verbatim from 5472ed2~1:evals/harnesses/agy/run-evals.py)
+        "skill: hawkscan",
+        "skill:hawkscan",
+        # Evaluation-format variants emitted by the shared skill evaluation suffix
+        "hawkscan:hawkscan`: yes",
+        "hawkscan:hawkscan` — yes",
+        "hawkscan:hawkscan**: yes",
+        "hawkscan:hawkscan** — yes",
+        "hawkscan:hawkscan: yes",
+        "hawkscan:hawkscan — yes",
+        # Action-intent phrases
+        "autonomous security scan",
+        "dast scan after code",
+        "dast scan triggered",
+        "dast scan required",
+        "security scan required",
+        "security scan after",
+        "run the security scan",
+        "running the hawkscan",
+        "running the security scan",
+    ],
+    "api": [
+        # Pre-shim ALL_SIGNALS (verbatim)
+        "skill: api",
+        "skill:api",
+        "skill: stackhawk-api",
+        # Evaluation-format variants
+        "stackhawk-api:api`: yes",
+        "stackhawk-api:api` — yes",
+        "stackhawk-api:api: yes",
+        "stackhawk-api:api — yes",
+    ],
+}
+
+# Matches pre-shim default --print-timeout (180s); bumped slightly for safety.
+PRINT_TIMEOUT = "240s"
+
+
+def parse_stream(raw: str) -> ParsedRun:
+    """agy outputs plain text — wrap entirely in output_text; no commands to parse."""
+    return ParsedRun(output_text=raw.strip())
+
+
+class AgyAdapter:
+    platform = "agy"
+
+    def cli_signals(self, skill: str) -> list[str]:
+        return CLI_SIGNALS.get(skill, [])
+
+    def invocation_signals(self, skill: str) -> list[str]:
+        return INVOCATION_SIGNALS.get(skill, [])
+
+    def parse_stream(self, raw: str) -> ParsedRun:
+        return parse_stream(raw)
+
+    def detect_trigger(self, run: ParsedRun, skill: str) -> bool:
+        # agy is text-only; CLI signals may appear in prose too, so check both
+        # lists against the combined text.
+        hay = (" ".join(run.bash_commands) + " " + run.output_text).lower()
+        return (
+            any(s.lower() in hay for s in self.cli_signals(skill))
+            or any(s.lower() in hay for s in self.invocation_signals(skill))
+        )
+
+    def launch(
+        self,
+        prompt: str,
+        skill: str,
+        run_id: str,
+        plugin_dirs: list[str],
+        *,
+        model: str | None,
+        load_skill: bool,
+        max_budget: float,
+        bare: bool,
+        full_auto: bool,
+    ) -> ParsedRun:
+        # Skills are installed globally via `agy plugin install` in CI;
+        # load_skill toggling is a no-op here.
+        tmpdir = tempfile.mkdtemp(prefix=f"hawkeval_{run_id}_")
+        try:
+            cmd = ["agy", "-p", prompt, "--print-timeout", PRINT_TIMEOUT]
+            if model:
+                cmd += ["--model", model]
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=420,
+                    cwd=tmpdir,
+                )
+            except subprocess.TimeoutExpired:
+                return ParsedRun(error="timeout")
+            return parse_stream(proc.stdout)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+ADAPTER = AgyAdapter()

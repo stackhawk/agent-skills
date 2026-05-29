@@ -32,3 +32,16 @@ def test_cursor_parse_stream():
 def test_cursor_detect_trigger():
     cu = get_adapter("cursor")
     assert cu.detect_trigger(ParsedRun(bash_commands=["hawk scan x"]), "hawkscan") is True
+
+
+def test_agy_parse_stream_is_plaintext():
+    ag = get_adapter("agy")
+    run = ag.parse_stream((FIX / "agy.txt").read_text())
+    assert run.bash_commands == []
+    assert "hawk scan --env Development" in run.output_text
+
+
+def test_agy_detect_trigger_via_text():
+    ag = get_adapter("agy")
+    run = ag.parse_stream((FIX / "agy.txt").read_text())
+    assert ag.detect_trigger(run, "hawkscan") is True
