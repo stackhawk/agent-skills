@@ -16,6 +16,8 @@ Each harness connects the platform-agnostic test cases in `evals/` to a specific
 
 ### Prerequisites
 
+Install [uv](https://docs.astral.sh/uv/) if you don't have it — `uv run` handles dependency installation automatically, so no separate `uv sync` step is needed before running evals.
+
 Install the CLI for whichever platform you want to test:
 
 ```bash
@@ -30,18 +32,18 @@ curl -fsSL https://antigravity.google/install-cli | bash  # Antigravity (agy)
 
 ```bash
 # Requires: ANTHROPIC_API_KEY
-python3 evals/harnesses/claude-code/run-evals.py --skill hawkscan
-python3 evals/harnesses/claude-code/run-evals.py --skill api
+uv run evals --harness claude-code --skill hawkscan
+uv run evals --harness claude-code --skill api
 
 # Override model (default: claude's configured default)
-python3 evals/harnesses/claude-code/run-evals.py --skill hawkscan --model claude-opus-4-7
-python3 evals/harnesses/claude-code/run-evals.py --skill hawkscan --model claude-haiku-4-5-20251001
+uv run evals --harness claude-code --skill hawkscan --model claude-opus-4-7
+uv run evals --harness claude-code --skill hawkscan --model claude-haiku-4-5-20251001
 
 # Single prompt
-python3 evals/harnesses/claude-code/run-evals.py --skill hawkscan --id hw-07
+uv run evals --harness claude-code --skill hawkscan --id hw-07
 
 # Dry run (no API calls)
-python3 evals/harnesses/claude-code/run-evals.py --skill hawkscan --dry-run
+uv run evals --harness claude-code --skill hawkscan --dry-run
 ```
 
 ### Codex
@@ -55,20 +57,20 @@ codex plugin add stackhawk-api@stackhawk
 
 ```bash
 # Requires: OPENAI_API_KEY
-python3 evals/harnesses/codex/run-evals.py --skill hawkscan
-python3 evals/harnesses/codex/run-evals.py --skill api
+uv run evals --harness codex --skill hawkscan
+uv run evals --harness codex --skill api
 
 # Override model
-python3 evals/harnesses/codex/run-evals.py --skill hawkscan --model gpt-5.5
-python3 evals/harnesses/codex/run-evals.py --skill hawkscan --model o3
+uv run evals --harness codex --skill hawkscan --model gpt-5.5
+uv run evals --harness codex --skill hawkscan --model o3
 ```
 
 ### Cursor
 
 ```bash
 # Requires: Cursor Pro account
-python3 evals/harnesses/cursor/run-evals.py --skill hawkscan
-python3 evals/harnesses/cursor/run-evals.py --skill api
+uv run evals --harness cursor --skill hawkscan
+uv run evals --harness cursor --skill api
 ```
 
 ### Copilot
@@ -76,9 +78,9 @@ python3 evals/harnesses/cursor/run-evals.py --skill api
 ```bash
 # Requires: GitHub Copilot account (gh copilot or copilot CLI)
 # No plugin setup needed — loads directly via --plugin-dir
-python3 evals/harnesses/copilot/run-evals.py --skill hawkscan
-python3 evals/harnesses/copilot/run-evals.py --skill api
-python3 evals/harnesses/copilot/run-evals.py --skill hawkscan --model gpt-5.3-codex
+uv run evals --harness copilot --skill hawkscan
+uv run evals --harness copilot --skill api
+uv run evals --harness copilot --skill hawkscan --model gpt-5.3-codex
 ```
 
 > **Best trigger detection**: Copilot emits an explicit `skill` tool call
@@ -95,16 +97,23 @@ agy plugin install /path/to/agent-skills/plugins/api
 
 ```bash
 # Run with your main agy session idle (background tasks bleed in otherwise)
-python3 evals/harnesses/agy/run-evals.py --skill hawkscan
-python3 evals/harnesses/agy/run-evals.py --skill api
+uv run evals --harness agy --skill hawkscan
+uv run evals --harness agy --skill api
 
 # Longer timeout for slow prompts
-python3 evals/harnesses/agy/run-evals.py --skill hawkscan --print-timeout 300s
+uv run evals --harness agy --skill hawkscan --print-timeout 300s
 ```
+
+> **Shims vs adapters**: The per-platform `run-evals.py` scripts are back-compat
+> shims that forward to `uv run evals`. Full stream-parsing adapter logic lives in
+> `evals/harnesses/<platform>/adapter.py`; currently only **claude-code** has a
+> full adapter. The other platforms (codex, cursor, copilot, agy) forward through
+> the same CLI path and will gain dedicated adapters as output formats are
+> stabilised.
 
 ## How it works
 
-For each row in `evals/<skill>/prompts.csv`, each harness:
+For each entry in `evals/<skill>/prompts.yaml`, each harness:
 
 1. Runs `agent -p "<prompt>"` in a fresh isolated directory
 2. Captures bash commands executed and text output
@@ -122,7 +131,10 @@ For each row in `evals/<skill>/prompts.csv`, each harness:
 
 ## CI
 
-The `.github/workflows/skill-evals.yml` workflow runs Claude Code + Codex + Gemini + Cursor on every PR that touches `plugins/` or `evals/`.
+The `.github/workflows/skill-evals.yml` workflow is tiered:
+
+- **Every PR**: runs `uv run validate` (no API keys required) + a cheap claude-code / Haiku run
+- **Merge to main + manual dispatch**: runs the full model matrix across all platforms
 
 Required GitHub secrets:
 - `ANTHROPIC_API_KEY` — Claude Code
