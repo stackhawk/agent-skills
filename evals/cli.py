@@ -83,9 +83,9 @@ def main() -> None:
     cell = CellReport(platform=args.harness, skill=args.skill,
                       model=args.model or "default", commit=commit, results=results)
     (out_dir / "cell.json").write_text(cell.model_dump_json(indent=2))
-
-    from evals.lib.reporting import render_job_summary, write_github_summary
-    write_github_summary(render_job_summary(cell))
+    # Note: individual cells no longer write to GITHUB_STEP_SUMMARY — the `report`
+    # job aggregates every cell.json into one pivot table (render_digest), so the
+    # run summary holds a single table instead of one per matrix cell.
 
     if summary["false_positives"] or summary["false_negatives"] or \
             summary["total_blocking_failures"] > 0:

@@ -1,6 +1,7 @@
 """Summaries + rich rendering for eval runs."""
 from __future__ import annotations
 import os
+import re
 from collections import Counter
 
 from rich.console import Console
@@ -90,60 +91,116 @@ def write_github_summary(md: str) -> None:
         fp.write(md)
 
 
+_PLATFORM_ORDER = {p: i for i, p in
+                   enumerate(["claude-code", "codex", "cursor", "agy", "copilot"])}
+_PIVOT_ICON = {"pass": "✅", "pass-slow": "◆", "fail": "❌"}
+
+
+def _short_model(model: str) -> str:
+    """Compact column label: drop a trailing date stamp and a redundant
+    'claude-' prefix. 'claude-haiku-4-5-20251001' -> 'haiku-4-5'; 'o3' -> 'o3'."""
+    m = re.sub(r"-\d{6,}$", "", model)
+    if m.startswith("claude-"):
+        m = m[len("claude-"):]
+    return m or model
+
+
+def _id_sort_key(run_id: str):
+    m = re.search(r"(\d+)", run_id)
+    return (int(m.group(1)) if m else 0, run_id)
+
+
+def _fail_reason(r: EvalResult) -> str:
+    reason = (r.note or "").strip()
+    if not reason:
+        if not r.trigger_correct:
+            reason = "false-positive" if r.did_trigger else "false-negative"
+        elif r.budget_breaches:
+            reason = "; ".join(r.budget_breaches)
+        else:
+            reason = "blocking check failed"
+    reason = reason.replace("|", "/").replace("\n", " ").strip()
+    return reason[:69] + "…" if len(reason) > 70 else reason
+
+
+def _pivot_cell(r: EvalResult | None) -> str:
+    """One matrix cell: emoji, plus a terse reason on non-pass outcomes."""
+    if r is None:
+        return "·"   # this harness/model didn't run this test
+    v = r.verdict.value
+    if v == "pass":
+        return _PIVOT_ICON["pass"]
+    if v == "pass-slow":
+        why = "; ".join(r.budget_breaches) or "slow"
+        return f"{_PIVOT_ICON['pass-slow']} — {why}"[:74]
+    return f"{_PIVOT_ICON['fail']} — {_fail_reason(r)}"
+
+
 def render_digest(cells, baselines=None, lift=None) -> str:
-    from evals.lib.baseline import diff as _diff, score_delta
+    """One aggregated pivot table for the whole matrix.
+
+    Rows are tests (skill/id); columns are platform-model combos; each cell is a
+    verdict emoji followed by a short reason on failures. Replaces the previous
+    per-cell tables so the Actions run summary holds a single table.
+    """
     out = ["<!-- skill-eval-comment -->", "## Skill Eval Results\n"]
-    out.append("| platform | skill | model | trigger | ✅/◆/❌ | score | vs base |")
-    out.append("|---|---|---|---|---|---|---|")
-    for cell in cells:
-        c = Counter(r.verdict.value for r in cell.results)
-        n = len(cell.results); trig = sum(1 for r in cell.results if r.trigger_correct)
-        graded = [r for r in cell.results if r.did_trigger and r.should_trigger]
-        avg = sum(r.score for r in graded) // len(graded) if graded else 0
-        ticon = "✅" if trig == n else "❌"
-        vs = "—"
-        if baselines is not None:
-            b = baselines.get((cell.platform, cell.skill, cell.model))
-            if b is not None:
-                bg = [r for r in b.results if r.did_trigger and r.should_trigger]
-                bavg = sum(r.score for r in bg) // len(bg) if bg else 0
-                delta = score_delta(avg, bavg)
-                vs = f"{badge(delta, delta)}"
-        out.append(f"| {cell.platform} | {cell.skill} | {cell.model} | {ticon} {trig}/{n} | "
-                   f"{c.get('pass',0)}/{c.get('pass-slow',0)}/{c.get('fail',0)} | {avg} | {vs} |")
+    if not cells:
+        out.append("_No results._\n")
+        return "\n".join(out) + "\n"
+
+    cols = sorted({(c.platform, c.model) for c in cells},
+                  key=lambda pm: (_PLATFORM_ORDER.get(pm[0], 99), pm[1]))
+    col_label = {pm: f"{pm[0]}-{_short_model(pm[1])}" for pm in cols}
+
+    lookup: dict[tuple, EvalResult] = {}
+    row_keys: dict[tuple, bool] = {}
+    for c in cells:
+        for r in c.results:
+            lookup[(c.platform, c.model, c.skill, r.run_id)] = r
+            row_keys[(c.skill, r.run_id)] = True
+    skill_rank = {"hawkscan": 0, "api": 1}
+    rows = sorted(row_keys, key=lambda sr: (skill_rank.get(sr[0], 9), *_id_sort_key(sr[1])))
+
+    out.append("| test | " + " | ".join(col_label[pm] for pm in cols) + " |")
+    out.append("|---" * (len(cols) + 1) + "|")
+    for skill, rid in rows:
+        line = " | ".join(_pivot_cell(lookup.get((pm[0], pm[1], skill, rid)))
+                          for pm in cols)
+        out.append(f"| {skill}/{rid} | {line} |")
     out.append("")
+    out.append("_Legend: ✅ pass · ◆ pass-slow · ❌ fail — reason follows the icon "
+               "on non-pass cells; `·` = not run._\n")
+
+    # Optional, compact extras (kept off the main table to avoid the old sprawl).
     if baselines is None:
         out.append("_No baseline available — showing absolute results only._\n")
-    for cell in cells:
-        out.append(render_job_summary(cell))
-        if baselines is not None:
-            base = baselines.get((cell.platform, cell.skill, cell.model))
+    else:
+        from evals.lib.baseline import diff as _diff, score_delta
+        notes = []
+        for c in cells:
+            base = baselines.get((c.platform, c.skill, c.model))
             if base is None:
-                out.append("_no baseline for this cell._\n")
-            else:
-                d = _diff(cell, base)
-                changed = {k: v for k, v in d.items()
-                           if v in ("regressed", "fixed", "changed")}
-                if changed:
-                    out.append("**vs baseline:** " + ", ".join(
-                        f"{badge(v, v)} {k}" for k, v in sorted(changed.items())) + "\n")
-                else:
-                    out.append("_vs baseline: no changes._\n")
+                continue
+            tag = f"{c.platform}-{_short_model(c.model)}/{c.skill}"
+            for k, v in sorted(_diff(c, base).items()):
+                if v in ("regressed", "fixed", "changed"):
+                    notes.append(f"{badge(v, v)} {tag}:{k}")
+            g = [r for r in c.results if r.did_trigger and r.should_trigger]
+            bg = [r for r in base.results if r.did_trigger and r.should_trigger]
+            avg = sum(r.score for r in g) // len(g) if g else 0
+            bavg = sum(r.score for r in bg) // len(bg) if bg else 0
+            delta = score_delta(avg, bavg)
+            if delta in ("better", "worse"):
+                notes.append(f"{badge(delta, delta)} {tag}")
+        out.append(("**vs baseline:** " + ", ".join(notes) + "\n") if notes
+                   else "_vs baseline: no changes._\n")
+
     if lift:
         out.append("\n### Skill lift (with vs without)\n")
-        for key, rows in lift.items():
-            lifted = sum(1 for r in rows if r["effect"] == "lift")
+        for key, rws in lift.items():
+            lifted = sum(1 for r in rws if r["effect"] == "lift")
             out.append(f"**{key[0]} · {key[1]} · {key[2]}** — "
-                       f"{lifted}/{len(rows)} prompts lifted FAIL→PASS\n")
-            out.append("| test | without | with | |")
-            out.append("|---|---|---|---|")
-            for r in rows:
-                eff = {"lift": badge('fixed', '↑ lift'),
-                       "regress": badge('regressed', '↓ regress'),
-                       "none": ""}[r["effect"]]
-                out.append(f"| {r['id']} | {r['without_verdict']} | "
-                           f"{r['with_verdict']} | {eff} |")
-            out.append("")
+                       f"{lifted}/{len(rws)} prompts lifted FAIL→PASS\n")
     return "\n".join(out) + "\n"
 
 
