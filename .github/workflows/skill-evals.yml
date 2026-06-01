@@ -102,12 +102,16 @@ jobs:
         run: hawk version
         continue-on-error: true  # absence is captured per-prompt in the eval traces
 
+      # No --bare: --bare is "minimal mode" where skills only resolve via an
+      # explicit /skill-name and do NOT auto-trigger from their description, so
+      # natural-language prompts never fire the skill (all false-negatives).
+      # Full plugin mode is also the realistic user experience (hooks + skill).
       - name: Run ${{ matrix.skill }} evals (${{ matrix.model }})
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           uv run evals --harness claude-code --skill ${{ matrix.skill }} \
-            --model ${{ matrix.model }} --bare --max-budget 0.15
+            --model ${{ matrix.model }} --max-budget 0.15
 
       - name: Skill lift (compare with/without)
         if: github.event_name == 'pull_request'
@@ -115,7 +119,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           uv run compare --harness claude-code --skill ${{ matrix.skill }} \
-            --model ${{ matrix.model }} --bare --max-budget 0.15 || true
+            --model ${{ matrix.model }} --max-budget 0.15 || true
 
       - name: Upload results
         if: always()
