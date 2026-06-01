@@ -160,6 +160,22 @@ jobs:
           echo y | codex plugin add hawkscan@stackhawk
           echo y | codex plugin add stackhawk-api@stackhawk
 
+      # hawk CLI (Java app) — the hawkscan skill needs it on PATH; install-only, no scan.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install latest hawk CLI
+        uses: stackhawk/hawkscan-action@v2.5.0
+        with:
+          apiKey: ${{ secrets.HAWK_API_KEY }}
+          version: latest
+          installCLIOnly: true
+        continue-on-error: true  # install-only shouldn't need apiKey; don't let a check abort the job
+      - name: Verify hawk CLI
+        run: hawk version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
       - name: Run ${{ matrix.skill }} evals (${{ matrix.model }})
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -208,6 +224,22 @@ jobs:
           echo y | agy plugin install plugins/api
         continue-on-error: true  # depends on agy CLI; best-effort so evals still runs
 
+      # hawk CLI (Java app) — the hawkscan skill needs it on PATH; install-only, no scan.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install latest hawk CLI
+        uses: stackhawk/hawkscan-action@v2.5.0
+        with:
+          apiKey: ${{ secrets.HAWK_API_KEY }}
+          version: latest
+          installCLIOnly: true
+        continue-on-error: true  # install-only shouldn't need apiKey; don't let a check abort the job
+      - name: Verify hawk CLI
+        run: hawk version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
       - name: Run ${{ matrix.skill }} evals
         env:
           AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
@@ -253,6 +285,22 @@ jobs:
       - name: Verify agent CLI
         run: agent --version
         continue-on-error: true  # CLI package name TBD; skip if unavailable
+
+      # hawk CLI (Java app) — the hawkscan skill needs it on PATH; install-only, no scan.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install latest hawk CLI
+        uses: stackhawk/hawkscan-action@v2.5.0
+        with:
+          apiKey: ${{ secrets.HAWK_API_KEY }}
+          version: latest
+          installCLIOnly: true
+        continue-on-error: true  # install-only shouldn't need apiKey; don't let a check abort the job
+      - name: Verify hawk CLI
+        run: hawk version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
 
       - name: Run ${{ matrix.skill }} evals
         env:
