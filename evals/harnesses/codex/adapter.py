@@ -1,6 +1,7 @@
 """codex Harness adapter. Parsing + signals ported from pre-shim run-evals.py."""
 from __future__ import annotations
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -123,15 +124,26 @@ class CodexAdapter:
                max_budget, bare, full_auto) -> ParsedRun:
         tmpdir = tempfile.mkdtemp(prefix=f"hawkeval_{run_id}_")
         try:
-            # Pick the sandbox once: full-auto needs write access for the agent
-            # to run the skill workflow; otherwise read-only. Passing --sandbox
-            # twice makes codex exit 2 ("cannot be used multiple times").
-            sandbox = "workspace-write" if full_auto else "read-only"
-            cmd = [
-                "codex", "exec", "--json",
-                "--sandbox", sandbox,
-                "--skip-git-repo-check",
-            ]
+            # In CI the bubblewrap sandbox can't initialize (Ubuntu 24.04 blocks
+            # unprivileged user namespaces), so codex exits at sandbox startup
+            # before running any command — the agent can't reach hawk. Bypass the
+            # sandbox there; it's safe on an ephemeral runner in a throwaway tmpdir,
+            # and the agent needs write+exec to run the skill workflow anyway.
+            # Locally, keep the real sandbox (workspace-write for full-auto,
+            # else read-only). Passing --sandbox twice makes codex exit 2.
+            if os.environ.get("CI"):
+                cmd = [
+                    "codex", "exec", "--json",
+                    "--dangerously-bypass-approvals-and-sandbox",
+                    "--skip-git-repo-check",
+                ]
+            else:
+                sandbox = "workspace-write" if full_auto else "read-only"
+                cmd = [
+                    "codex", "exec", "--json",
+                    "--sandbox", sandbox,
+                    "--skip-git-repo-check",
+                ]
             if model:
                 cmd += ["-m", model]
             cmd.append(prompt)
