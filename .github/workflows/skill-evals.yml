@@ -80,26 +80,23 @@ jobs:
       - name: Verify claude CLI
         run: claude --version
 
-      # hawk CLI is a Java app; the Linux ZIP needs a JDK 17+ on PATH.
+      # hawk CLI is a Java app; ensure a JDK 17+ is on PATH for it.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      # Install the latest hawk so the hawkscan skill can follow its documented
-      # CLI path (hawk version/config/validate/scan). Without it the agent
-      # improvises (docker rabbit hole) and never emits a hawk* trigger signal.
-      # Version + URL pattern per the repo's own install reference
-      # (cursor/.cursor/rules/stackhawk-hawkscan-install.mdc).
+      # Install the latest hawk via StackHawk's official action in install-only
+      # mode (no scan). It downloads the CLI and adds it to PATH so the hawkscan
+      # skill can follow its documented CLI path (hawk version/config/validate/
+      # scan). Without hawk the agent improvises and never emits a hawk* signal.
       - name: Install latest hawk CLI
-        run: |
-          set -euo pipefail
-          HAWK_VERSION="$(curl -fsSL https://api.stackhawk.com/hawkscan/version)"
-          echo "Installing hawk ${HAWK_VERSION}"
-          curl -fLo /tmp/hawk.zip "https://download.stackhawk.com/hawk/cli/hawk-${HAWK_VERSION}.zip"
-          unzip -q /tmp/hawk.zip -d "${HOME}"
-          echo "${HOME}/hawk-${HAWK_VERSION}" >> "${GITHUB_PATH}"
-        continue-on-error: true  # if version/download endpoint hiccups, evals still runs and records it
+        uses: stackhawk/hawkscan-action@v2.5.0
+        with:
+          apiKey: ${{ secrets.HAWK_API_KEY }}
+          version: latest
+          installCLIOnly: true
+        continue-on-error: true  # install-only shouldn't need apiKey; don't let a check abort the job
 
       - name: Verify hawk CLI
         run: hawk version
