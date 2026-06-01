@@ -33,6 +33,23 @@ INVOCATION_SIGNALS = {
     ],
 }
 
+# Observe mode: the CI sandbox has no running app / credentials, so the agent
+# can't execute a full scan — it would stop and ask for a target. We're gauging
+# whether the right skill TRIGGERS and whether the agent knows its WORKFLOW, so
+# we ask it to declare the skill and outline the commands it would run. The
+# declaration matches INVOCATION_SIGNALS; the outlined commands match the
+# process-check signals (which scan bash_commands + output_text). We deliberately
+# do NOT list the commands here — producing them is the skill's job, i.e. the test.
+# Appended only in observe mode (not full-auto / extended, which uses a real target).
+OBSERVE_SUFFIX = (
+    "\n\n---\n"
+    "(Eval harness — observe mode. Before doing anything else, output:\n"
+    "1. A decision line naming the StackHawk skill this request should invoke, "
+    "written exactly as `hawkscan:hawkscan: YES`, `stackhawk-api:api: YES`, or `none: NO`.\n"
+    "2. If a skill applies, the specific CLI commands that skill's documented "
+    "workflow would run, in order. Then proceed as normal.)"
+)
+
 
 def parse_stream(raw: str) -> ParsedRun:
     bash, written, edited, text, cost, err = [], [], [], "", 0.0, None
@@ -85,7 +102,11 @@ class ClaudeCodeAdapter:
                max_budget, bare, full_auto) -> ParsedRun:
         tmpdir = tempfile.mkdtemp(prefix=f"hawkeval_{run_id}_")
         try:
-            cmd = ["claude", "-p", prompt, "--output-format", "stream-json",
+            # Observe mode (default): ask the agent to declare + outline its
+            # workflow. Full-auto/extended runs against a real target execute for
+            # real, so they use the bare prompt.
+            effective_prompt = prompt if full_auto else prompt + OBSERVE_SUFFIX
+            cmd = ["claude", "-p", effective_prompt, "--output-format", "stream-json",
                    "--verbose", "--no-session-persistence",
                    "--max-budget-usd", str(max_budget)]
             if model:
