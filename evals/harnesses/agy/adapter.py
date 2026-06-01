@@ -139,7 +139,14 @@ class AgyAdapter:
             run = parse_stream(proc.stdout)
             run.returncode = proc.returncode
             run.stderr_tail = (proc.stderr or "")[-2000:]
-            if proc.returncode != 0 and not run.error:
+            # agy has no non-interactive auth (relies on OAuth; see upstream
+            # google-antigravity/antigravity-cli#78). In a browser-less CI runner
+            # it prints an auth URL and times out. Label that distinctly so the
+            # digest doesn't read it as an eval/plumbing failure on our side.
+            blob = (run.output_text + " " + run.stderr_tail).lower()
+            if "authentication required" in blob or "authentication timed out" in blob:
+                run.error = "agy: no headless auth (upstream antigravity-cli#78) — not runnable in CI"
+            elif proc.returncode != 0 and not run.error:
                 run.error = f"exit {proc.returncode}: {run.stderr_tail[-300:].strip()}"
             elif not run.output_text and not run.bash_commands and not run.error:
                 run.error = f"empty output (exit {proc.returncode})"
