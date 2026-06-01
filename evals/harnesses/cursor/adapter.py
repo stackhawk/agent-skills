@@ -176,19 +176,20 @@ class CursorAdapter:
             # skill should be loaded (pre-shim always installed them).
             if load_skill:
                 _setup_skill(tmpdir)
-            api_key = os.environ.get("CURSOR_API_KEY", "")
             cmd = [
                 "agent", "-p", prompt,
                 "--output-format", "stream-json",
                 "--print",
                 "--trust",
             ]
-            if api_key:
-                cmd += ["--api-key", api_key]
             if model:
                 cmd += ["--model", model]
             if full_auto:
                 cmd.append("--force")
+            # Pass CURSOR_API_KEY via the environment, never on the command line
+            # (a CLI arg leaks the secret into process listings and logs). The
+            # agent CLI reads CURSOR_API_KEY from the environment directly.
+            env = dict(os.environ)
             try:
                 proc = subprocess.run(
                     cmd,
@@ -196,6 +197,7 @@ class CursorAdapter:
                     text=True,
                     timeout=300,
                     cwd=tmpdir,
+                    env=env,
                 )
             except subprocess.TimeoutExpired:
                 return ParsedRun(error="timeout")

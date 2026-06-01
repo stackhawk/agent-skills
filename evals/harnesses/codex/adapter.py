@@ -123,15 +123,17 @@ class CodexAdapter:
                max_budget, bare, full_auto) -> ParsedRun:
         tmpdir = tempfile.mkdtemp(prefix=f"hawkeval_{run_id}_")
         try:
+            # Pick the sandbox once: full-auto needs write access for the agent
+            # to run the skill workflow; otherwise read-only. Passing --sandbox
+            # twice makes codex exit 2 ("cannot be used multiple times").
+            sandbox = "workspace-write" if full_auto else "read-only"
             cmd = [
                 "codex", "exec", "--json",
-                "--sandbox", "workspace-write",
+                "--sandbox", sandbox,
                 "--skip-git-repo-check",
             ]
             if model:
                 cmd += ["-m", model]
-            if not full_auto:
-                cmd += ["--sandbox", "read-only"]
             cmd.append(prompt)
             try:
                 proc = subprocess.run(cmd, capture_output=True, text=True,

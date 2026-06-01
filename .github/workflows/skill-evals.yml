@@ -172,9 +172,11 @@ jobs:
 
       - name: Install agy CLI
         run: curl -fsSL https://antigravity.google/install-cli | bash
+        continue-on-error: true  # preview installer; don't abort the job — evals records the launch failure
 
       - name: Verify agy CLI
         run: agy --version
+        continue-on-error: true  # if unavailable, the eval run captures it as a per-prompt error
 
       - name: Install StackHawk plugins
         env:
@@ -182,6 +184,7 @@ jobs:
         run: |
           echo y | agy plugin install plugins/hawkscan
           echo y | agy plugin install plugins/api
+        continue-on-error: true  # depends on agy CLI; best-effort so evals still runs
 
       - name: Run ${{ matrix.skill }} evals
         env:
@@ -190,6 +193,7 @@ jobs:
           MODEL_ARGS=()
           if [ "${{ matrix.model }}" != "default" ]; then MODEL_ARGS=(--model "${{ matrix.model }}"); fi
           uv run evals --harness agy --skill ${{ matrix.skill }} "${MODEL_ARGS[@]}"
+        continue-on-error: true  # best-effort; digest degrades gracefully (matches cursor)
 
       - name: Upload results
         if: always()
