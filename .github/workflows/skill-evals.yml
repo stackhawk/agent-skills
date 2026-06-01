@@ -152,6 +152,13 @@ jobs:
       - name: Verify codex CLI
         run: codex --version
 
+      # codex exec reads stored credentials, not OPENAI_API_KEY directly — without
+      # this it 401s ("Missing bearer"). Pipe the key via stdin (never as an arg).
+      - name: Authenticate codex CLI
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: printenv OPENAI_API_KEY | codex login --with-api-key
+
       - name: Install StackHawk skills (hawkscan + api)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -209,8 +216,12 @@ jobs:
       - uses: astral-sh/setup-uv@v5
 
       - name: Install agy CLI
-        run: curl -fsSL https://antigravity.google/install-cli | bash
-        continue-on-error: true  # preview installer; don't abort the job — evals records the launch failure
+        run: |
+          # /cli/install.sh is the real bootstrapper; /install-cli returns the
+          # site's HTML landing page (piping that into bash is what broke before).
+          curl -fsSL https://antigravity.google/cli/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"   # installer drops `agy` here
+        continue-on-error: true  # don't abort the job — evals records any launch failure
 
       - name: Verify agy CLI
         run: agy --version
@@ -218,7 +229,7 @@ jobs:
 
       - name: Install StackHawk plugins
         env:
-          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+          ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}  # agy reads ANTIGRAVITY_API_KEY, not AGY_API_KEY
         run: |
           echo y | agy plugin install plugins/hawkscan
           echo y | agy plugin install plugins/api
@@ -242,7 +253,7 @@ jobs:
 
       - name: Run ${{ matrix.skill }} evals
         env:
-          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+          ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}  # agy reads ANTIGRAVITY_API_KEY, not AGY_API_KEY
         run: |
           MODEL_ARGS=()
           if [ "${{ matrix.model }}" != "default" ]; then MODEL_ARGS=(--model "${{ matrix.model }}"); fi
@@ -279,12 +290,16 @@ jobs:
           node-version: "20"
 
       - name: Install Cursor CLI
-        run: npm install -g @cursor/cli || npm install -g cursor-agent
-        continue-on-error: true  # package name TBD; update when stable
+        run: |
+          # Official installer; symlinks the `agent` binary into ~/.local/bin.
+          # (@cursor/cli / cursor-agent npm packages don't exist — they 404'd.)
+          curl https://cursor.com/install -fsS | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        continue-on-error: true  # best-effort; evals records any launch failure
 
       - name: Verify agent CLI
         run: agent --version
-        continue-on-error: true  # CLI package name TBD; skip if unavailable
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
 
       # hawk CLI (Java app) — the hawkscan skill needs it on PATH; install-only, no scan.
       - uses: actions/setup-java@v4
