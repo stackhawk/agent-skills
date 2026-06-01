@@ -80,6 +80,31 @@ jobs:
       - name: Verify claude CLI
         run: claude --version
 
+      # hawk CLI is a Java app; the Linux ZIP needs a JDK 17+ on PATH.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Install the latest hawk so the hawkscan skill can follow its documented
+      # CLI path (hawk version/config/validate/scan). Without it the agent
+      # improvises (docker rabbit hole) and never emits a hawk* trigger signal.
+      # Version + URL pattern per the repo's own install reference
+      # (cursor/.cursor/rules/stackhawk-hawkscan-install.mdc).
+      - name: Install latest hawk CLI
+        run: |
+          set -euo pipefail
+          HAWK_VERSION="$(curl -fsSL https://api.stackhawk.com/hawkscan/version)"
+          echo "Installing hawk ${HAWK_VERSION}"
+          curl -fLo /tmp/hawk.zip "https://download.stackhawk.com/hawk/cli/hawk-${HAWK_VERSION}.zip"
+          unzip -q /tmp/hawk.zip -d "${HOME}"
+          echo "${HOME}/hawk-${HAWK_VERSION}" >> "${GITHUB_PATH}"
+        continue-on-error: true  # if version/download endpoint hiccups, evals still runs and records it
+
+      - name: Verify hawk CLI
+        run: hawk version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
       - name: Run ${{ matrix.skill }} evals (${{ matrix.model }})
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
