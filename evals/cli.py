@@ -39,17 +39,35 @@ def main() -> None:
     if not prompts:
         print(f"no prompt '{args.prompt_id}'", file=sys.stderr); sys.exit(1)
 
+    from evals.lib.models import EvalResult, Verdict
     results = []
     out_dir = RESULTS_ROOT / args.harness / "results" / args.skill
     out_dir.mkdir(parents=True, exist_ok=True)
     for p in prompts:
-        run = adapter.launch(p.prompt, args.skill, p.id, plugin_dirs,
-                             model=args.model, load_skill=True,
-                             max_budget=args.max_budget, bare=args.bare,
-                             full_auto=args.full_auto)
-        did = adapter.detect_trigger(run, args.skill)
-        res = grade(p, run, cfg.checks, platform=args.harness, skill=args.skill,
-                    did_trigger=did)
+        try:
+            run = adapter.launch(p.prompt, args.skill, p.id, plugin_dirs,
+                                 model=args.model, load_skill=True,
+                                 max_budget=args.max_budget, bare=args.bare,
+                                 full_auto=args.full_auto)
+            did = adapter.detect_trigger(run, args.skill)
+            res = grade(p, run, cfg.checks, platform=args.harness, skill=args.skill,
+                        did_trigger=did)
+            # persist a trace for visibility (uploaded with the artifact)
+            trace = (f"# {p.id} (returncode={run.returncode})\n"
+                     f"## error\n{run.error or ''}\n"
+                     f"## stderr_tail\n{run.stderr_tail}\n"
+                     f"## output_text\n{run.output_text}\n"
+                     f"## bash_commands\n" + "\n".join(run.bash_commands) + "\n")
+            (out_dir / f"{p.id}.trace.txt").write_text(trace)
+        except Exception as e:  # noqa: BLE001 — never let one prompt abort the cell
+            res = EvalResult(platform=args.harness, skill=args.skill, run_id=p.id,
+                             should_trigger=p.should_trigger, did_trigger=False,
+                             trigger_correct=(not p.should_trigger),
+                             verdict=Verdict.FAIL if p.should_trigger else Verdict.PASS,
+                             score=0 if p.should_trigger else 100,
+                             note=f"harness exception: {type(e).__name__}: {e}")
+            (out_dir / f"{p.id}.trace.txt").write_text(
+                f"# {p.id}\n## harness exception\n{type(e).__name__}: {e}\n")
         results.append(res)
         (out_dir / f"{p.id}.result.json").write_text(res.model_dump_json(indent=2))
 
