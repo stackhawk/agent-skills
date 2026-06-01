@@ -8,13 +8,18 @@ on:
         type: string
 permissions:
   contents: read
+
 jobs:
-  capture:
+
+  # ── Claude Code — 3 models ─────────────────────────────────────────────────
+  capture-claude-code:
+    name: baseline / claude-code / ${{ matrix.skill }} / ${{ matrix.model }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         skill: [hawkscan, api]
+        model: [claude-sonnet-4-6, claude-opus-4-7, claude-haiku-4-5-20251001]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,15 +30,137 @@ jobs:
           node-version: "20"
       - name: Install Claude Code CLI
         run: npm install -g @anthropic-ai/claude-code
-      - name: Run baseline eval (haiku)
+      - name: Verify claude CLI
+        run: claude --version
+      - name: Run baseline eval (${{ matrix.model }})
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           uv run evals --harness claude-code --skill ${{ matrix.skill }} \
-            --model claude-haiku-4-5-20251001 --bare --max-budget 0.15 || true
+            --model ${{ matrix.model }} --bare --max-budget 0.15 || true
       - name: Upload baseline artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: baseline-claude-code-${{ matrix.skill }}-haiku
+          name: baseline-claude-code-${{ matrix.skill }}-${{ matrix.model }}
           path: evals/harnesses/claude-code/results/${{ matrix.skill }}/cell.json
+          retention-days: 90
+
+  # ── Codex — 2 models ──────────────────────────────────────────────────────
+  capture-codex:
+    name: baseline / codex / ${{ matrix.skill }} / ${{ matrix.model }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: [hawkscan, api]
+        model: [gpt-5.5, o3]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
+      - name: Verify codex CLI
+        run: codex --version
+      - name: Install StackHawk skills (hawkscan + api)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          codex plugin marketplace add .
+          echo y | codex plugin add hawkscan@stackhawk
+          echo y | codex plugin add stackhawk-api@stackhawk
+      - name: Run baseline eval (${{ matrix.model }})
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          uv run evals --harness codex --skill ${{ matrix.skill }} --model ${{ matrix.model }} || true
+      - name: Upload baseline artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-codex-${{ matrix.skill }}-${{ matrix.model }}
+          path: evals/harnesses/codex/results/${{ matrix.skill }}/cell.json
+          retention-days: 90
+
+  # ── Antigravity (agy) — default model ─────────────────────────────────────
+  capture-agy:
+    name: baseline / agy / ${{ matrix.skill }} / ${{ matrix.model }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: [hawkscan, api]
+        model: [default]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: astral-sh/setup-uv@v5
+      - name: Install agy CLI
+        run: curl -fsSL https://antigravity.google/install-cli | bash
+      - name: Verify agy CLI
+        run: agy --version
+      - name: Install StackHawk plugins
+        env:
+          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+        run: |
+          echo y | agy plugin install plugins/hawkscan
+          echo y | agy plugin install plugins/api
+      - name: Run baseline eval
+        env:
+          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+        run: |
+          MODEL_ARGS=()
+          if [ "${{ matrix.model }}" != "default" ]; then MODEL_ARGS=(--model "${{ matrix.model }}"); fi
+          uv run evals --harness agy --skill ${{ matrix.skill }} "${MODEL_ARGS[@]}" || true
+      - name: Upload baseline artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-agy-${{ matrix.skill }}-${{ matrix.model }}
+          path: evals/harnesses/agy/results/${{ matrix.skill }}/cell.json
+          retention-days: 90
+
+  # ── Cursor — default model ─────────────────────────────────────────────────
+  capture-cursor:
+    name: baseline / cursor / ${{ matrix.skill }} / ${{ matrix.model }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: [hawkscan, api]
+        model: [default]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Cursor CLI
+        run: npm install -g @cursor/cli || npm install -g cursor-agent
+        continue-on-error: true  # package name TBD; update when stable
+      - name: Verify agent CLI
+        run: agent --version
+        continue-on-error: true  # CLI package name TBD; skip if unavailable
+      - name: Run baseline eval
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: |
+          MODEL_ARGS=()
+          if [ "${{ matrix.model }}" != "default" ]; then MODEL_ARGS=(--model "${{ matrix.model }}"); fi
+          uv run evals --harness cursor --skill ${{ matrix.skill }} "${MODEL_ARGS[@]}" || true
+        continue-on-error: true  # best-effort
+      - name: Upload baseline artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-cursor-${{ matrix.skill }}-${{ matrix.model }}
+          path: evals/harnesses/cursor/results/${{ matrix.skill }}/cell.json
           retention-days: 90
