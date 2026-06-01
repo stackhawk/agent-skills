@@ -1,10 +1,9 @@
 name: Skill Evals
 
 on:
-  pull_request:
-    paths:
-      - "plugins/**"
-      - "evals/**"
+  # Manual, on-demand only — matches origin/main's deliberate design (commit c860e47
+  # "ci: remove pull_request trigger — evals run on workflow_dispatch only"). These
+  # evals drive real agents against tool CLIs and were never an automatic PR gate.
   workflow_dispatch:
     inputs:
       skill:
@@ -60,7 +59,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: validate-config
     if: |
-      github.event_name == 'pull_request' ||
       inputs.platform == 'all' ||
       inputs.platform == 'claude-code'
     strategy:
@@ -111,7 +109,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: validate-config
     if: |
-      github.event_name == 'pull_request' ||
       inputs.platform == 'all' ||
       inputs.platform == 'codex'
     strategy:
@@ -161,7 +158,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: validate-config
     if: |
-      github.event_name == 'pull_request' ||
       inputs.platform == 'all' ||
       inputs.platform == 'agy'
     strategy:
@@ -209,7 +205,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: validate-config
     if: |
-      github.event_name == 'pull_request' ||
       inputs.platform == 'all' ||
       inputs.platform == 'cursor'
     strategy:
@@ -251,10 +246,10 @@ jobs:
           retention-days: 30
 
   # ── PR comment ────────────────────────────────────────────────────────────
-  comment:
-    name: Post PR summary
+  report:
+    name: Eval report (run summary + PR comment)
     needs: [validate-config, eval-claude-code, eval-codex, eval-agy, eval-cursor]
-    if: always() && github.event_name == 'pull_request'
+    if: always()
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
@@ -289,7 +284,7 @@ jobs:
         if: always()
         run: cat digest.md >> "$GITHUB_STEP_SUMMARY"
       - name: Post digest comment
-        if: always()
+        if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
