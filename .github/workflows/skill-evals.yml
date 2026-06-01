@@ -102,6 +102,25 @@ jobs:
         run: hawk version
         continue-on-error: true  # absence is captured per-prompt in the eval traces
 
+      # hawkop (StackHawk platform/API CLI) — needed for the hawkscan Step-1 dedup
+      # checks (hawkop app list / env list) and the entire api skill. No official
+      # action exists, so install the native Linux binary straight into
+      # /usr/local/bin (already on PATH). Version + URL per the repo's api skill
+      # reference (plugins/api/skills/api/references/hawkop-shortcuts.md).
+      - name: Install hawkop CLI
+        run: |
+          set -euo pipefail
+          HAWKOP_VERSION="$(curl -fsSL https://download.stackhawk.com/hawkop/latest-version.txt)"
+          echo "Installing hawkop v${HAWKOP_VERSION}"
+          curl -fLo /tmp/hawkop.tar.gz \
+            "https://download.stackhawk.com/hawkop/cli/hawkop-v${HAWKOP_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          tar -xzf /tmp/hawkop.tar.gz -C /tmp
+          sudo mv /tmp/hawkop /usr/local/bin/hawkop
+        continue-on-error: true  # don't abort the job — evals records any absence
+      - name: Verify hawkop CLI
+        run: hawkop --version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
       # No --bare: --bare is "minimal mode" where skills only resolve via an
       # explicit /skill-name and do NOT auto-trigger from their description, so
       # natural-language prompts never fire the skill (all false-negatives).
@@ -187,6 +206,25 @@ jobs:
         run: hawk version
         continue-on-error: true  # absence is captured per-prompt in the eval traces
 
+      # hawkop (StackHawk platform/API CLI) — needed for the hawkscan Step-1 dedup
+      # checks (hawkop app list / env list) and the entire api skill. No official
+      # action exists, so install the native Linux binary straight into
+      # /usr/local/bin (already on PATH). Version + URL per the repo's api skill
+      # reference (plugins/api/skills/api/references/hawkop-shortcuts.md).
+      - name: Install hawkop CLI
+        run: |
+          set -euo pipefail
+          HAWKOP_VERSION="$(curl -fsSL https://download.stackhawk.com/hawkop/latest-version.txt)"
+          echo "Installing hawkop v${HAWKOP_VERSION}"
+          curl -fLo /tmp/hawkop.tar.gz \
+            "https://download.stackhawk.com/hawkop/cli/hawkop-v${HAWKOP_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          tar -xzf /tmp/hawkop.tar.gz -C /tmp
+          sudo mv /tmp/hawkop /usr/local/bin/hawkop
+        continue-on-error: true  # don't abort the job — evals records any absence
+      - name: Verify hawkop CLI
+        run: hawkop --version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
       - name: Run ${{ matrix.skill }} evals (${{ matrix.model }})
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -255,6 +293,25 @@ jobs:
         run: hawk version
         continue-on-error: true  # absence is captured per-prompt in the eval traces
 
+      # hawkop (StackHawk platform/API CLI) — needed for the hawkscan Step-1 dedup
+      # checks (hawkop app list / env list) and the entire api skill. No official
+      # action exists, so install the native Linux binary straight into
+      # /usr/local/bin (already on PATH). Version + URL per the repo's api skill
+      # reference (plugins/api/skills/api/references/hawkop-shortcuts.md).
+      - name: Install hawkop CLI
+        run: |
+          set -euo pipefail
+          HAWKOP_VERSION="$(curl -fsSL https://download.stackhawk.com/hawkop/latest-version.txt)"
+          echo "Installing hawkop v${HAWKOP_VERSION}"
+          curl -fLo /tmp/hawkop.tar.gz \
+            "https://download.stackhawk.com/hawkop/cli/hawkop-v${HAWKOP_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          tar -xzf /tmp/hawkop.tar.gz -C /tmp
+          sudo mv /tmp/hawkop /usr/local/bin/hawkop
+        continue-on-error: true  # don't abort the job — evals records any absence
+      - name: Verify hawkop CLI
+        run: hawkop --version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
       - name: Run ${{ matrix.skill }} evals
         env:
           ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}  # agy reads ANTIGRAVITY_API_KEY, not AGY_API_KEY
@@ -319,6 +376,25 @@ jobs:
         continue-on-error: true  # install-only shouldn't need apiKey; don't let a check abort the job
       - name: Verify hawk CLI
         run: hawk version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
+      # hawkop (StackHawk platform/API CLI) — needed for the hawkscan Step-1 dedup
+      # checks (hawkop app list / env list) and the entire api skill. No official
+      # action exists, so install the native Linux binary straight into
+      # /usr/local/bin (already on PATH). Version + URL per the repo's api skill
+      # reference (plugins/api/skills/api/references/hawkop-shortcuts.md).
+      - name: Install hawkop CLI
+        run: |
+          set -euo pipefail
+          HAWKOP_VERSION="$(curl -fsSL https://download.stackhawk.com/hawkop/latest-version.txt)"
+          echo "Installing hawkop v${HAWKOP_VERSION}"
+          curl -fLo /tmp/hawkop.tar.gz \
+            "https://download.stackhawk.com/hawkop/cli/hawkop-v${HAWKOP_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          tar -xzf /tmp/hawkop.tar.gz -C /tmp
+          sudo mv /tmp/hawkop /usr/local/bin/hawkop
+        continue-on-error: true  # don't abort the job — evals records any absence
+      - name: Verify hawkop CLI
+        run: hawkop --version
         continue-on-error: true  # absence is captured per-prompt in the eval traces
 
       - name: Run ${{ matrix.skill }} evals
