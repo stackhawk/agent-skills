@@ -121,6 +121,7 @@ def grade(prompt: PromptConfig, run: ParsedRun, checks: list[dict], *,
             verdict=Verdict.PASS if trigger_correct else Verdict.FAIL,
             budget_breaches=[], process_checks=[],
             score=100 if trigger_correct else 0, cost_usd=run.cost_usd,
+            note=(run.error or ""),
         )
 
     proc = run_process_checks(run, applicable_checks(checks, prompt.id))
@@ -141,4 +142,5 @@ def grade(prompt: PromptConfig, run: ParsedRun, checks: list[dict], *,
         trigger_correct=trigger_correct,
         verdict=verdict, budget_breaches=breaches, process_checks=proc,
         score=_score(proc), cost_usd=run.cost_usd,
+        note=(run.error or ""),
     )

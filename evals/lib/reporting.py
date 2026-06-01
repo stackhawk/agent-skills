@@ -160,5 +160,7 @@ def render_job_summary(cell: CellReport) -> str:
         why = "; ".join(r.budget_breaches) if r.budget_breaches else (
             "" if r.trigger_correct else
             ("false-positive" if r.did_trigger else "false-negative"))
+        if r.note:
+            why = f"{why} — {r.note}" if why else r.note
         rows.append(f"| {r.run_id} | {_VERDICT_ICON[r.verdict.value]} | {why} |")
     return head + "\n".join(rows) + "\n"

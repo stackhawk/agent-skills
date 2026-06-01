@@ -56,6 +56,8 @@ class ParsedRun(BaseModel):
     output_tokens: int | None = None
     wall_seconds: float | None = None
     error: str | None = None
+    returncode: int | None = None
+    stderr_tail: str = ""
 
 
 class ProcessCheckResult(BaseModel):
@@ -78,6 +80,7 @@ class EvalResult(BaseModel):
     process_checks: list[ProcessCheckResult] = []
     score: int
     cost_usd: float = 0.0
+    note: str = ""
 
 
 class CellReport(BaseModel):

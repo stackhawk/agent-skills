@@ -199,7 +199,14 @@ class CursorAdapter:
                 )
             except subprocess.TimeoutExpired:
                 return ParsedRun(error="timeout")
-            return parse_stream(proc.stdout)
+            run = parse_stream(proc.stdout)
+            run.returncode = proc.returncode
+            run.stderr_tail = (proc.stderr or "")[-2000:]
+            if proc.returncode != 0 and not run.error:
+                run.error = f"exit {proc.returncode}: {run.stderr_tail[-300:].strip()}"
+            elif not run.output_text and not run.bash_commands and not run.error:
+                run.error = f"empty output (exit {proc.returncode})"
+            return run
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 

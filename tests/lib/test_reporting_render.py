@@ -92,6 +92,18 @@ def test_digest_overview_shows_score_delta_vs_baseline():
     assert "worse" in md.lower()   # 70 vs 90 -> worse
 
 
+def test_job_summary_shows_note():
+    from evals.lib.models import CellReport, EvalResult, Verdict
+    from evals.lib.reporting import render_job_summary
+    r = EvalResult(platform="cursor", skill="hawkscan", run_id="hw-01",
+                   should_trigger=True, did_trigger=False, trigger_correct=False,
+                   verdict=Verdict.FAIL, score=0, note="harness error: agent not found")
+    cell = CellReport(platform="cursor", skill="hawkscan", model="default",
+                      commit="c", results=[r])
+    md = render_job_summary(cell)
+    assert "agent not found" in md
+
+
 def test_digest_renders_lift_section():
     from evals.lib.models import CellReport, EvalResult, Verdict
     from evals.lib.reporting import render_digest

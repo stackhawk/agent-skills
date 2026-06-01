@@ -57,6 +57,17 @@ def test_agy_detect_trigger_via_text():
     assert ag.detect_trigger(run, "hawkscan") is True
 
 
+def test_claude_code_parses_total_cost_usd():
+    import json
+    cc = get_adapter("claude-code")
+    lines = [
+        json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}),
+        json.dumps({"type":"result","result":"done","total_cost_usd":0.123,"subtype":"success"}),
+    ]
+    run = cc.parse_stream("\n".join(lines))
+    assert abs(run.cost_usd - 0.123) < 1e-9
+
+
 def test_agy_observe_suffix_and_skill_signal():
     ag = get_adapter("agy")
     # The pre-shim SKILL: declaration format (emitted because of OBSERVE_SUFFIX)

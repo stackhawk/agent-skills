@@ -59,7 +59,7 @@ def parse_stream(raw: str) -> ParsedRun:
                     elif name == "Edit" and inp.get("file_path"):
                         edited.append(inp["file_path"])
         elif etype == "result":
-            cost = event.get("cost_usd") or 0.0
+            cost = event.get("total_cost_usd") or event.get("cost_usd") or 0.0
             text += event.get("result", "")
             if event.get("subtype") == "error_during_execution":
                 err = event.get("result", "unknown error")
@@ -102,7 +102,14 @@ class ClaudeCodeAdapter:
                                       timeout=300, cwd=tmpdir)
             except subprocess.TimeoutExpired:
                 return ParsedRun(error="timeout")
-            return parse_stream(proc.stdout)
+            run = parse_stream(proc.stdout)
+            run.returncode = proc.returncode
+            run.stderr_tail = (proc.stderr or "")[-2000:]
+            if proc.returncode != 0 and not run.error:
+                run.error = f"exit {proc.returncode}: {run.stderr_tail[-300:].strip()}"
+            elif not run.output_text and not run.bash_commands and not run.error:
+                run.error = f"empty output (exit {proc.returncode})"
+            return run
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 

@@ -72,3 +72,23 @@ def test_cellreport_rejects_unknown_field():
     from evals.lib.models import CellReport
     with pytest.raises(ValidationError):
         CellReport(platform="x", skill="y", model="m", commit="c", results=[], extra=1)
+
+
+def test_parsedrun_has_diagnostic_fields():
+    from evals.lib.models import ParsedRun
+    r = ParsedRun()
+    assert r.returncode is None
+    assert r.stderr_tail == ""
+    r2 = ParsedRun(returncode=1, stderr_tail="boom")
+    assert r2.returncode == 1 and r2.stderr_tail == "boom"
+
+
+def test_evalresult_has_note_field():
+    from evals.lib.models import EvalResult, Verdict
+    e = EvalResult(platform="p", skill="s", run_id="r", should_trigger=True,
+                   did_trigger=True, trigger_correct=True, verdict=Verdict.PASS, score=100)
+    assert e.note == ""
+    e2 = EvalResult(platform="p", skill="s", run_id="r", should_trigger=True,
+                    did_trigger=False, trigger_correct=False, verdict=Verdict.FAIL,
+                    score=0, note="harness error: agent: command not found")
+    assert "command not found" in e2.note

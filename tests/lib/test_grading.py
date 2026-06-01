@@ -201,3 +201,13 @@ def test_grade_false_positive_fails_without_process_checks():
     assert res.verdict == Verdict.FAIL
     assert res.trigger_correct is False
     assert res.process_checks == []
+
+
+def test_grade_propagates_harness_error_to_note():
+    from evals.lib.models import ParsedRun, Verdict
+    from evals.lib.grading import grade
+    p = _prompt(should_trigger=True)   # _prompt helper already in this file
+    run = ParsedRun(returncode=1, stderr_tail="agent: command not found", error="exit 1: agent: command not found")
+    res = grade(p, run, [], platform="cursor", skill="hawkscan", did_trigger=False)
+    assert res.verdict == Verdict.FAIL          # didn't trigger
+    assert "command not found" in res.note      # harness error surfaced
