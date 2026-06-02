@@ -75,12 +75,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
 
-      - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code
+      - name: Install Claude Code CLI (native)
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Verify claude CLI
         run: claude --version
@@ -184,6 +183,11 @@ jobs:
       - name: Verify codex CLI
         run: codex --version
 
+      - name: Install Claude Code CLI (native, rubric grader)
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       # codex exec reads stored credentials, not OPENAI_API_KEY directly — without
       # this it 401s ("Missing bearer"). Pipe the key via stdin (never as an arg).
       - name: Authenticate codex CLI
@@ -271,6 +275,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      - name: Install Claude Code CLI (native, rubric grader)
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Install agy CLI
         run: |
@@ -368,9 +376,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
 
       - name: Install Cursor CLI
         run: |
@@ -383,6 +388,11 @@ jobs:
       - name: Verify agent CLI
         run: agent --version
         continue-on-error: true  # absence is captured per-prompt in the eval traces
+
+      - name: Install Claude Code CLI (native, rubric grader)
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       # hawk CLI (Java app) — the hawkscan skill needs it on PATH; install-only, no scan.
       - uses: actions/setup-java@v4

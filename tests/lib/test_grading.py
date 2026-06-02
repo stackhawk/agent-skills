@@ -211,3 +211,33 @@ def test_grade_propagates_harness_error_to_note():
     res = grade(p, run, [], platform="cursor", skill="hawkscan", did_trigger=False)
     assert res.verdict == Verdict.FAIL          # didn't trigger
     assert "command not found" in res.note      # harness error surfaced
+
+
+def test_file_absent_or_unchanged_passes_when_not_written():
+    checks = [{"id": "no_yml", "type": "file_absent_or_unchanged",
+               "target_file": "stackhawk.yml", "severity": "blocking"}]
+    assert run_process_checks(ParsedRun(output_text="done"), checks)[0].passed is True
+    # ...and fails when the file IS written
+    bad = ParsedRun(output_text="done", files_written=["stackhawk.yml"])
+    assert run_process_checks(bad, checks)[0].passed is False
+
+
+def test_file_absent_with_anti_pattern_paths():
+    checks = [{"id": "no_legacy", "type": "file_absent",
+               "anti_patterns": ["bootstrap/manifest.yaml"], "severity": "blocking"}]
+    assert run_process_checks(ParsedRun(output_text="x"), checks)[0].passed is True
+    bad = ParsedRun(files_written=["bootstrap/manifest.yaml"])
+    assert run_process_checks(bad, checks)[0].passed is False
+
+
+def test_file_present_via_write_or_narration():
+    checks = [{"id": "emit", "type": "file_present",
+               "signals": ["data-seed/manifest.yaml"], "severity": "blocking"}]
+    # written for real (execution mode)
+    assert run_process_checks(
+        ParsedRun(files_written=["data-seed/manifest.yaml"]), checks)[0].passed is True
+    # only narrated (observe mode)
+    assert run_process_checks(
+        ParsedRun(output_text="I'll write data-seed/manifest.yaml"), checks)[0].passed is True
+    # neither -> fail
+    assert run_process_checks(ParsedRun(output_text="nope"), checks)[0].passed is False

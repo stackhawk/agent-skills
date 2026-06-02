@@ -56,16 +56,23 @@ def grade_rubric(run: ParsedRun, skill: str, run_id: str, *,
     rubric_data = json.loads(rubric_path.read_text())
     schema = json.loads(schema_path.read_text())
 
+    # NOTE: no --bare here. --bare ("minimal mode") suppresses the structured
+    # --json-schema output (returns an empty result), so the grader must run in
+    # full mode. It's a one-shot text judge; no plugin-dir needed.
     cmd = ["claude", "-p", _build_prompt(rubric_data, run, skill, run_id),
            "--output-format", "json", "--no-session-persistence",
-           "--json-schema", json.dumps(schema), "--max-budget-usd", "0.10", "--bare"]
+           "--json-schema", json.dumps(schema), "--max-budget-usd", "0.10"]
     if grader_model:
         cmd += ["--model", grader_model]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         envelope = json.loads(proc.stdout)
-        raw = envelope.get("result", "{}")
+        # --output-format json wraps as {"result": "<json|obj>", ...}; some modes
+        # return the schema object directly. Handle both.
+        raw = envelope.get("result", envelope) if isinstance(envelope, dict) else envelope
         result = raw if isinstance(raw, dict) else json.loads(raw)
+        if "score" not in result and "overall_pass" not in result:
+            raise ValueError(f"grader returned no rubric fields: {str(result)[:120]}")
     except Exception as exc:  # noqa: BLE001 — grader is best-effort
         return RubricResult(overall_pass=False, score=0, checks=[],
                             error=f"grader failed: {type(exc).__name__}: {exc}")

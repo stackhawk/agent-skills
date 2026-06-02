@@ -37,9 +37,18 @@ def run_process_checks(run: ParsedRun, checks: list[dict]) -> list[ProcessCheckR
 
         if ctype in ("command_negative", "file_content_negative", "output_negative"):
             passed = anti_hit is None
-        elif ctype == "file_absent":
+        elif ctype in ("file_absent", "file_absent_or_unchanged"):
+            # The file(s) must NOT have been written/edited. Supports either a
+            # single target_file or a list of anti_pattern paths (data-seed uses
+            # both forms). "_or_unchanged" is the same absence test here — the
+            # eval doesn't diff pre-existing content.
             target = check.get("target_file", "").lower()
-            passed = target not in all_files
+            passed = (not target or target not in all_files) and \
+                     not any(a in all_files for a in antis)
+        elif ctype == "file_present":
+            # The artifact should exist: written/edited for real (execution mode)
+            # OR named in the agent's narration (observe mode).
+            passed = any(s in all_files or s in haystack for s in signals)
         elif ctype == "conditional_command":
             condition_str = check.get("condition", "")
             m = re.search(r"'([^']+)'", condition_str)
