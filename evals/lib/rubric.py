@@ -42,6 +42,13 @@ Populate the JSON result with:
   checks = one entry per check id listed above"""
 
 
+# Cheap, capable grader by default — judging a transcript against a rubric is a
+# structured classification task. Budget must cover the full prompt (transcript +
+# rubric + schema); 0.10 hit error_max_budget_usd, so use a roomier cap.
+DEFAULT_GRADER_MODEL = "claude-haiku-4-5-20251001"
+GRADER_BUDGET_USD = "0.25"
+
+
 def grade_rubric(run: ParsedRun, skill: str, run_id: str, *,
                  grader_model: str | None = None, timeout: int = 120,
                  base_dir: Path | None = None) -> RubricResult | None:
@@ -61,9 +68,9 @@ def grade_rubric(run: ParsedRun, skill: str, run_id: str, *,
     # full mode. It's a one-shot text judge; no plugin-dir needed.
     cmd = ["claude", "-p", _build_prompt(rubric_data, run, skill, run_id),
            "--output-format", "json", "--no-session-persistence",
-           "--json-schema", json.dumps(schema), "--max-budget-usd", "0.10"]
-    if grader_model:
-        cmd += ["--model", grader_model]
+           "--json-schema", json.dumps(schema),
+           "--max-budget-usd", GRADER_BUDGET_USD,
+           "--model", grader_model or DEFAULT_GRADER_MODEL]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         envelope = json.loads(proc.stdout)
