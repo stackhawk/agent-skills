@@ -36,6 +36,7 @@ CLI_SIGNALS = {
         "hawk create app",
         "hawk init",
         "hawk perch",
+        "hawk version",
     ],
     # Cursor api: agent runs hawkop status as its first step, then deeper
     # hawkop commands. Broader hawkop signals included since Cursor doesn't
@@ -50,6 +51,8 @@ CLI_SIGNALS = {
         "/api/v1/scan",
         "hawk_api GET",
     ],
+    "stackhawk-data-seed": ["data-seed/", "data-seed/manifest", ".data-seed-credentials",
+                            "manifest.yaml"],
 }
 
 # Invocation signals — checked against output_text only.
@@ -86,6 +89,18 @@ INVOCATION_SIGNALS = {
         "untriaged findings",
         "scan history",
         "findings across",
+    ],
+    "stackhawk-data-seed": [
+        "stackhawk-data-seed:stackhawk-data-seed`: yes",
+        "stackhawk-data-seed:stackhawk-data-seed** — yes",
+        "stackhawk-data-seed:stackhawk-data-seed: yes",
+        "stackhawk-data-seed:stackhawk-data-seed — yes",
+        "stackhawk-data-seed: yes", "stackhawk-data-seed — yes",
+        "stackhawk-data-seed - yes",
+        # narrative-style
+        "seed data for hawkscan", "seed this repo", "minimum seed entities",
+        "seed entities required", "data seed complete", "data-seed/manifest",
+        "set up seed data",
     ],
 }
 

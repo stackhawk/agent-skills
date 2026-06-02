@@ -15,9 +15,7 @@ CLI_SIGNALS = {
         "hawk scan",
         "hawk validate",
         "hawk rescan",
-        # "hawk version" excluded: running 'hawk version' alone is common for
-        # installation-check tasks and would cause false positives. The preflight
-        # workflow always also runs 'hawk config --help', so 'hawk config' below suffices.
+        "hawk version",        # preflight version check (parity with origin/main signals)
         "hawk config",
         "hawk create app",
         "hawk init",
@@ -33,6 +31,9 @@ CLI_SIGNALS = {
         "/api/v1/scan",        # api Step 4: raw scan drill-down
         "hawk_api GET",        # api raw API helper function
     ],
+    # data-seed emits checked-in artifacts rather than a distinctive CLI.
+    "stackhawk-data-seed": ["data-seed/", "data-seed/manifest", ".data-seed-credentials",
+                            "manifest.yaml"],
 }
 
 # Invocation signals — checked against output_text only. In full-auto mode these are
@@ -63,6 +64,17 @@ INVOCATION_SIGNALS = {
         "stackhawk-api:api` — yes",
         "stackhawk-api:api: yes",
         "stackhawk-api:api — yes",
+    ],
+    "stackhawk-data-seed": [
+        "stackhawk-data-seed:stackhawk-data-seed`: yes",
+        "stackhawk-data-seed:stackhawk-data-seed` — yes",
+        "stackhawk-data-seed:stackhawk-data-seed**: yes",
+        "stackhawk-data-seed:stackhawk-data-seed** — yes",
+        "stackhawk-data-seed:stackhawk-data-seed: yes",
+        "stackhawk-data-seed:stackhawk-data-seed — yes",
+        "stackhawk-data-seed: yes", "stackhawk-data-seed — yes",
+        "seed data for hawkscan", "seed this repo", "minimum seed entities",
+        "seed entities required", "data seed complete", "data-seed/manifest",
     ],
 }
 

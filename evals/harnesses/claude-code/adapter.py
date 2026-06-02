@@ -9,9 +9,13 @@ from evals.lib.models import ParsedRun
 
 CLI_SIGNALS = {
     "hawkscan": ["hawk scan", "hawk validate", "hawk rescan", "hawk config",
-                 "hawk create app", "hawk init", "hawk perch"],
+                 "hawk create app", "hawk init", "hawk perch", "hawk version"],
     "api": ["hawkop scan", "hawkop app", "hawkop org", "hawkop env", "hawkop status",
             "hawkop init", "/api/v1/scan", "/api/v2/org", "hawk_api GET"],
+    # data-seed emits checked-in artifacts rather than running a distinctive CLI;
+    # its discovery + emission paths are the executable signals.
+    "stackhawk-data-seed": ["data-seed/", "data-seed/manifest", ".data-seed-credentials",
+                            "manifest.yaml"],
 }
 
 INVOCATION_SIGNALS = {
@@ -31,6 +35,20 @@ INVOCATION_SIGNALS = {
         "stackhawk-api** - yes", "stackhawk-api: yes", "stackhawk-api — yes",
         "stackhawk-api - yes",
     ],
+    "stackhawk-data-seed": [
+        "stackhawk-data-seed:stackhawk-data-seed`: yes",
+        "stackhawk-data-seed:stackhawk-data-seed` — yes",
+        "stackhawk-data-seed:stackhawk-data-seed**: yes",
+        "stackhawk-data-seed:stackhawk-data-seed** — yes",
+        "stackhawk-data-seed:stackhawk-data-seed: yes",
+        "stackhawk-data-seed:stackhawk-data-seed — yes",
+        "stackhawk-data-seed:stackhawk-data-seed - yes",
+        "stackhawk-data-seed**: yes", "stackhawk-data-seed** — yes",
+        "stackhawk-data-seed** - yes", "stackhawk-data-seed: yes",
+        "stackhawk-data-seed — yes", "stackhawk-data-seed - yes",
+        "seed data for hawkscan", "seed this repo", "minimum seed entities",
+        "seed entities required", "data seed complete", "data-seed/manifest",
+    ],
 }
 
 # Observe mode: the CI sandbox has no running app / credentials, so the agent
@@ -45,7 +63,8 @@ OBSERVE_SUFFIX = (
     "\n\n---\n"
     "(Eval harness — observe mode. Before doing anything else, output:\n"
     "1. A decision line naming the StackHawk skill this request should invoke, "
-    "written exactly as `hawkscan:hawkscan: YES`, `stackhawk-api:api: YES`, or `none: NO`.\n"
+    "written exactly as `hawkscan:hawkscan: YES`, `stackhawk-api:api: YES`, "
+    "`stackhawk-data-seed:stackhawk-data-seed: YES`, or `none: NO`.\n"
     "2. If a skill applies, the specific CLI commands that skill's documented "
     "workflow would run, in order. Then proceed as normal.)"
 )

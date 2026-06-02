@@ -22,6 +22,7 @@ from evals.lib.models import ParsedRun
 CLI_SIGNALS: dict[str, list[str]] = {
     "hawkscan": [],
     "api": [],
+    "stackhawk-data-seed": [],
 }
 
 # INVOCATION_SIGNALS: checked against output_text.
@@ -61,6 +62,16 @@ INVOCATION_SIGNALS: dict[str, list[str]] = {
         "stackhawk-api:api: yes",
         "stackhawk-api:api — yes",
     ],
+    "stackhawk-data-seed": [
+        "skill: stackhawk-data-seed",
+        "skill:stackhawk-data-seed",
+        "stackhawk-data-seed:stackhawk-data-seed`: yes",
+        "stackhawk-data-seed:stackhawk-data-seed: yes",
+        "stackhawk-data-seed:stackhawk-data-seed — yes",
+        "stackhawk-data-seed: yes", "stackhawk-data-seed — yes",
+        "seed data for hawkscan", "seed this repo", "minimum seed entities",
+        "data seed complete", "data-seed/manifest",
+    ],
 }
 
 # Matches pre-shim default --print-timeout (180s); bumped slightly for safety.
@@ -73,7 +84,8 @@ PRINT_TIMEOUT = "240s"
 # it, live agy runs produce no detectable trigger text (all false-negatives).
 OBSERVE_SUFFIX = (
     "\n\n(Eval mode: before responding, state which skill you would invoke: "
-    "'SKILL: hawkscan', 'SKILL: api', or 'SKILL: none'. Then proceed with your response.)"
+    "'SKILL: hawkscan', 'SKILL: api', 'SKILL: stackhawk-data-seed', or 'SKILL: none'. "
+    "Then proceed with your response.)"
 )
 
 
