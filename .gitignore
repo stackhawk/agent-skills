@@ -5,3 +5,8 @@ docs/superpowers/
 .worktrees/
 .idea/
 *.iml
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
