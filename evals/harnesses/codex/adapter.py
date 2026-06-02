@@ -7,6 +7,8 @@ import subprocess
 import tempfile
 
 from evals.lib.models import ParsedRun
+from evals.lib.triggers import explicit_decision, decide_trigger
+from evals.lib.observe import observe_suffix
 
 # CLI signals — checked against bash_commands only (prevents documentation content
 # from creating false positives when the agent writes README/guides about HawkScan).
@@ -127,10 +129,12 @@ class CodexAdapter:
 
     def detect_trigger(self, run: ParsedRun, skill: str) -> bool:
         cli = " ".join(run.bash_commands).lower()
-        if any(s.lower() in cli for s in self.cli_signals(skill)):
-            return True
+        executed = any(s.lower() in cli for s in self.cli_signals(skill))
         text = run.output_text.lower()
-        return any(s.lower() in text for s in self.invocation_signals(skill))
+        loose = any(s.lower() in text for s in self.invocation_signals(skill))
+        return decide_trigger(executed_cli=executed,
+                              declared=explicit_decision(run.output_text, skill),
+                              loose_hit=loose)
 
     def launch(self, prompt, skill, run_id, plugin_dirs, *, model, load_skill,
                max_budget, bare, full_auto) -> ParsedRun:
@@ -158,7 +162,9 @@ class CodexAdapter:
                 ]
             if model:
                 cmd += ["-m", model]
-            cmd.append(prompt)
+            # Observe mode: append the per-skill walkthrough suffix. Full-auto /
+            # extended runs against a real target use the bare prompt.
+            cmd.append(prompt if full_auto else prompt + observe_suffix(skill))
             try:
                 proc = subprocess.run(cmd, capture_output=True, text=True,
                                       timeout=300, cwd=tmpdir)

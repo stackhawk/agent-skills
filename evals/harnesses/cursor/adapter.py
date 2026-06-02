@@ -8,6 +8,8 @@ import tempfile
 from pathlib import Path
 
 from evals.lib.models import ParsedRun
+from evals.lib.triggers import explicit_decision, decide_trigger
+from evals.lib.observe import observe_suffix
 
 # adapter.py -> cursor -> harnesses -> evals -> repo root
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -178,10 +180,12 @@ class CursorAdapter:
 
     def detect_trigger(self, run: ParsedRun, skill: str) -> bool:
         cli = " ".join(run.bash_commands).lower()
-        if any(s.lower() in cli for s in self.cli_signals(skill)):
-            return True
+        executed = any(s.lower() in cli for s in self.cli_signals(skill))
         text = run.output_text.lower()
-        return any(s.lower() in text for s in self.invocation_signals(skill))
+        loose = any(s.lower() in text for s in self.invocation_signals(skill))
+        return decide_trigger(executed_cli=executed,
+                              declared=explicit_decision(run.output_text, skill),
+                              loose_hit=loose)
 
     def launch(self, prompt, skill, run_id, plugin_dirs, *, model, load_skill,
                max_budget, bare, full_auto) -> ParsedRun:
@@ -191,8 +195,11 @@ class CursorAdapter:
             # skill should be loaded (pre-shim always installed them).
             if load_skill:
                 _setup_skill(tmpdir)
+            # Observe mode: append the per-skill walkthrough suffix. Full-auto /
+            # extended runs against a real target use the bare prompt.
+            effective_prompt = prompt if full_auto else prompt + observe_suffix(skill)
             cmd = [
-                "agent", "-p", prompt,
+                "agent", "-p", effective_prompt,
                 "--output-format", "stream-json",
                 "--print",
                 "--trust",

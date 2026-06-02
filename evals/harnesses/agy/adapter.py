@@ -17,6 +17,8 @@ import subprocess
 import tempfile
 
 from evals.lib.models import ParsedRun
+from evals.lib.triggers import explicit_decision, decide_trigger
+from evals.lib.observe import observe_suffix
 
 # CLI_SIGNALS: agy emits plain text — there are no shell commands to scan.
 CLI_SIGNALS: dict[str, list[str]] = {
@@ -80,13 +82,10 @@ PRINT_TIMEOUT = "240s"
 # Appended to every prompt before invoking agy (verbatim from pre-shim
 # 5472ed2~1:evals/harnesses/agy/run-evals.py). In --print mode agy hangs on tool
 # approvals, so this asks the agent to declare its skill choice up front — that
-# declaration is what the SKILL: signals in INVOCATION_SIGNALS detect. Without
-# it, live agy runs produce no detectable trigger text (all false-negatives).
-OBSERVE_SUFFIX = (
-    "\n\n(Eval mode: before responding, state which skill you would invoke: "
-    "'SKILL: hawkscan', 'SKILL: api', 'SKILL: stackhawk-data-seed', or 'SKILL: none'. "
-    "Then proceed with your response.)"
-)
+# declaration is what explicit_decision + INVOCATION_SIGNALS detect. Without it,
+# live agy runs produce no detectable trigger text (all false-negatives). agy now
+# uses the shared per-skill observe suffix (evals/lib/observe.py), aligning its
+# declaration format and workflow-enumeration ask with the other harnesses.
 
 
 def parse_stream(raw: str) -> ParsedRun:
@@ -108,12 +107,14 @@ class AgyAdapter:
 
     def detect_trigger(self, run: ParsedRun, skill: str) -> bool:
         # agy is text-only; CLI signals may appear in prose too, so check both
-        # lists against the combined text.
+        # lists against the combined text. An explicit decline still overrides a
+        # loose phrase match (e.g. the agent quoting a "don't scan" instruction).
         hay = (" ".join(run.bash_commands) + " " + run.output_text).lower()
-        return (
-            any(s.lower() in hay for s in self.cli_signals(skill))
-            or any(s.lower() in hay for s in self.invocation_signals(skill))
-        )
+        cli_hit = any(s.lower() in hay for s in self.cli_signals(skill))
+        loose = any(s.lower() in hay for s in self.invocation_signals(skill))
+        return decide_trigger(executed_cli=cli_hit,
+                              declared=explicit_decision(run.output_text, skill),
+                              loose_hit=loose)
 
     def launch(
         self,
@@ -133,8 +134,9 @@ class AgyAdapter:
         tmpdir = tempfile.mkdtemp(prefix=f"hawkeval_{run_id}_")
         try:
             # --print mode hangs on tool approvals; the suffix makes agy declare
-            # its skill choice up front so detect_trigger has text to match.
-            effective_prompt = prompt + OBSERVE_SUFFIX
+            # its skill choice up front so detect_trigger has text to match. agy is
+            # text-only (no real execution), so observe mode is its only mode.
+            effective_prompt = prompt + observe_suffix(skill)
             cmd = ["agy", "-p", effective_prompt, "--print-timeout", PRINT_TIMEOUT]
             if model:
                 cmd += ["--model", model]

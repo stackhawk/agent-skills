@@ -70,11 +70,16 @@ def test_claude_code_parses_total_cost_usd():
 
 def test_agy_observe_suffix_and_skill_signal():
     ag = get_adapter("agy")
-    # The pre-shim SKILL: declaration format (emitted because of OBSERVE_SUFFIX)
-    # must still be detected by detect_trigger.
+    # The legacy `SKILL: hawkscan` declaration format must still be detected (it's
+    # retained as a loose INVOCATION_SIGNAL fallback).
     run = ag.parse_stream("I would use SKILL: hawkscan for this task.")
     assert ag.detect_trigger(run, "hawkscan") is True
-    # OBSERVE_SUFFIX must be present, non-empty, and request the SKILL: declaration.
-    mod = _load_adapter_module("agy")
-    assert mod.OBSERVE_SUFFIX.strip()
-    assert "SKILL: hawkscan" in mod.OBSERVE_SUFFIX
+    # agy now uses the shared per-skill observe suffix, which requests the
+    # `plugin:skill: YES`/`none: NO` decision line and a full workflow walkthrough.
+    from evals.lib.observe import observe_suffix
+    suffix = observe_suffix("hawkscan")
+    assert suffix.strip()
+    assert "hawkscan:hawkscan: YES" in suffix
+    # The new decision line is recognized as an explicit trigger.
+    run2 = ag.parse_stream("**hawkscan:hawkscan: YES** — running the scan workflow")
+    assert ag.detect_trigger(run2, "hawkscan") is True

@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 
 from evals.lib.models import ParsedRun
+from evals.lib.triggers import explicit_decision, decide_trigger
+from evals.lib.observe import observe_suffix
 
 CLI_SIGNALS = {
     "hawkscan": ["hawk scan", "hawk validate", "hawk rescan", "hawk config",
@@ -51,23 +53,8 @@ INVOCATION_SIGNALS = {
     ],
 }
 
-# Observe mode: the CI sandbox has no running app / credentials, so the agent
-# can't execute a full scan — it would stop and ask for a target. We're gauging
-# whether the right skill TRIGGERS and whether the agent knows its WORKFLOW, so
-# we ask it to declare the skill and outline the commands it would run. The
-# declaration matches INVOCATION_SIGNALS; the outlined commands match the
-# process-check signals (which scan bash_commands + output_text). We deliberately
-# do NOT list the commands here — producing them is the skill's job, i.e. the test.
-# Appended only in observe mode (not full-auto / extended, which uses a real target).
-OBSERVE_SUFFIX = (
-    "\n\n---\n"
-    "(Eval harness — observe mode. Before doing anything else, output:\n"
-    "1. A decision line naming the StackHawk skill this request should invoke, "
-    "written exactly as `hawkscan:hawkscan: YES`, `stackhawk-api:api: YES`, "
-    "`stackhawk-data-seed:stackhawk-data-seed: YES`, or `none: NO`.\n"
-    "2. If a skill applies, the specific CLI commands that skill's documented "
-    "workflow would run, in order. Then proceed as normal.)"
-)
+# Observe-mode suffix is shared across all harnesses (per-skill). See
+# evals/lib/observe.py for the rationale and wording.
 
 
 def parse_stream(raw: str) -> ParsedRun:
@@ -112,10 +99,12 @@ class ClaudeCodeAdapter:
 
     def detect_trigger(self, run: ParsedRun, skill: str) -> bool:
         cli = " ".join(run.bash_commands).lower()
-        if any(s.lower() in cli for s in self.cli_signals(skill)):
-            return True
+        executed = any(s.lower() in cli for s in self.cli_signals(skill))
         text = run.output_text.lower()
-        return any(s.lower() in text for s in self.invocation_signals(skill))
+        loose = any(s.lower() in text for s in self.invocation_signals(skill))
+        return decide_trigger(executed_cli=executed,
+                              declared=explicit_decision(run.output_text, skill),
+                              loose_hit=loose)
 
     def launch(self, prompt, skill, run_id, plugin_dirs, *, model, load_skill,
                max_budget, bare, full_auto) -> ParsedRun:
@@ -124,7 +113,7 @@ class ClaudeCodeAdapter:
             # Observe mode (default): ask the agent to declare + outline its
             # workflow. Full-auto/extended runs against a real target execute for
             # real, so they use the bare prompt.
-            effective_prompt = prompt if full_auto else prompt + OBSERVE_SUFFIX
+            effective_prompt = prompt if full_auto else prompt + observe_suffix(skill)
             cmd = ["claude", "-p", effective_prompt, "--output-format", "stream-json",
                    "--verbose", "--no-session-persistence",
                    "--max-budget-usd", str(max_budget)]
