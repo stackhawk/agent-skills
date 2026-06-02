@@ -25,6 +25,8 @@ def _common_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--max-budget", type=float, default=0.20)
     p.add_argument("--bare", action="store_true")
     p.add_argument("--full-auto", action="store_true")
+    p.add_argument("--rubric", action="store_true",
+                   help="also run the qualitative model-graded rubric (needs ANTHROPIC_API_KEY)")
 
 
 def main() -> None:
@@ -52,6 +54,13 @@ def main() -> None:
             did = adapter.detect_trigger(run, args.skill)
             res = grade(p, run, cfg.checks, platform=args.harness, skill=args.skill,
                         did_trigger=did)
+            # Qualitative rubric (opt-in): grade the transcript with a claude
+            # grader and attach to the result so the reporter can weave it into
+            # the pass/fail table. Only when the skill triggered correctly —
+            # grading a non-triggering run against a workflow rubric is moot.
+            if args.rubric and res.trigger_correct and did:
+                from evals.lib.rubric import grade_rubric
+                res.rubric = grade_rubric(run, args.skill, p.id)
             # persist a trace for visibility (uploaded with the artifact)
             trace = (f"# {p.id} (returncode={run.returncode})\n"
                      f"## error\n{run.error or ''}\n"

@@ -123,17 +123,29 @@ def _fail_reason(r: EvalResult) -> str:
     return reason[:69] + "…" if len(reason) > 70 else reason
 
 
+def _rubric_tag(r: EvalResult) -> str:
+    """Qualitative rubric badge woven into the cell: ` r85✓` / ` r55✗`.
+    Empty when the rubric didn't run for this prompt."""
+    if r.rubric is None:
+        return ""
+    if r.rubric.error:
+        return " r?"
+    return f" r{r.rubric.score}{'✓' if r.rubric.overall_pass else '✗'}"
+
+
 def _pivot_cell(r: EvalResult | None) -> str:
-    """One matrix cell: emoji, plus a terse reason on non-pass outcomes."""
+    """One matrix cell: deterministic verdict emoji + a terse reason on non-pass,
+    with the qualitative rubric score (rNN✓/✗) appended when it ran."""
     if r is None:
         return "·"   # this harness/model didn't run this test
+    rub = _rubric_tag(r)
     v = r.verdict.value
     if v == "pass":
-        return _PIVOT_ICON["pass"]
+        return f"{_PIVOT_ICON['pass']}{rub}"
     if v == "pass-slow":
         why = "; ".join(r.budget_breaches) or "slow"
-        return f"{_PIVOT_ICON['pass-slow']} — {why}"[:74]
-    return f"{_PIVOT_ICON['fail']} — {_fail_reason(r)}"
+        return f"{_PIVOT_ICON['pass-slow']} — {why}"[:74] + rub
+    return f"{_PIVOT_ICON['fail']} — {_fail_reason(r)}{rub}"
 
 
 def render_digest(cells, baselines=None, lift=None) -> str:
@@ -168,8 +180,8 @@ def render_digest(cells, baselines=None, lift=None) -> str:
                           for pm in cols)
         out.append(f"| {skill}/{rid} | {line} |")
     out.append("")
-    out.append("_Legend: ✅ pass · ◆ pass-slow · ❌ fail — reason follows the icon "
-               "on non-pass cells; `·` = not run._\n")
+    out.append("_Legend: ✅ pass · ◆ pass-slow · ❌ fail (reason follows) · `·` = not run. "
+               "`rNN✓/✗` = qualitative rubric score/verdict (when --rubric ran)._\n")
 
     # Optional, compact extras (kept off the main table to avoid the old sprawl).
     if baselines is None:

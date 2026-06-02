@@ -68,6 +68,22 @@ class ProcessCheckResult(BaseModel):
     anti_found: str | None = None
 
 
+class RubricCheckResult(BaseModel):
+    id: str
+    passed: bool
+    notes: str = ""
+
+
+class RubricResult(BaseModel):
+    """Qualitative, model-graded result (ported from origin/main's --rubric pass).
+    A grader model reviews the transcript against rubric-items.json and returns
+    a 0-100 score + per-item pass/fail; overall_pass = all pass and score >= 70."""
+    overall_pass: bool
+    score: int
+    checks: list[RubricCheckResult] = []
+    error: str | None = None   # set if the grader couldn't run/parse
+
+
 class EvalResult(BaseModel):
     platform: str
     skill: str
@@ -81,6 +97,7 @@ class EvalResult(BaseModel):
     score: int
     cost_usd: float = 0.0
     note: str = ""
+    rubric: RubricResult | None = None   # populated only when --rubric is set
 
 
 class CellReport(BaseModel):
