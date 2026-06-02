@@ -1,8 +1,14 @@
+---
+description: >
+  End-to-end worked example of the stackhawk-data-seed skill: discovery output for a two-service architecture (gateway-api + auth-service + inventory-service), cross-repo dep resolution, minimal seed proposal dialog, full content of every emitted artifact (manifest.yaml + per-service SQL/HTTP files + credentials handoff), manual replay walkthrough, validation criteria.
+globs:
+alwaysApply: false
+---
 # Example Walkthrough
 
 ## Overview
 
-This walkthrough shows a complete end-to-end run of the bootstrap skill against a
+This walkthrough shows a complete end-to-end run of the stackhawk-data-seed skill against a
 two-service example architecture. Use it as a concrete reference for what the skill
 produces, what the confirmation dialogs look like, and how to replay the emitted
 artifacts manually.
@@ -199,7 +205,7 @@ The user confirms. The skill proceeds to emit all artifacts.
 
 ```
 gateway-api/
-├── bootstrap/
+├── data-seed/
 │   ├── manifest.yaml
 │   ├── README.md
 │   ├── credentials.env.example
@@ -211,15 +217,15 @@ gateway-api/
 │   │   └── 001-apps.sql
 │   └── gateway-api/
 │       └── 001-link-app-to-env.http
-├── .bootstrap-credentials.env  # gitignored
-└── .gitignore                  # .bootstrap-credentials.env appended
+├── .data-seed-credentials.env  # gitignored
+└── .gitignore                  # .data-seed-credentials.env appended
 ```
 
-### 1. `bootstrap/manifest.yaml`
+### 1. `data-seed/manifest.yaml`
 
 ```yaml
 version: 1
-name: gateway-api-hawkscan-bootstrap
+name: gateway-api-hawkscan-data-seed
 description: Seeds users, orgs, and apps required for authenticated HawkScan against gateway-api.
 
 targets:
@@ -244,7 +250,7 @@ prerequisites:
     - name: TEST_USER
       description: "Email address of the test user to create"
     - name: TEST_PASS
-      description: "Password for the test user (stored in .bootstrap-credentials.env, gitignored)"
+      description: "Password for the test user (stored in .data-seed-credentials.env, gitignored)"
   services:
     - name: auth-service
       url: ${AUTH_SERVICE_URL:http://localhost:8080}
@@ -258,8 +264,8 @@ prerequisites:
   notes: |
     Start the stack before running: `docker-compose up -d` or your env's equivalent.
     Ensure AUTH_SERVICE_DB_URL and INVENTORY_SERVICE_DB_URL are set in your shell or
-    sourced from .bootstrap-credentials.env before invoking the Runner.
-    See bootstrap/credentials.env.example for a template.
+    sourced from .data-seed-credentials.env before invoking the Runner.
+    See data-seed/credentials.env.example for a template.
 
 steps:
   - id: auth-orgs
@@ -332,10 +338,10 @@ outputs:
   GATEWAY_LOGIN_URL: ${GATEWAY_URL}/login
 ```
 
-### 2. `bootstrap/auth-service/001-orgs.sql`
+### 2. `data-seed/auth-service/001-orgs.sql`
 
 ```sql
--- Bootstrap seed: create Example Test Org in auth-service
+-- Data seed: create Example Test Org in auth-service
 -- Idempotent via INSERT ... ON CONFLICT DO NOTHING
 
 INSERT INTO organizations (id, name, slug, created_at)
@@ -348,20 +354,20 @@ VALUES (
 ON CONFLICT (id) DO NOTHING;
 ```
 
-### 3. `bootstrap/auth-service/002-users.sql`
+### 3. `data-seed/auth-service/002-users.sql`
 
 The password hash is **pre-computed at skill emission time** using bcrypt (rounds=12) and
 embedded as a string literal. This ensures compatibility with `BCryptPasswordEncoder`
 (Spring Security and equivalents), which uses the `$2a$` prefix — incompatible with
 Postgres `pgcrypto.crypt()`, which produces the older `$2$` format. The plaintext
-password lives only in `.bootstrap-credentials.env` (gitignored) and is never stored
+password lives only in `.data-seed-credentials.env` (gitignored) and is never stored
 in a checked-in file. See `idempotency-patterns.md` §Password-Hash Seeding for the
 emit-time hashing strategy.
 
 ```sql
--- Bootstrap seed: create test user in auth-service.
+-- Data seed: create test user in auth-service.
 -- Hash computed at emit time (see idempotency-patterns.md §Password-Hash Seeding).
--- Plaintext lives in .bootstrap-credentials.env as TEST_PASS.
+-- Plaintext lives in .data-seed-credentials.env as TEST_PASS.
 -- Idempotent via INSERT ... ON CONFLICT DO NOTHING
 
 INSERT INTO users (id, email, password_hash, created_at)
@@ -393,10 +399,10 @@ VALUES (
 ON CONFLICT (email) DO NOTHING;
 ```
 
-### 4. `bootstrap/auth-service/003-memberships.sql`
+### 4. `data-seed/auth-service/003-memberships.sql`
 
 ```sql
--- Bootstrap seed: link user to org in auth-service
+-- Data seed: link user to org in auth-service
 -- Idempotent via INSERT ... ON CONFLICT DO NOTHING
 
 INSERT INTO user_org_memberships (user_id, org_id, role)
@@ -408,10 +414,10 @@ VALUES (
 ON CONFLICT (user_id, org_id) DO NOTHING;
 ```
 
-### 5. `bootstrap/inventory-service/001-apps.sql`
+### 5. `data-seed/inventory-service/001-apps.sql`
 
 ```sql
--- Bootstrap seed: create target-app-1 in inventory-service, owned by Example Test Org
+-- Data seed: create target-app-1 in inventory-service, owned by Example Test Org
 -- Idempotent via INSERT ... ON CONFLICT DO NOTHING
 
 INSERT INTO applications (id, name, org_id, created_at)
@@ -424,7 +430,7 @@ VALUES (
 ON CONFLICT (name, org_id) DO NOTHING;
 ```
 
-### 6. `bootstrap/gateway-api/001-link-app-to-env.http`
+### 6. `data-seed/gateway-api/001-link-app-to-env.http`
 
 REST Client format (compatible with VS Code REST Client, IntelliJ HTTP Client).
 
@@ -453,12 +459,12 @@ Cookie: session={{SESSION_ID}}
 login response. When replaying manually, extract it with the `curl` snippet in the
 Manual Replay section below.
 
-### 7. `bootstrap/credentials.env.example`
+### 7. `data-seed/credentials.env.example`
 
 ```
-# Copy this file to .bootstrap-credentials.env and fill in real values.
-# .bootstrap-credentials.env is gitignored — never commit it.
-# Source with: set -a; . ./.bootstrap-credentials.env; set +a
+# Copy this file to .data-seed-credentials.env and fill in real values.
+# .data-seed-credentials.env is gitignored — never commit it.
+# Source with: set -a; . ./.data-seed-credentials.env; set +a
 
 TEST_USER=test-owner@example.com
 TEST_PASS=<set-real-password>
@@ -508,7 +514,7 @@ echo "gateway-api ready"
 
 ```bash
 set -a
-. ./.bootstrap-credentials.env
+. ./.data-seed-credentials.env
 set +a
 ```
 
@@ -516,19 +522,19 @@ set +a
 
 ```bash
 # Create test org
-psql "${AUTH_SERVICE_DB_URL}" -f bootstrap/auth-service/001-orgs.sql
+psql "${AUTH_SERVICE_DB_URL}" -f data-seed/auth-service/001-orgs.sql
 
 # Create test user (-v passes the plaintext password so it never lives in a checked-in file)
-psql "${AUTH_SERVICE_DB_URL}" -v test_pass="${TEST_PASS}" -f bootstrap/auth-service/002-users.sql
+psql "${AUTH_SERVICE_DB_URL}" -v test_pass="${TEST_PASS}" -f data-seed/auth-service/002-users.sql
 
 # Link user to org
-psql "${AUTH_SERVICE_DB_URL}" -f bootstrap/auth-service/003-memberships.sql
+psql "${AUTH_SERVICE_DB_URL}" -f data-seed/auth-service/003-memberships.sql
 ```
 
 ### Step 5 — Apply inventory-service steps
 
 ```bash
-psql "${INVENTORY_SERVICE_DB_URL}" -f bootstrap/inventory-service/001-apps.sql
+psql "${INVENTORY_SERVICE_DB_URL}" -f data-seed/inventory-service/001-apps.sql
 ```
 
 ### Step 6 — Apply gateway-api steps (manual curl translation of the .http file)
@@ -611,11 +617,11 @@ change.
 
 ### HawkScan authentication check
 
-After bootstrap, with `.bootstrap-credentials.env` sourced, HawkScan configured
+After seeding, with `.data-seed-credentials.env` sourced, HawkScan configured
 against the running gateway should authenticate successfully and find > 1 path:
 
 ```bash
-set -a; . ./.bootstrap-credentials.env; set +a
+set -a; . ./.data-seed-credentials.env; set +a
 hawk scan   # or: hawkscan --config stackhawk.yml
 ```
 

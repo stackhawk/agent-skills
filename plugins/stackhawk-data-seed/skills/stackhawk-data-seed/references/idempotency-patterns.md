@@ -1,11 +1,3 @@
----
-description: >
-  Per-dialect idempotency patterns for bootstrap steps: SQL idioms (Postgres ON CONFLICT, MySQL INSERT IGNORE, SQLite INSERT OR IGNORE); HTTP (PUT over POST); gRPC (Get-then-Create); Mongo (upsert); shell escape hatch conventions; predicate-design rules; anti-patterns to avoid.
-globs:
-  - "**/bootstrap/**/*.sql"
-  - "**/bootstrap/**/*.http"
-alwaysApply: false
----
 # Idempotency Patterns Reference
 
 ## Overview
@@ -87,7 +79,7 @@ already-computed hash as a string literal in the emitted SQL.
 
 ```python
 # Pseudocode — skill computes the hash once at emission, embeds the result.
-# Plaintext password lives in .bootstrap-credentials.env (gitignored).
+# Plaintext password lives in .data-seed-credentials.env (gitignored).
 import bcrypt
 hashed = bcrypt.hashpw(b"ExampleSeedPass1!", bcrypt.gensalt(rounds=12)).decode()
 # Embed `hashed` into the SQL INSERT VALUES.
@@ -96,7 +88,7 @@ hashed = bcrypt.hashpw(b"ExampleSeedPass1!", bcrypt.gensalt(rounds=12)).decode()
 **Emitted SQL (after hash substitution):**
 
 ```sql
--- Hash was computed at emission time; plaintext is in .bootstrap-credentials.env.
+-- Hash was computed at emission time; plaintext is in .data-seed-credentials.env.
 INSERT INTO users (id, email, password_hash, created_at)
 VALUES ('00000000-0000-0000-0000-000000000002', 'test-owner@example.com', '$2a$12$<computed-hash>', now())
 ON CONFLICT (email) DO NOTHING;
@@ -196,10 +188,10 @@ VALUES ('org-acme-01', 'Acme Corp', 'acme', '2024-01-01 00:00:00');
 -- API key seed — keep the key value stable across replays
 INSERT INTO api_keys (id, org_id, key_hash, label, created_at)
 VALUES (
-  'key-bootstrap-01',
+  'key-data-seed-01',
   'org-acme-01',
-  SHA2('dev-key-acme-bootstrap', 256),
-  'bootstrap-seed',
+  SHA2('dev-key-acme-data-seed', 256),
+  'data-seed',
   '2024-01-01 00:00:00'
 )
 ON DUPLICATE KEY UPDATE
@@ -268,7 +260,7 @@ performs a GET first.
 ```http
 ### Seed Acme org
 PUT https://api.example.com/v1/orgs/org-acme-01
-Authorization: Bearer {{BOOTSTRAP_TOKEN}}
+Authorization: Bearer {{DATA_SEED_TOKEN}}
 Content-Type: application/json
 
 {
@@ -288,7 +280,7 @@ Manifest step:
   file: steps/seed-org.http
   check_command: |
     curl -sf -o /dev/null \
-      -H "Authorization: Bearer ${BOOTSTRAP_TOKEN}" \
+      -H "Authorization: Bearer ${DATA_SEED_TOKEN}" \
       https://api.example.com/v1/orgs/org-acme-01
   depends_on: []
 ```
@@ -303,7 +295,7 @@ include a stable client-side dedup key if the API supports one
 ```yaml
 check_command: |
   curl -sf -o /dev/null \
-    -H "Authorization: Bearer ${BOOTSTRAP_TOKEN}" \
+    -H "Authorization: Bearer ${DATA_SEED_TOKEN}" \
     "https://api.example.com/v1/orgs?slug=acme"
 ```
 
@@ -327,7 +319,7 @@ Manifest step:
   file: steps/seed-user.sh
   check_command: |
     grpcurl -plaintext \
-      -H "authorization: Bearer ${BOOTSTRAP_TOKEN}" \
+      -H "authorization: Bearer ${DATA_SEED_TOKEN}" \
       -d '{"user_id": "user-admin-01"}' \
       localhost:50051 \
       acme.UserService/GetUser | grep -q '"id": "user-admin-01"'
@@ -342,7 +334,7 @@ set -euo pipefail
 
 # Belt: check inside the step body too (the manifest check is the suspenders).
 RESPONSE=$(grpcurl -plaintext \
-  -H "authorization: Bearer ${BOOTSTRAP_TOKEN}" \
+  -H "authorization: Bearer ${DATA_SEED_TOKEN}" \
   -d '{"user_id": "user-admin-01"}' \
   localhost:50051 \
   acme.UserService/GetUser 2>&1 || true)
@@ -353,7 +345,7 @@ if echo "$RESPONSE" | grep -q '"id": "user-admin-01"'; then
 fi
 
 grpcurl -plaintext \
-  -H "authorization: Bearer ${BOOTSTRAP_TOKEN}" \
+  -H "authorization: Bearer ${DATA_SEED_TOKEN}" \
   -d '{
     "user_id":  "user-admin-01",
     "org_id":   "org-acme-01",
@@ -367,15 +359,15 @@ grpcurl -plaintext \
 ### Pattern 2: Client-supplied dedup key
 
 If the server supports a stable `request_id` or `idempotency_key` field, pass
-a deterministic value (e.g., `"bootstrap-seed-user-admin-01"`). The server
+a deterministic value (e.g., `"data-seed-user-admin-01"`). The server
 returns the same response on replay without creating a duplicate. This is the
 preferred pattern when the API supports it — no Get round-trip needed.
 
 ```bash
 grpcurl -plaintext \
-  -H "authorization: Bearer ${BOOTSTRAP_TOKEN}" \
+  -H "authorization: Bearer ${DATA_SEED_TOKEN}" \
   -d '{
-    "request_id": "bootstrap-seed-user-admin-01",
+    "request_id": "data-seed-user-admin-01",
     "user_id":    "user-admin-01",
     "org_id":     "org-acme-01",
     "email":      "admin@acme.example",
@@ -484,14 +476,14 @@ stdout only after creation (or on confirmation the existing value is retrievable
 ```bash
 #!/usr/bin/env bash
 # steps/seed-api-key.sh
-# Creates a bootstrap API key for the dev environment.
+# Creates a data-seed API key for the dev environment.
 # Idempotent: exits 0 without action if the key already exists.
 
 set -euo pipefail
 
 BASE_URL="${API_BASE_URL:-https://api.example.com}"
-TOKEN="${BOOTSTRAP_TOKEN}"
-KEY_NAME="bootstrap-dev-${USER}"
+TOKEN="${DATA_SEED_TOKEN}"
+KEY_NAME="data-seed-dev-${USER}"
 
 # Belt: check inside the step body.
 EXISTING=$(curl -sf \
@@ -525,11 +517,11 @@ Manifest step:
   file: steps/seed-api-key.sh
   check_command: |
     curl -sf \
-      -H "Authorization: Bearer ${BOOTSTRAP_TOKEN}" \
-      "${API_BASE_URL}/v1/api-keys?name=bootstrap-dev-${USER}" \
+      -H "Authorization: Bearer ${DATA_SEED_TOKEN}" \
+      "${API_BASE_URL}/v1/api-keys?name=data-seed-dev-${USER}" \
       | jq -e '.items | length > 0'
   outputs:
-    - name: BOOTSTRAP_API_KEY
+    - name: DATA_SEED_API_KEY
       from_stdout: true
   depends_on: [seed-org]
 ```

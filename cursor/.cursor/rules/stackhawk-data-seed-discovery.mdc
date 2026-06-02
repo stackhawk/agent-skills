@@ -1,6 +1,6 @@
 ---
 description: >
-  Per-ecosystem storage-type and API-surface detection for the bootstrap skill: PostgreSQL/MySQL/SQLite/Mongo/DynamoDB/Cosmos signals; OpenAPI/protobuf/GraphQL; auth-signal detection; environment config and docker-compose service+port extraction; integration test fixture locations; what to do when discovery is ambiguous; edge cases (monorepos, generated code, vendored deps).
+  Per-ecosystem storage-type and API-surface detection for the stackhawk-data-seed skill: PostgreSQL/MySQL/SQLite/Mongo/DynamoDB/Cosmos signals; OpenAPI/protobuf/GraphQL; auth-signal detection; environment config and docker-compose service+port extraction; integration test fixture locations; what to do when discovery is ambiguous; edge cases (monorepos, generated code, vendored deps).
 globs:
 alwaysApply: false
 ---
@@ -119,7 +119,7 @@ find . -not -path "*/node_modules/*" -not -path "*/target/*" \
   2>/dev/null | head -5
 ```
 
-**Meaning:** Storage kind `sqlite`. No migration runner — the committed `.sqlite` / `.db` file is the source of truth. Bootstrap notes the file path and advises copy vs. recreate.
+**Meaning:** Storage kind `sqlite`. No migration runner — the committed `.sqlite` / `.db` file is the source of truth. This skill notes the file path and advises copy vs. recreate.
 
 ---
 
@@ -180,7 +180,7 @@ grep -rn --include="*.py" \
   -E "boto3\.(resource|client)\s*\(\s*['\"]dynamodb" . 2>/dev/null | head -3
 ```
 
-**Meaning:** Storage kind `dynamo`. No SQL migrations — schema is implicit in CDK constructs or `create_table` calls. Bootstrap surfaces table definitions and emits seed in DynamoDB `PutItem` format.
+**Meaning:** Storage kind `dynamo`. No SQL migrations — schema is implicit in CDK constructs or `create_table` calls. This skill surfaces table definitions and emits seed in DynamoDB `PutItem` format.
 
 ---
 
@@ -204,7 +204,7 @@ grep -rn --include="Directory.Packages.props" \
   -E 'Azure\.Cosmos' . 2>/dev/null | head -3
 ```
 
-**Meaning:** Storage kind `cosmos`. Bootstrap surfaces container and partition-key definitions from app code or Bicep/ARM templates, and emits seed in Cosmos JSON format.
+**Meaning:** Storage kind `cosmos`. This skill surfaces container and partition-key definitions from app code or Bicep/ARM templates, and emits seed in Cosmos JSON format.
 
 ---
 
@@ -230,7 +230,7 @@ grep -rn --include="requirements*.txt" --include="pyproject.toml" \
   -E '^(sqlalchemy|django|pymongo|motor|psycopg2|pymysql)' . 2>/dev/null | head -3
 ```
 
-**Meaning:** Storage kind `http`. No seed step. Bootstrap focuses on startup and the upstream dependency map. Upstream deps found in env config (see the Environment Config Detection section below) may have their own storage — trace those repos separately.
+**Meaning:** Storage kind `http`. No seed step. This skill focuses on startup and the upstream dependency map. Upstream deps found in env config (see the Environment Config Detection section below) may have their own storage — trace those repos separately.
 
 ---
 
@@ -261,7 +261,7 @@ grep -rn --include="*.ts" --include="*.js" \
   -E '@grpc/grpc-js|grpc\.Server' . 2>/dev/null | head -3
 ```
 
-**Meaning:** Storage kind `grpc` (or `none` if combined with HTTP-only). API surface `grpc`. No SQL seed — bootstrap emits stub payloads from `.proto` message definitions.
+**Meaning:** Storage kind `grpc` (or `none` if combined with HTTP-only). API surface `grpc`. No SQL seed — the skill emits stub payloads from `.proto` message definitions.
 
 ---
 
@@ -344,7 +344,7 @@ manifest will have one step per transport.
 
 ## Auth-Signal Detection
 
-These signals tell bootstrap that end-users must authenticate before
+These signals tell the skill that end-users must authenticate before
 accessing the service's data — meaning the seed phase must include at least
 one user record with valid credentials.
 
@@ -456,7 +456,7 @@ grep -rln "BCryptPasswordEncoder\|BCrypt.hashpw\|require\(['\"]bcrypt\|from ['\"
 | Password column found + encoder unknown | Ask the user what encoder is used before proposing password seeding. |
 | No password column (external IdP only) | Do not propose password seeding. The seed must supply an API key or OAuth credential instead. |
 
-When a service is marked "supports password auth", Phase 2 includes the password line in the proposal dialog (see SKILL.md §2.2) and Phase 3.6 emits `TEST_PASSWORD` in `.bootstrap-credentials.env` alongside `TEST_PASS`.
+When a service is marked "supports password auth", Phase 2 includes the password line in the proposal dialog (see SKILL.md §2.2) and Phase 3.6 emits `TEST_PASSWORD` in `.data-seed-credentials.env` alongside `TEST_PASS`.
 
 ---
 
@@ -671,7 +671,7 @@ Add discovered output dirs to the exclusion list before re-running detection.
 
 ## Discovery Output
 
-The result of all detection is an internal service model that feeds Phase 2 of the bootstrap SKILL.md workflow. Conceptual shape:
+The result of all detection is an internal service model that feeds Phase 2 of the SKILL.md workflow. Conceptual shape:
 
 ```
 ServiceModel:
@@ -684,4 +684,4 @@ ServiceModel:
   env_vars_referenced: [<NAME>, ...]     # env var names found in config files
 ```
 
-One `ServiceModel` per service. Monorepos get one model per subdirectory-service. The model is not persisted — if the user re-runs bootstrap after cloning a new upstream repo, discovery runs again from scratch.
+One `ServiceModel` per service. Monorepos get one model per subdirectory-service. The model is not persisted — if the user re-runs this skill after cloning a new upstream repo, discovery runs again from scratch.
