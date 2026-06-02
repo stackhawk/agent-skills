@@ -18,6 +18,11 @@ on:
         default: "all"
         type: choice
         options: [all, claude-code, codex, agy, cursor]
+      rubric:
+        description: "Also run the qualitative rubric grader (extra ANTHROPIC_API_KEY cost)"
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -130,7 +135,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           uv run evals --harness claude-code --skill ${{ matrix.skill }} \
-            --model ${{ matrix.model }} --max-budget 0.15
+            --model ${{ matrix.model }} --max-budget 0.15 ${{ inputs.rubric && '--rubric' || '' }}
 
       - name: Skill lift (compare with/without)
         if: github.event_name == 'pull_request'
@@ -229,8 +234,9 @@ jobs:
       - name: Run ${{ matrix.skill }} evals (${{ matrix.model }})
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # rubric grader (claude)
         run: |
-          uv run evals --harness codex --skill ${{ matrix.skill }} --model ${{ matrix.model }}
+          uv run evals --harness codex --skill ${{ matrix.skill }} --model ${{ matrix.model }} ${{ inputs.rubric && '--rubric' || '' }}
 
       - name: Upload results
         if: always()
@@ -317,10 +323,12 @@ jobs:
       - name: Run ${{ matrix.skill }} evals
         env:
           ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}  # agy reads ANTIGRAVITY_API_KEY, not AGY_API_KEY
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # rubric grader (claude)
         run: |
           MODEL_ARGS=()
           if [ "${{ matrix.model }}" != "default" ]; then MODEL_ARGS=(--model "${{ matrix.model }}"); fi
-          uv run evals --harness agy --skill ${{ matrix.skill }} "${MODEL_ARGS[@]}"
+          RUBRIC=""; if [ "${{ inputs.rubric }}" = "true" ]; then RUBRIC="--rubric"; fi
+          uv run evals --harness agy --skill ${{ matrix.skill }} "${MODEL_ARGS[@]}" $RUBRIC
         continue-on-error: true  # best-effort; digest degrades gracefully (matches cursor)
 
       - name: Upload results
@@ -402,10 +410,12 @@ jobs:
       - name: Run ${{ matrix.skill }} evals
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # rubric grader (claude)
         run: |
           MODEL_ARGS=()
           if [ "${{ matrix.model }}" != "default" ]; then MODEL_ARGS=(--model "${{ matrix.model }}"); fi
-          uv run evals --harness cursor --skill ${{ matrix.skill }} "${MODEL_ARGS[@]}"
+          RUBRIC=""; if [ "${{ inputs.rubric }}" = "true" ]; then RUBRIC="--rubric"; fi
+          uv run evals --harness cursor --skill ${{ matrix.skill }} "${MODEL_ARGS[@]}" $RUBRIC
         continue-on-error: true  # best-effort; digest degrades gracefully
 
       - name: Upload results
