@@ -133,6 +133,10 @@ jobs:
       - name: Run ${{ matrix.skill }} evals (${{ matrix.model }})
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          API_KEY: ${{ secrets.HAWK_API_KEY }}            # hawk reads API_KEY
+          HAWKOP_API_KEY: ${{ secrets.HAWK_API_KEY }}     # hawkop reads HAWKOP_API_KEY
+          HAWKOP_FORMAT: json
         run: |
           uv run evals --harness claude-code --skill ${{ matrix.skill }} \
             --model ${{ matrix.model }} --max-budget 0.15 ${{ inputs.rubric && '--rubric' || '' }}
@@ -235,6 +239,10 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # rubric grader (claude)
+          HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          API_KEY: ${{ secrets.HAWK_API_KEY }}
+          HAWKOP_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          HAWKOP_FORMAT: json
         run: |
           uv run evals --harness codex --skill ${{ matrix.skill }} --model ${{ matrix.model }} ${{ inputs.rubric && '--rubric' || '' }}
 
@@ -324,6 +332,10 @@ jobs:
         env:
           ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}  # agy reads ANTIGRAVITY_API_KEY, not AGY_API_KEY
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # rubric grader (claude)
+          HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          API_KEY: ${{ secrets.HAWK_API_KEY }}
+          HAWKOP_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          HAWKOP_FORMAT: json
         run: |
           MODEL_ARGS=()
           if [ "${{ matrix.model }}" != "default" ]; then MODEL_ARGS=(--model "${{ matrix.model }}"); fi
@@ -411,6 +423,10 @@ jobs:
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # rubric grader (claude)
+          HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          API_KEY: ${{ secrets.HAWK_API_KEY }}
+          HAWKOP_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          HAWKOP_FORMAT: json
         run: |
           MODEL_ARGS=()
           if [ "${{ matrix.model }}" != "default" ]; then MODEL_ARGS=(--model "${{ matrix.model }}"); fi
