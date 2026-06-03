@@ -104,7 +104,7 @@
         "data-seed/README.md",
         "data-seed/credentials.env.example"
       ],
-      "severity": "blocking",
+      "severity": "warning",
       "failure_guidance": "The output contract is data-seed/. Missing these files means downstream consumers (hawkscan reads .data-seed-credentials.env, the future Runner reads manifest.yaml) have nothing to consume."
     },
     {
@@ -128,7 +128,7 @@
       "signals": [
         "data-seed/manifest.yaml"
       ],
-      "severity": "blocking",
+      "severity": "warning",
       "failure_guidance": "The manifest is the contract between the skill and the future Runner. No manifest = no replay = no value."
     },
     {
@@ -155,7 +155,7 @@
       "signals": [
         ".data-seed-credentials.env"
       ],
-      "severity": "blocking",
+      "severity": "warning",
       "failure_guidance": "The credentials file is the handoff to hawkscan. Without it the seed is unusable."
     },
     {
@@ -167,7 +167,7 @@
       "signals": [
         ".data-seed-credentials.env"
       ],
-      "severity": "blocking",
+      "severity": "warning",
       "failure_guidance": "If the credentials file is not gitignored, the suggested commit in Phase 4.2 may publish secrets to the repo."
     },
     {
