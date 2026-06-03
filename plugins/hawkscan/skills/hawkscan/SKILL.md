@@ -64,6 +64,12 @@ CLI. Read-only lookups this skill relies on:
 If `hawkop` is not installed, the api skill documents raw REST fallbacks.
 Prefer `hawkop`; fall back only if unavailable.
 
+The `stackhawk-data-seed` skill (install: `/plugin install stackhawk-data-seed@stackhawk`) sets up
+checked-in backend seed data via `hawk perch seed`. Hand off to it when authentication fails because
+the backend has no valid credential (**Phase 1c.6**), or after a scan when auth succeeded but
+endpoints returned empty data (**Step 5**). This skill then consumes its
+`.data-seed-credentials.env` handoff.
+
 ---
 
 ## StackHawk Platform Model (read this first)
@@ -454,13 +460,43 @@ If `validate config` fails, fix the structural error and re-run. If `validate au
 **You MUST invoke Phase 1c.5 when any of these are true** — do NOT defer auth setup to "after a baseline scan", do NOT silently ship without auth, do NOT force-fit a recipe pattern:
 
 1. Phase 1c sub-step 0 found auth signals but the pattern doesn't match any row in the Phase 1c recipe table — bespoke challenge-response, custom multi-stage flow, client-side computed proof, undocumented scheme, or any case where you'd be guessing which row to pick
-2. `hawk validate auth stackhawk.yml` returned non-zero after Phase 1c wrote a config
+2. `hawk validate auth stackhawk.yml` returned non-zero after Phase 1c wrote a config **because the recipe or its fields are wrong** — if instead it failed because the credential/user doesn't exist in an empty backend datastore, that is **Phase 1c.6**, not the analyzer
 3. The user explicitly asked to "set up auth interactively", "use the live analyzer", or equivalent
 
 `hawk perch onboard` is the wizard. It captures real HTTP traffic via Chrome, runs the validate-auth loop with structured per-field errors, and streams JSONL phase events for skill consumption. The skill runs `hawk perch onboard --events json` (synthesizing `stackhawk.yml` from `--app-host` if needed), consults `hawk config show recipe.auth-analyzer-workflow --text` plus `hawk perch traffic` to write `stackhawk-auth.yml`, and reads `validateAttempt` events to iterate. Saving the YAML auto-triggers the next attempt. Onboard owns retry cap, mtime detection, and gRPC plumbing — the skill orchestrates triggers, the YAML write, and cleanup (`hawk perch stop` always).
 
 Full flow, prerequisite checks, JSONL event handler matrix, placeholder-applicationId guard, error table, and re-run behavior:
 → [`references/auth-analyzer-fallback.md`](references/auth-analyzer-fallback.md)
+
+---
+
+### Phase 1c.6: Seed backend data when auth fails on an empty datastore
+
+Distinct from Phase 1c.5 (which fixes a *wrong or ambiguous recipe*): use 1c.6 when the auth
+**recipe is correct** but authentication fails because the **credential/entity doesn't exist in the
+backend** — e.g. a 401/403 on a known-correct login against a freshly-started local stack whose
+database was just created (empty `users` / `api_key` / org tables). The fix is to seed the backend,
+not to change the recipe or run the analyzer.
+
+**Signal — all of:** (1) the `authentication:` block matches a real recipe and is structurally
+valid; (2) `hawk validate auth` (or the login call) returns 401/403 or an empty token; (3) the
+backing datastore is empty/fresh (just-started local services, migrations/Liquibase only just ran,
+no seeded dev user or key). If the recipe itself is wrong or ambiguous instead, use **Phase 1c.5**.
+
+**Action:**
+
+- If the `stackhawk-data-seed` skill is installed, invoke it — it drives `hawk perch seed` to
+  produce checked-in seed artifacts and a `.data-seed-credentials.env` handoff this skill then
+  consumes.
+- If it is **not** installed, tell the user to install it
+  (`/plugin install stackhawk-data-seed@stackhawk`) and re-run. Do not hand-author seed data —
+  the seed methodology lives in `hawk perch seed`.
+- **Cross-repo:** for a gateway / multi-service app the credential or entity usually lives in an
+  **upstream** service's datastore (e.g. the auth service), not the target repo. Run the seed
+  against that upstream repo (or let data-seed resolve the upstream dependency); seeding the gateway
+  repo alone finds no local storage and produces a no-op.
+
+After seeding, re-run `hawk validate auth stackhawk.yml` and continue.
 
 ---
 
@@ -763,6 +799,11 @@ below applies when a user explicitly asks you to run a one-off scan.
 After generating fix tasks, instruct the agent:
 
 - **Exit code 0, no findings above threshold**: Scan passed. Optionally note Low findings for fixing.
+  First rule out *empty backend data*: if auth **succeeded** yet path coverage is ~0 and
+  authenticated endpoints returned empty bodies (list routes `[]`, detail routes 404) rather than the
+  app being genuinely secure or small, **suggest** seeding backend data with the `stackhawk-data-seed`
+  skill (don't auto-run it) so the scan has something to exercise, then rescan. See **Phase 1c.6** for
+  the cross-repo (upstream) caveat.
 - **Exit code 42**: Hand fix tasks to the coding agent. After fixes, **re-run the scan**
   to confirm remediation. Repeat until exit 0 or only accepted-risk findings remain.
 - **Exit code 1**: Do NOT hand fix tasks. Run validation commands to diagnose first:
@@ -935,7 +976,9 @@ After completing a code change, announce and execute:
 - **Don't hardcode API keys in `stackhawk.yml`.** Always use `${HAWK_API_KEY}`.
 - **Don't hardcode application credentials in `stackhawk.yml`.** Use env vars and reference them in the `authentication` block.
 - **Low path count ≠ clean app.** It means the spider didn't find routes. Feed an
-  API spec or authentication config before concluding the app is secure.
+  API spec or authentication config before concluding the app is secure. And if auth *succeeds* but
+  endpoints return empty data, seed the backend (`stackhawk-data-seed` / **Phase 1c.6**) so there's
+  something to scan.
 - **Don't ignore exit code 42.** It's a deliberate signal that findings crossed
   the threshold — treat it as a build failure.
 - **String interpolation mid-value doesn't work.** `host: "https://${HOST}/api"` will
