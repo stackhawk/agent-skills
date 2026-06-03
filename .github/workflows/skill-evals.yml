@@ -355,7 +355,11 @@ jobs:
           if [ "${{ matrix.model }}" != "default" ]; then MODEL_ARGS=(--model "${{ matrix.model }}"); fi
           RUBRIC=""; if [ "${{ inputs.rubric }}" = "true" ]; then RUBRIC="--rubric"; fi
           uv run evals --harness agy --skill ${{ matrix.skill }} "${MODEL_ARGS[@]}" $RUBRIC
-        continue-on-error: true  # best-effort; digest degrades gracefully (matches cursor)
+        # No continue-on-error: the CLI now decides job color (exit 1 only on a
+        # PLUMBING FAILURE — 0 prompts ran cleanly). agy can't auth in headless CI
+        # (OAuth-only, upstream #78), so it exits 1 here and the job goes RED, which
+        # is correct: red = "couldn't run, needs work." The digest still renders agy's
+        # 🚫 cell because Upload results + the report job are both `if: always()`.
 
       - name: Upload results
         if: always()
@@ -448,7 +452,9 @@ jobs:
           if [ "${{ matrix.model }}" != "default" ]; then MODEL_ARGS=(--model "${{ matrix.model }}"); fi
           RUBRIC=""; if [ "${{ inputs.rubric }}" = "true" ]; then RUBRIC="--rubric"; fi
           uv run evals --harness cursor --skill ${{ matrix.skill }} "${MODEL_ARGS[@]}" $RUBRIC
-        continue-on-error: true  # best-effort; digest degrades gracefully
+        # No continue-on-error: the CLI decides job color via exit code. cursor runs
+        # cleanly today (green); if it ever can't launch at all (plumbing) the job goes
+        # RED, which is the signal we want. Digest still renders via the always() steps.
 
       - name: Upload results
         if: always()
