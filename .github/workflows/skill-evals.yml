@@ -23,6 +23,16 @@ on:
         required: false
         default: true
         type: boolean
+      compare:
+        description: "Also run skill-lift compare (with vs without skill — roughly doubles run time)"
+        required: false
+        default: false
+        type: boolean
+      pr_number:
+        description: "Optional PR number to post the digest comment to (blank = run summary only)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -141,7 +151,7 @@ jobs:
             --model ${{ matrix.model }} --max-budget 0.15 ${{ inputs.rubric && '--rubric' || '' }}
 
       - name: Skill lift (compare with/without)
-        if: github.event_name == 'pull_request'
+        if: inputs.compare
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -502,22 +512,25 @@ jobs:
       - name: Write digest to run summary
         if: always()
         run: cat digest.md >> "$GITHUB_STEP_SUMMARY"
+      # The run summary above is the canonical report surface for dispatch runs.
+      # This step is opt-in: pass a `pr_number` input to also mirror the digest
+      # into a PR comment (workflow_dispatch carries no PR context on its own).
       - name: Post digest comment
-        if: github.event_name == 'pull_request'
+        if: inputs.pr_number != ''
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
             const body = fs.readFileSync('digest.md', 'utf8');
             const marker = '<!-- skill-eval-comment -->';
+            const issue_number = Number('${{ inputs.pr_number }}');
             const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: context.issue.number });
+              owner: context.repo.owner, repo: context.repo.repo, issue_number });
             const existing = comments.find(c => c.body.includes(marker));
             if (existing) {
               await github.rest.issues.updateComment({ owner: context.repo.owner,
                 repo: context.repo.repo, comment_id: existing.id, body });
             } else {
               await github.rest.issues.createComment({ owner: context.repo.owner,
-                repo: context.repo.repo, issue_number: context.issue.number, body });
+                repo: context.repo.repo, issue_number, body });
             }

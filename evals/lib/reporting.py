@@ -241,6 +241,10 @@ def render_digest(cells, baselines=None, lift=None) -> str:
     if lift:
         out.append("\n### Skill lift (with vs without)\n")
         for key, rws in lift.items():
+            note = next((r["note"] for r in rws if r.get("note")), None)
+            if note:  # platform where load_skill is a no-op (e.g. agy) — lift N/A
+                out.append(f"**{key[0]} · {key[1]} · {key[2]}** — _{note}_\n")
+                continue
             lifted = sum(1 for r in rws if r["effect"] == "lift")
             out.append(f"**{key[0]} · {key[1]} · {key[2]}** — "
                        f"{lifted}/{len(rws)} prompts lifted FAIL→PASS\n")
@@ -257,10 +261,14 @@ def render_job_summary(cell: CellReport) -> str:
             f"trigger {trig_ok}/{n}\n\n")
     rows = ["| test | result | why |", "|---|---|---|"]
     for r in sorted(cell.results, key=lambda r: (_row_rank(r), r.run_id)):
-        why = "; ".join(r.budget_breaches) if r.budget_breaches else (
-            "" if r.trigger_correct else
-            ("false-positive" if r.did_trigger else "false-negative"))
-        if r.note:
-            why = f"{why} — {r.note}" if why else r.note
+        if r.verdict.value == "fail":
+            # _fail_reason covers every fail cause — note, FP/FN, budget, and the
+            # trigger-correct-but-blocking-check-failed case ("blocking check failed")
+            # that the old inline logic left blank.
+            why = _fail_reason(r)
+        else:
+            why = "; ".join(r.budget_breaches)
+            if r.note:  # e.g. a negative prompt that didn't actually run
+                why = f"{why} — {r.note}" if why else r.note
         rows.append(f"| {r.run_id} | {_VERDICT_ICON[r.verdict.value]} | {why} |")
     return head + "\n".join(rows) + "\n"

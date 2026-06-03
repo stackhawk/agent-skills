@@ -54,11 +54,13 @@ def main() -> None:
             did = adapter.detect_trigger(run, args.skill)
             res = grade(p, run, cfg.checks, platform=args.harness, skill=args.skill,
                         did_trigger=did, extended=args.full_auto)
-            # Qualitative rubric (opt-in): grade the transcript with a claude
-            # grader and attach to the result so the reporter can weave it into
-            # the pass/fail table. Only when the skill triggered correctly —
-            # grading a non-triggering run against a workflow rubric is moot.
-            if args.rubric and res.trigger_correct and did:
+            # Qualitative rubric: EXTENDED-ONLY. It grades output-presentation
+            # quality (formatted posture tables, platform links, severity
+            # breakdowns) that only exists when the agent executes against a real
+            # target. Running it on observe-mode narration scores ~0 everywhere
+            # (noise), so it runs only under --full-auto, and only when the skill
+            # triggered correctly.
+            if args.rubric and args.full_auto and res.trigger_correct and did:
                 from evals.lib.rubric import grade_rubric
                 res.rubric = grade_rubric(run, args.skill, p.id)
             # persist a trace for visibility (uploaded with the artifact)
@@ -118,8 +120,6 @@ def compare() -> None:
     rows = compare_skill(args.skill, args.harness, model=args.model,
                          max_budget=args.max_budget, bare=args.bare,
                          full_auto=args.full_auto, only_id=args.prompt_id)
-    import json
-    from pathlib import Path
     out_dir = Path(__file__).resolve().parent / "harnesses" / args.harness / "results" / args.skill
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "lift.json").write_text(json.dumps(

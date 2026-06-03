@@ -42,3 +42,17 @@ def test_rollup_cell_health():
                                    res("b", Verdict.FAIL, note="timeout")])
     assert _rollup_cell(plumbing) == "🚫"
     assert _rollup_cell(None) == "·"
+
+
+def test_render_job_summary_fail_why_not_empty():
+    # A correctly-triggered run whose blocking process check fails (verdict FAIL,
+    # trigger_correct=True, no budget breach, no note) must NOT render a blank why.
+    from evals.lib.reporting import render_job_summary
+    from evals.lib.models import CellReport, EvalResult, Verdict
+    r = EvalResult(platform="claude-code", skill="hawkscan", run_id="hw-04",
+                   should_trigger=True, did_trigger=True, trigger_correct=True,
+                   verdict=Verdict.FAIL, score=0)
+    cell = CellReport(platform="claude-code", skill="hawkscan", model="m",
+                      commit="x", results=[r])
+    md = render_job_summary(cell)
+    assert "| hw-04 | ❌ FAIL | blocking check failed |" in md

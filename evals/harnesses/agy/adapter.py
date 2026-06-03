@@ -95,6 +95,11 @@ def parse_stream(raw: str) -> ParsedRun:
 
 class AgyAdapter:
     platform = "agy"
+    # Skills are installed globally via `agy plugin install`, so toggling
+    # load_skill has no effect — the with/without compare runs are identical and
+    # lift is not measurable for this platform. compare_skill annotates rows with
+    # a note when this is set so the lift output isn't read as "skill had no effect."
+    load_skill_is_noop = True
 
     def cli_signals(self, skill: str) -> list[str]:
         return CLI_SIGNALS.get(skill, [])
