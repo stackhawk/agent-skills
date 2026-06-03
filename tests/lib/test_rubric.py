@@ -12,23 +12,13 @@ def _res(rubric=None, verdict=Verdict.PASS):
                       verdict=verdict, score=100, rubric=rubric)
 
 
-def test_rubric_tag_pass():
-    cell = _pivot_cell(_res(RubricResult(overall_pass=True, score=85)))
-    assert cell == "✅ r85✓"
-
-
-def test_rubric_tag_fail_shows_score():
-    cell = _pivot_cell(_res(RubricResult(overall_pass=False, score=55)))
-    assert "r55✗" in cell and cell.startswith("✅")  # deterministic pass, rubric flags quality
-
-
-def test_no_rubric_tag_when_absent():
+def test_pivot_cell_omits_rubric_tag():
+    # The rubric is extended-only and surfaced separately — it must NOT be woven
+    # into the pivot cell as a cryptic code (r85✓ / r55✗ / r?). Cells stay glanceable.
+    assert _pivot_cell(_res(RubricResult(overall_pass=True, score=85))) == "✅"
+    assert _pivot_cell(_res(RubricResult(overall_pass=False, score=55))) == "✅"
     assert _pivot_cell(_res(None)) == "✅"
-
-
-def test_rubric_error_renders_question_mark():
-    cell = _pivot_cell(_res(RubricResult(overall_pass=False, score=0, error="grader failed")))
-    assert "r?" in cell
+    assert _pivot_cell(_res(RubricResult(overall_pass=False, score=0, error="x"))) == "✅"
 
 
 def test_grade_rubric_none_when_config_missing(tmp_path: Path):

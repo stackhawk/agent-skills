@@ -18,3 +18,27 @@ def test_build_summary_counts():
     assert s["trigger_accuracy"]["total"] == 4
     assert s["false_positives"] == ["hw-13"]
     assert s["verdict_counts"] == {"pass": 2, "pass-slow": 1, "fail": 1}
+
+
+def test_rollup_cell_health():
+    from evals.lib.reporting import _rollup_cell
+    from evals.lib.models import CellReport, EvalResult, Verdict
+    def res(rid, verdict, note=""):
+        return EvalResult(platform="p", skill="s", run_id=rid, should_trigger=True,
+                          did_trigger=True, trigger_correct=True, verdict=verdict,
+                          score=100, note=note)
+    allpass = CellReport(platform="claude-code", skill="api", model="m",
+                         commit="x", results=[res("a", Verdict.PASS), res("b", Verdict.PASS)])
+    assert _rollup_cell(allpass) == "🟢 2/2"
+    mixed = CellReport(platform="p", skill="s", model="m", commit="x",
+                       results=[res(str(i), Verdict.PASS) for i in range(9)] + [res("x", Verdict.FAIL)])
+    assert _rollup_cell(mixed) == "🟡 9/10"
+    bad = CellReport(platform="p", skill="s", model="m", commit="x",
+                     results=[res("a", Verdict.FAIL), res("b", Verdict.PASS)])
+    assert _rollup_cell(bad) == "🔴 1/2"
+    # all prompts errored at the harness level (e.g. agy OAuth) → plumbing, not a result
+    plumbing = CellReport(platform="agy", skill="s", model="m", commit="x",
+                          results=[res("a", Verdict.FAIL, note="agy: no headless auth"),
+                                   res("b", Verdict.FAIL, note="timeout")])
+    assert _rollup_cell(plumbing) == "🚫"
+    assert _rollup_cell(None) == "·"

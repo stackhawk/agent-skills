@@ -134,18 +134,36 @@ def _rubric_tag(r: EvalResult) -> str:
 
 
 def _pivot_cell(r: EvalResult | None) -> str:
-    """One matrix cell: deterministic verdict emoji + a terse reason on non-pass,
-    with the qualitative rubric score (rNN✓/✗) appended when it ran."""
+    """One matrix cell: deterministic verdict emoji + a terse reason on non-pass.
+    No cryptic rubric code — the rubric is extended-only and surfaced separately."""
     if r is None:
         return "·"   # this harness/model didn't run this test
-    rub = _rubric_tag(r)
     v = r.verdict.value
     if v == "pass":
-        return f"{_PIVOT_ICON['pass']}{rub}"
+        return _PIVOT_ICON['pass']
     if v == "pass-slow":
         why = "; ".join(r.budget_breaches) or "slow"
-        return f"{_PIVOT_ICON['pass-slow']} — {why}"[:74] + rub
-    return f"{_PIVOT_ICON['fail']} — {_fail_reason(r)}{rub}"
+        return f"{_PIVOT_ICON['pass-slow']} — {why}"[:74]
+    return f"{_PIVOT_ICON['fail']} — {_fail_reason(r)}"
+
+
+_ROLLUP_SKILLS = ["hawkscan", "api", "stackhawk-data-seed"]
+
+
+def _rollup_cell(cr) -> str:
+    """At-a-glance health for one skill × tool-model: <emoji> passed/total.
+    🟢 all pass · 🟡 ≥80% · 🔴 below · 🚫 didn't run (plumbing) · `·` not present."""
+    if cr is None or not cr.results:
+        return "·"
+    results = cr.results
+    ran = [r for r in results if not (r.note or "").strip()]
+    if not ran:
+        return "🚫"   # eval couldn't run any prompt (e.g. agy OAuth) — plumbing
+    passed = sum(1 for r in results if r.verdict.value in ("pass", "pass-slow"))
+    total = len(results)
+    rate = passed / total
+    emoji = "🟢" if passed == total else ("🟡" if rate >= 0.8 else "🔴")
+    return f"{emoji} {passed}/{total}"
 
 
 def render_digest(cells, baselines=None, lift=None) -> str:
@@ -164,6 +182,20 @@ def render_digest(cells, baselines=None, lift=None) -> str:
                   key=lambda pm: (_PLATFORM_ORDER.get(pm[0], 99), pm[1]))
     col_label = {pm: f"{pm[0]}-{_short_model(pm[1])}" for pm in cols}
 
+    # ── Rollup: one glanceable health cell per skill × tool-model ──────────────
+    cell_by = {(c.platform, c.model, c.skill): c for c in cells}
+    present_skills = [s for s in _ROLLUP_SKILLS if any(c.skill == s for c in cells)]
+    out.append("### Rollup — health at a glance\n")
+    out.append("| skill | " + " | ".join(col_label[pm] for pm in cols) + " |")
+    out.append("|---" * (len(cols) + 1) + "|")
+    for skill in present_skills:
+        line = " | ".join(_rollup_cell(cell_by.get((pm[0], pm[1], skill))) for pm in cols)
+        out.append(f"| {skill} | {line} |")
+    out.append("")
+    out.append("_🟢 all pass · 🟡 ≥80% · 🔴 below · 🚫 didn't run (plumbing) · "
+               "`·` not present. Cell = passed/total._\n")
+    out.append("### Detail — per-test\n")
+
     lookup: dict[tuple, EvalResult] = {}
     row_keys: dict[tuple, bool] = {}
     for c in cells:
@@ -180,8 +212,7 @@ def render_digest(cells, baselines=None, lift=None) -> str:
                           for pm in cols)
         out.append(f"| {skill}/{rid} | {line} |")
     out.append("")
-    out.append("_Legend: ✅ pass · ◆ pass-slow · ❌ fail (reason follows) · `·` = not run. "
-               "`rNN✓/✗` = qualitative rubric score/verdict (when --rubric ran)._\n")
+    out.append("_Legend: ✅ pass · ◆ pass-slow · ❌ fail (reason follows) · `·` = not run._\n")
 
     # Optional, compact extras (kept off the main table to avoid the old sprawl).
     if baselines is None:
