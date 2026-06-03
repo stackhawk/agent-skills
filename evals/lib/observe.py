@@ -23,11 +23,26 @@ prompt.
 """
 from __future__ import annotations
 
+# The grounding line ("use the skill's own commands; load it if needed; don't
+# pause to ask") matters: in headless `-p` mode a model may not have the skill
+# BODY in context (only its description). A rigid "do not invent" then makes weak
+# models refuse — "I can't access the skill definition, should I read it?" (haiku
+# scored 0 this way). So we tell it to invoke/load the skill and, failing that, to
+# still write its best reconstruction rather than stopping. Grounding in the skill
+# is what keeps a model from confabulating the wrong command shape.
+_GROUNDING = (
+    "Use the skill's own commands — if its full definition isn't already in your "
+    "context, invoke/load the skill to get them; do NOT pause to ask permission to "
+    "read or load it. Give the real commands with their flags, not a prose summary; "
+    "if you can't recall an exact flag, include the command anyway rather than "
+    "skipping the step."
+)
+
 _OBSERVE_HEADER = (
     "\n\n---\n"
     "(Eval harness — observe mode. The target app, credentials, or prior scans may "
-    "be unavailable here. Do NOT stop to ask for a target or for missing code. "
-    "Output exactly:\n"
+    "be unavailable here. Do NOT stop to ask for a target, for missing code, or for "
+    "permission to read or load the skill — proceed on your own. Output exactly:\n"
     "1. A decision line naming the StackHawk skill this request should invoke, "
     "written exactly as `hawkscan:hawkscan: YES`, `stackhawk-api:api: YES`, "
     "`stackhawk-data-seed:stackhawk-data-seed: YES`, or `none: NO`.\n"
@@ -41,8 +56,7 @@ OBSERVE_SUFFIX = {
         "documented workflow as the exact CLI commands it runs, in order — every "
         "phase from preflight through the verifying rescan. This is a paper "
         "walkthrough: do NOT try to run the scan, there is no live target here. "
-        "Pull the real commands straight from the skill (with their flags); do not "
-        "summarize them and do not invent them.)"
+        + _GROUNDING + ")"
     ),
     # api: a read-workflow over hawkop. Narrate the full command sequence; if
     # hawkop + credentials happen to be present, the read-only queries may also run.
@@ -50,9 +64,8 @@ OBSERVE_SUFFIX = {
         "2. If (and only if) the api skill applies, write out its COMPLETE documented "
         "workflow as the exact CLI commands it runs, in order — every phase from the "
         "hawkop preflight/auth check and org resolution through the final query. "
-        "Pull the real commands straight from the skill (with their flags); do not "
-        "summarize them and do not invent them. If hawkop and credentials are "
-        "available, you may also run the read-only queries.)"
+        + _GROUNDING + " If hawkop and credentials are available, you may also run "
+        "the read-only queries.)"
     ),
     # data-seed: its product is the emitted artifacts, so the walkthrough must name
     # the discovery steps, the minimal seed set, and the files it writes.
@@ -60,8 +73,7 @@ OBSERVE_SUFFIX = {
         "2. If (and only if) the data-seed skill applies, write out its COMPLETE "
         "documented workflow in order — the discovery steps, the minimal seed set it "
         "proposes, and the exact artifacts it emits (the data-seed/ directory, "
-        "manifest.yaml, and the credentials file). Pull the real steps and commands "
-        "straight from the skill; do not summarize them and do not invent them.)"
+        "manifest.yaml, and the credentials file). " + _GROUNDING + ")"
     ),
 }
 
