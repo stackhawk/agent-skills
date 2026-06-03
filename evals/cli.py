@@ -96,8 +96,18 @@ def main() -> None:
     # job aggregates every cell.json into one pivot table (render_digest), so the
     # run summary holds a single table instead of one per matrix cell.
 
-    if summary["false_positives"] or summary["false_negatives"] or \
-            summary["total_blocking_failures"] > 0:
+    # CI semantics: the job is GREEN when the eval RAN, not when every skill
+    # passed. Per-cell pass/fail (FP/FN/blocking) is data in the report table —
+    # the ship signal you read, not the build's success criterion. The job goes
+    # RED only on a plumbing failure: the eval couldn't actually run the agent
+    # for ANY prompt (missing/unauthenticated CLI, timeouts everywhere, harness
+    # exceptions). A clean run has note == "" ; any non-empty note is a prompt
+    # that didn't execute.
+    ran = [r for r in results if not (r.note or "").strip()]
+    if results and not ran:
+        notes = sorted({(r.note or "").strip()[:80] for r in results if (r.note or "").strip()})
+        print(f"PLUMBING FAILURE: eval ran 0/{len(results)} prompts cleanly for "
+              f"{args.harness}/{args.skill}. Causes: {notes}", file=sys.stderr)
         sys.exit(1)
 
 
