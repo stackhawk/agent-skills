@@ -1,15 +1,10 @@
 ---
 description: >
-  HawkScan DAST security scanning. Use this when the user asks to run or perform a
-  security scan / DAST scan, to test an app or API for vulnerabilities, or to verify
-  a vulnerability is fixed — and proactively right after you complete a code change
-  (feature, bugfix, refactor), where "done" means "done and secure" (run the full
-  loop: configure, scan, fix all reported vulnerabilities, rescan; don't ask
-  permission). Do NOT use this for: questions ABOUT HawkScan or what it detects;
-  editing stackhawk.yml without running a scan; querying existing findings, security
-  posture, or scan history (use the stackhawk-api skill); writing docs; or installing
-  the CLI.
-alwaysApply: false
+  HawkScan DAST security scanning. Use when the user asks to run or perform a security or DAST scan, to test an app or API for vulnerabilities, or to verify a vulnerability is fixed — and proactively right after you complete a code change (feature, bugfix, refactor); "done" means "done and secure" (configure, scan, fix all reported vulnerabilities, rescan; do not ask permission). Do NOT use for: informational questions about what HawkScan is or detects; editing stackhawk.yml or other config without running a scan; querying existing findings, security posture, or scan history (use the stackhawk-api rule); documentation-only changes; or installing the CLI.
+globs:
+  - "**/stackhawk.yml"
+  - "**/stackhawk-*.yml"
+alwaysApply: true
 ---
 
 # HawkScan Skill
