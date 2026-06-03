@@ -13,14 +13,14 @@ from evals.lib.observe import observe_suffix
 # CLI signals — checked against bash_commands only (prevents documentation content
 # from creating false positives when the agent writes README/guides about HawkScan).
 CLI_SIGNALS = {
+    # Scan-distinctive commands only — generic preflight (hawk version/config/init)
+    # over-triggers when the agent merely assesses the environment for a non-scan
+    # request. Triggering falls back to the explicit decision line otherwise.
     "hawkscan": [
         "hawk scan",
         "hawk validate",
         "hawk rescan",
-        "hawk version",        # preflight version check (parity with origin/main signals)
-        "hawk config",
         "hawk create app",
-        "hawk init",
         "hawk perch",
     ],
     # Signals specific to the api reporting workflow — avoids false positives

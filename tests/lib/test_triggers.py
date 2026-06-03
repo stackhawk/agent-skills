@@ -59,3 +59,26 @@ def test_loose_fallback_when_no_decision():
 
 def test_explicit_yes_triggers_without_loose():
     assert decide_trigger(executed_cli=False, declared="yes", loose_hit=False) is True
+
+
+def test_does_not_apply_is_decline():
+    assert explicit_decision("`hawkscan:hawkscan` does not apply here", "hawkscan") == "no"
+    assert explicit_decision("the api skill is not needed: stackhawk-api:api not applicable", "api") == "no"
+
+
+def test_choosing_a_different_skill_declines_this_one():
+    # hw-13: agent picks api, says hawkscan doesn't apply — must not be a hawkscan trigger.
+    txt = "`stackhawk-api:api: YES`\n(`hawkscan:hawkscan` does not apply — you asked for findings.)"
+    assert explicit_decision(txt, "hawkscan") == "no"
+    assert explicit_decision(txt, "api") == "yes"
+
+
+def test_other_skill_yes_alone_declines():
+    assert explicit_decision("hawkscan:hawkscan: YES", "api") == "no"
+    assert explicit_decision("hawkscan:hawkscan: YES", "stackhawk-data-seed") == "no"
+
+
+def test_own_yes_not_suppressed_by_other():
+    # Both declared yes — this skill is still yes.
+    txt = "stackhawk-api:api: YES and hawkscan:hawkscan: YES"
+    assert explicit_decision(txt, "hawkscan") == "yes"

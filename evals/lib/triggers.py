@@ -25,9 +25,16 @@ _DECL_NAMES = {
 _SEP = r"\s*[:\-–—]\s*"
 
 
+# Phrases an agent uses to decline a skill without the literal `: NO`, e.g.
+# "`hawkscan:hawkscan` does not apply".
+_DECLINE = r"(?:does ?n.?t apply|not applicable|not needed|n/a)"
+
+
 def explicit_decision(text: str, skill: str) -> str | None:
-    """Return 'yes'/'no' if the agent emitted an explicit decision line for `skill`
-    (or a global `none: NO`), else None. Strips markdown emphasis first so
+    """Return 'yes'/'no' if the agent emitted an explicit decision for `skill` —
+    a `skill: YES`/`skill: NO` line, a global `none: NO`, a `skill … does not
+    apply` decline, or an explicit YES for a *different* skill (which means it
+    chose that one, not this). Else None. Strips markdown emphasis first so
     `**hawkscan:hawkscan: YES**` and `` `none: NO` `` are recognized."""
     norm = re.sub(r"[*`_]+", "", text.lower())
     names = _DECL_NAMES.get(skill, [skill])
@@ -37,8 +44,17 @@ def explicit_decision(text: str, skill: str) -> str | None:
 
     if any(declared(n, "yes") for n in names):
         return "yes"
-    if re.search(r"\bnone" + _SEP + r"no\b", norm) or any(declared(n, "no") for n in names):
+    # Explicit NO for this skill, a global decline, or a "does not apply" phrase.
+    if (re.search(r"\bnone" + _SEP + r"no\b", norm)
+            or any(declared(n, "no") for n in names)
+            or any(re.search(re.escape(n) + r"\W+" + _DECLINE, norm) for n in names)):
         return "no"
+    # The agent explicitly chose a DIFFERENT skill → this skill was declined.
+    for other, onames in _DECL_NAMES.items():
+        if other == skill:
+            continue
+        if any(re.search(re.escape(n) + _SEP + r"yes\b", norm) for n in onames):
+            return "no"
     return None
 
 

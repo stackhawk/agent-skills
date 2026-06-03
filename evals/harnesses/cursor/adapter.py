@@ -30,15 +30,15 @@ def _setup_skill(target_dir: str) -> None:
 # indicator. Invocation signals cover narrative phrases the agent uses when
 # kicking off a skill workflow without immediately running commands.
 CLI_SIGNALS = {
+    # Scan-distinctive commands only — generic preflight (hawk version/config/init)
+    # over-triggers when the agent merely assesses the environment for a non-scan
+    # request. Triggering falls back to the explicit decision line otherwise.
     "hawkscan": [
         "hawk scan",
         "hawk validate",
         "hawk rescan",
-        "hawk config",
         "hawk create app",
-        "hawk init",
         "hawk perch",
-        "hawk version",
     ],
     # Cursor api: agent runs hawkop status as its first step, then deeper
     # hawkop commands. Broader hawkop signals included since Cursor doesn't

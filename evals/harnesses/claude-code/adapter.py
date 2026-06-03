@@ -10,8 +10,12 @@ from evals.lib.triggers import explicit_decision, decide_trigger
 from evals.lib.observe import observe_suffix
 
 CLI_SIGNALS = {
-    "hawkscan": ["hawk scan", "hawk validate", "hawk rescan", "hawk config",
-                 "hawk create app", "hawk init", "hawk perch", "hawk version"],
+    # Scan-distinctive commands only. `hawk version`/`hawk config`/`hawk init` are
+    # generic preflight an agent runs while merely *assessing* the environment (even
+    # for a non-scan request), so they over-trigger; rely on scan commands or the
+    # explicit decision line instead.
+    "hawkscan": ["hawk scan", "hawk validate", "hawk rescan",
+                 "hawk create app", "hawk perch"],
     "api": ["hawkop scan", "hawkop app", "hawkop org", "hawkop env", "hawkop status",
             "hawkop init", "/api/v1/scan", "/api/v2/org", "hawk_api GET"],
     # data-seed emits checked-in artifacts rather than running a distinctive CLI;

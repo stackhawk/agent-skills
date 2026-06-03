@@ -23,19 +23,30 @@ prompt.
 """
 from __future__ import annotations
 
-# The grounding line ("use the skill's own commands; load it if needed; don't
-# pause to ask") matters: in headless `-p` mode a model may not have the skill
-# BODY in context (only its description). A rigid "do not invent" then makes weak
-# models refuse — "I can't access the skill definition, should I read it?" (haiku
-# scored 0 this way). So we tell it to invoke/load the skill and, failing that, to
-# still write its best reconstruction rather than stopping. Grounding in the skill
-# is what keeps a model from confabulating the wrong command shape.
-_GROUNDING = (
-    "Use the skill's own commands — if its full definition isn't already in your "
+# Anti-refusal core (all skills): in headless `-p` mode a model may have only the
+# skill's description, not its body. A rigid "do not invent" then makes weak models
+# refuse — "I can't access the skill definition, should I read it?" (haiku scored 0
+# this way). So tell it to invoke/load the skill and not pause to ask permission.
+_USE_SKILL = (
+    "Use the skill's own steps — if its full definition isn't already in your "
     "context, invoke/load the skill to get them; do NOT pause to ask permission to "
-    "read or load it. Give the real commands with their flags, not a prose summary; "
-    "if you can't recall an exact flag, include the command anyway rather than "
-    "skipping the step."
+    "read or load it."
+)
+
+# Command-emission guidance is PER-SKILL. "Include the command even if unsure of a
+# flag" is safe for hawkscan/api (listing commands has no side effect) but wrong for
+# data-seed: it's a code-EMITTER, and narrating a startup command like
+# `docker-compose up` trips its no-startup anti-pattern. data-seed therefore gets
+# read-only discovery guidance instead.
+_CMDS_OK = (
+    " Give the real commands with their flags, not a prose summary; if you can't "
+    "recall an exact flag, include the command anyway rather than skipping the step."
+)
+_DATA_SEED_GUIDANCE = (
+    " Give the real discovery commands and the artifacts emitted, not a prose "
+    "summary. Discovery only READS the repo; data-seed emits files and never starts "
+    "services — do NOT run or list app-startup commands (docker compose up, npm "
+    "start, ./gradlew bootRun, etc.)."
 )
 
 _OBSERVE_HEADER = (
@@ -56,7 +67,7 @@ OBSERVE_SUFFIX = {
         "documented workflow as the exact CLI commands it runs, in order — every "
         "phase from preflight through the verifying rescan. This is a paper "
         "walkthrough: do NOT try to run the scan, there is no live target here. "
-        + _GROUNDING + ")"
+        + _USE_SKILL + _CMDS_OK + ")"
     ),
     # api: a read-workflow over hawkop. Narrate the full command sequence; if
     # hawkop + credentials happen to be present, the read-only queries may also run.
@@ -64,8 +75,8 @@ OBSERVE_SUFFIX = {
         "2. If (and only if) the api skill applies, write out its COMPLETE documented "
         "workflow as the exact CLI commands it runs, in order — every phase from the "
         "hawkop preflight/auth check and org resolution through the final query. "
-        + _GROUNDING + " If hawkop and credentials are available, you may also run "
-        "the read-only queries.)"
+        + _USE_SKILL + _CMDS_OK + " If hawkop and credentials are available, you may "
+        "also run the read-only queries.)"
     ),
     # data-seed: its product is the emitted artifacts, so the walkthrough must name
     # the discovery steps, the minimal seed set, and the files it writes.
@@ -73,7 +84,7 @@ OBSERVE_SUFFIX = {
         "2. If (and only if) the data-seed skill applies, write out its COMPLETE "
         "documented workflow in order — the discovery steps, the minimal seed set it "
         "proposes, and the exact artifacts it emits (the data-seed/ directory, "
-        "manifest.yaml, and the credentials file). " + _GROUNDING + ")"
+        "manifest.yaml, and the credentials file). " + _USE_SKILL + _DATA_SEED_GUIDANCE + ")"
     ),
 }
 
