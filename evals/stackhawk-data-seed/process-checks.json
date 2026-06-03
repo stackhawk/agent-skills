@@ -84,12 +84,21 @@
       "description": "Agent surfaces the minimum seed (one user, one org, one resource) for user confirmation before emitting artifacts (Phase 2.2).",
       "type": "output_contains",
       "signals": [
+        "minimal seed",
+        "minimum seed",
+        "minimal set",
+        "minimum set",
+        "propose",
+        "seed entit",
+        "seed set",
         "1 user",
-        "test-owner@example.com",
+        "users",
         "1 org",
-        "Example Test Org",
-        "OK to proceed",
-        "expand"
+        "organization",
+        "ok to proceed",
+        "expand",
+        "test-owner@example.com",
+        "example test org"
       ],
       "severity": "blocking",
       "failure_guidance": "Phase 2 is a dialog gate. Emitting artifacts without confirming the proposal violates the skill's contract \u2014 the user may want different entities or counts."
