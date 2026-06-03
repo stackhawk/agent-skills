@@ -1,7 +1,7 @@
 {
   "skill": "stackhawk-data-seed",
-  "version": "1.10.0",
-  "description": "Deterministic process checks for the stackhawk-data-seed skill. Each check maps to a required behavior in SKILL.md. Harnesses should look for these signals in agent traces, command histories, generated files, or output text.",
+  "version": "1.11.0",
+  "description": "Deterministic process checks for the stackhawk-data-seed skill (CLI-driving stub). The skill drives `hawk perch seed --events json` and relays its JSONL phase events; the seed methodology lives in the hawk CLI, not in the agent. Checks verify the agent orchestrates the command correctly and does NOT hand-author seed artifacts. Harnesses look for these signals in agent traces, command histories, generated files, or output text.",
   "checks": [
     {
       "id": "preflight_git_repo_verified",
@@ -10,117 +10,80 @@
       "type": "command_executed",
       "signals": ["test -d .git", "git rev-parse", "ls .git", "git status"],
       "severity": "blocking",
-      "failure_guidance": "The skill emits artifacts and modifies .gitignore — it must be running inside a git checkout, not a random directory. Skipping this check risks writing into the wrong tree."
+      "failure_guidance": "Seed artifacts and the credentials handoff land in the repo tree — the skill must run inside the intended git checkout, not a random directory."
+    },
+    {
+      "id": "preflight_seed_command_available",
+      "phase": "phase_0",
+      "description": "Agent confirms `hawk perch seed` exists before using it, and PUNTS (tells the user to upgrade hawk) if it does not — instead of falling back to hand-authoring seed data (Phase 0.2).",
+      "type": "command_or_output",
+      "signals": ["hawk perch seed --help", "NO-SEED-COMMAND", "upgrade", "brew upgrade stackhawk/cli/hawk", "download.stackhawk.com"],
+      "severity": "blocking",
+      "failure_guidance": "The seed methodology now lives in `hawk perch seed`. If that command is absent the only correct move is to tell the user to upgrade hawk — NOT to revert to hand-writing discovery + a manifest."
     },
     {
       "id": "preflight_existing_seed_checked",
       "phase": "phase_0",
-      "description": "Agent checks whether a data-seed/ directory already exists and asks the user augment/replace/cancel before overwriting (Phase 0.2).",
+      "description": "Agent checks whether a data-seed/ directory already exists and asks the user augment/replace/cancel before overwriting (Phase 0.3).",
       "type": "command_or_output",
-      "signals": ["test -d data-seed", "ls data-seed", "augment", "replace", "data-seed already exists", "EXISTS"],
-      "severity": "blocking",
+      "signals": ["test -d data-seed", "ls data-seed", "augment", "replace", "data-seed already exists", "EXISTS", "cancel"],
+      "severity": "warning",
       "failure_guidance": "Silently overwriting an existing data-seed/ destroys prior human-curated artifacts. The skill must surface the choice."
     },
     {
-      "id": "phase1_discovery_signals_scanned",
+      "id": "runs_hawk_perch_seed",
       "phase": "phase_1",
-      "description": "Agent reads schema / migration / API / compose files to build the discovery model (Phase 1.1).",
+      "description": "Agent invokes `hawk perch seed --events json` (with --app-host) as a subprocess to do the seeding (Phase 1). This is the core action.",
       "type": "command_executed",
-      "signals": ["docker-compose", "docker compose", "Liquibase", "Flyway", "Prisma", "Alembic", "*.proto", "openapi", "schema.sql", "changelog"],
+      "signals": ["hawk perch seed", "--events json", "--app-host"],
       "severity": "blocking",
-      "failure_guidance": "Skipping discovery means the proposal is guessed instead of grounded. The honesty rule requires either real signals or an explicit question to the user."
+      "failure_guidance": "The whole point of the stub is to drive the CLI. If the agent does not run `hawk perch seed`, it is not using the skill's mechanism."
     },
     {
-      "id": "phase1_honesty_rule_respected",
+      "id": "consumes_jsonl_phase_events",
       "phase": "phase_1",
-      "description": "When discovery is ambiguous (storage type unclear, dep repo not findable), agent asks the user instead of guessing (Phase 1.4 — the honesty rule).",
+      "description": "Agent consumes/relays the JSONL phase events emitted on stdout (one object per line) and surfaces progress to the user (Phase 1).",
       "type": "output_contains",
-      "signals": ["I couldn't find", "ambiguous", "which", "could you confirm", "is this", "please confirm"],
+      "signals": ["phase", "starting", "extracting", "synthesizing", "validating", "finalizing", "done", "jq"],
       "severity": "warning",
-      "failure_guidance": "Silently guessing storage types or upstream paths produces broken seed files. Only fires when discovery actually has gaps; clean discovery may legitimately have no questions."
+      "failure_guidance": "The skill's cross-agent contract is the JSONL phase stream. Ignoring it means the user gets no progress and review prompts may be missed."
     },
     {
-      "id": "phase2_minimal_seed_proposed",
+      "id": "does_not_handauthor_seed",
+      "phase": "any",
+      "description": "Agent does NOT hand-author seed data — no manual discovery greps for storage signals and no hand-written data-seed/manifest.yaml or per-service seed scripts. Producing the artifacts is the CLI's job.",
+      "type": "command_negative",
+      "anti_patterns": [
+        "grep -r",
+        "Liquibase",
+        "Flyway",
+        "Prisma",
+        "Alembic",
+        "schema.sql",
+        "cat > data-seed/manifest.yaml",
+        "tee data-seed/manifest.yaml",
+        "Write data-seed/manifest.yaml"
+      ],
+      "severity": "blocking",
+      "failure_guidance": "Reverting to manual discovery + manifest authoring defeats the purpose (the methodology is intentionally inside the CLI). The agent should run `hawk perch seed`, not reimplement it. Note: if `hawk perch seed` is unavailable it must PUNT (Phase 0.2), not hand-author."
+    },
+    {
+      "id": "honest_noop_for_no_storage",
+      "phase": "phase_1",
+      "description": "When the run reports no local storage / nothing to seed (e.g. an API gateway with storageKind NONE), the agent relays that honest outcome rather than fabricating seed records.",
+      "type": "output_contains",
+      "signals": ["no local storage", "nothing to seed", "storageKind", "no-op", "gateway", "no data to seed"],
+      "severity": "warning",
+      "failure_guidance": "A no-op manifest for a storage-less gateway is the correct, honest result. Fabricating fake entities to look productive is a failure. Only fires when the run actually reports no storage."
+    },
+    {
+      "id": "handoff_reported",
       "phase": "phase_2",
-      "description": "Agent surfaces the minimum seed (one user, one org, one resource) for user confirmation before emitting artifacts (Phase 2.2).",
+      "description": "On success the agent reports what was written (data-seed/ + manifest.yaml + .data-seed-credentials.env) and the next steps, including that hawkscan consumes the credentials env (Phase 2).",
       "type": "output_contains",
-      "signals": ["1 user", "test-owner@example.com", "1 org", "Example Test Org", "OK to proceed", "expand"],
-      "severity": "blocking",
-      "failure_guidance": "Phase 2 is a dialog gate. Emitting artifacts without confirming the proposal violates the skill's contract — the user may want different entities or counts."
-    },
-    {
-      "id": "phase3_emits_to_data_seed_dir",
-      "phase": "phase_3",
-      "description": "Agent emits artifacts under data-seed/ (Phase 3.1).",
-      "type": "file_present",
-      "signals": ["data-seed/manifest.yaml", "data-seed/README.md", "data-seed/credentials.env.example"],
-      "severity": "blocking",
-      "failure_guidance": "The output contract is data-seed/. Missing these files means downstream consumers (hawkscan reads .data-seed-credentials.env, the future Runner reads manifest.yaml) have nothing to consume."
-    },
-    {
-      "id": "phase3_no_legacy_bootstrap_dir",
-      "phase": "phase_3",
-      "description": "Agent does NOT emit artifacts under the legacy bootstrap/ directory or .bootstrap-credentials.env filename (Phase 3.1).",
-      "type": "file_absent",
-      "anti_patterns": ["bootstrap/manifest.yaml", "bootstrap/README.md", ".bootstrap-credentials.env"],
-      "severity": "blocking",
-      "failure_guidance": "Emitting to bootstrap/ leaks the pre-1.10 skill name and produces a broken handoff — hawkscan looks for .data-seed-credentials.env and will not find anything."
-    },
-    {
-      "id": "phase3_manifest_written",
-      "phase": "phase_3",
-      "description": "Agent writes data-seed/manifest.yaml per the Contract B schema (Phase 3.3).",
-      "type": "file_present",
-      "signals": ["data-seed/manifest.yaml"],
-      "severity": "blocking",
-      "failure_guidance": "The manifest is the contract between the skill and the future Runner. No manifest = no replay = no value."
-    },
-    {
-      "id": "phase3_manifest_self_validated",
-      "phase": "phase_3",
-      "description": "Before writing the manifest, agent validates every step has id/type/file/target/idempotency, depends_on resolves, files exist, no cycles (Phase 3.4).",
-      "type": "output_contains",
-      "signals": ["validate", "topo", "depends_on", "self-check", "all steps have", "no circular"],
+      "signals": ["data-seed", "manifest.yaml", ".data-seed-credentials.env", "Next steps", "hawkscan", "Review"],
       "severity": "warning",
-      "failure_guidance": "A half-broken manifest is worse than a clear error. Self-validation must run before any file is written to disk."
-    },
-    {
-      "id": "phase3_credentials_emitted",
-      "phase": "phase_3",
-      "description": "Agent writes .data-seed-credentials.env with TEST_USER / TEST_PASS / org / app outputs (Phase 3.6).",
-      "type": "file_present",
-      "signals": [".data-seed-credentials.env"],
-      "severity": "blocking",
-      "failure_guidance": "The credentials file is the handoff to hawkscan. Without it the seed is unusable."
-    },
-    {
-      "id": "phase3_gitignore_updated",
-      "phase": "phase_3",
-      "description": "Agent appends .data-seed-credentials.env to .gitignore so the file is not committed (Phase 3.5).",
-      "type": "file_content",
-      "target_file": ".gitignore",
-      "signals": [".data-seed-credentials.env"],
-      "severity": "blocking",
-      "failure_guidance": "If the credentials file is not gitignored, the suggested commit in Phase 4.2 may publish secrets to the repo."
-    },
-    {
-      "id": "phase3_idempotent_seed_steps",
-      "phase": "phase_3",
-      "description": "Emitted SQL/HTTP/gRPC/shell steps include idempotency guards (ON CONFLICT / INSERT IGNORE / PUT / check-then-create / etc.) per references/idempotency-patterns.md.",
-      "type": "file_content",
-      "target_file_glob": "data-seed/**/*.{sql,http,sh,js,json}",
-      "signals": ["ON CONFLICT", "INSERT IGNORE", "INSERT OR IGNORE", "WHERE NOT EXISTS", "PUT ", "upsert", "if-match", "check_sql", "check_command"],
-      "severity": "warning",
-      "failure_guidance": "Non-idempotent seed steps fail on second replay. If 'none: true' is intentional, it must be flagged in the manifest comment."
-    },
-    {
-      "id": "phase4_handoff_summary_emitted",
-      "phase": "phase_4",
-      "description": "Agent reports what was created and the next steps (Phase 4.1).",
-      "type": "output_contains",
-      "signals": ["Data seed complete", "Created:", "Next steps", "Replay the manifest", "Invoke hawkscan"],
-      "severity": "warning",
-      "failure_guidance": "Without the summary, the user doesn't know what files exist, what to commit, or how to continue to the next step (hawkscan)."
+      "failure_guidance": "Without the handoff summary the user doesn't know what was created, what to commit, or how to continue to hawkscan."
     },
     {
       "id": "antipattern_no_stackhawk_yml_written",
@@ -134,27 +97,27 @@
     {
       "id": "antipattern_no_startup_commands_run",
       "phase": "any",
-      "description": "Agent does NOT run docker-compose up, npm start, or any startup command — it only emits files (Common mistakes section).",
+      "description": "Agent does NOT run docker-compose up, npm start, or any app-startup command itself — starting the environment is the human's job (the skill does not run the artifacts).",
       "type": "command_negative",
       "anti_patterns": ["docker-compose up", "docker compose up", "npm start", "npm run dev", "./gradlew bootRun", "go run ", "rails server", "python manage.py runserver"],
-      "severity": "blocking",
-      "failure_guidance": "The skill is a code-emitter, not a runner. Starting services has side effects, costs time, and may interfere with the user's own dev environment."
+      "severity": "warning",
+      "failure_guidance": "The skill orchestrates `hawk perch seed`; it does not start the user's application stack. (Note: `hawk perch seed` itself manages its own HSTE daemon — that is the CLI, not the agent running compose/bootRun.)"
     },
     {
       "id": "antipattern_no_credentials_committed",
       "phase": "any",
-      "description": "Agent does NOT git-add .data-seed-credentials.env (file must remain gitignored and uncommitted).",
+      "description": "Agent does NOT git-add .data-seed-credentials.env (it must remain gitignored and uncommitted).",
       "type": "command_negative",
       "anti_patterns": ["git add .data-seed-credentials.env", "git add .data-seed-credentials"],
       "severity": "blocking",
-      "failure_guidance": "Adding the credentials file to git defeats the gitignore protection and publishes plaintext test credentials."
+      "failure_guidance": "Adding the credentials file to git publishes plaintext test credentials."
     },
     {
       "id": "antipattern_not_autonomous",
       "phase": "any",
       "description": "Skill only fires when the user explicitly asks for it — never as an autonomous post-code-change action.",
       "type": "output_negative",
-      "anti_patterns": ["after every change", "automatically", "I'll seed data after each fix"],
+      "anti_patterns": ["after every change", "automatically seed", "I'll seed data after each fix"],
       "severity": "warning",
       "failure_guidance": "Unlike hawkscan, this skill is explicitly NOT autonomous. Treating it as a per-commit safety net wastes the user's time and dirties their tree."
     }
