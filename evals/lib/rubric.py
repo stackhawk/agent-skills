@@ -11,12 +11,39 @@ transcript is graded by the same claude grader. Requires ANTHROPIC_API_KEY.
 """
 from __future__ import annotations
 import json
+import re
 import subprocess
 from pathlib import Path
 
 from evals.lib.models import ParsedRun, RubricResult, RubricCheckResult
 
 EVALS_DIR = Path(__file__).resolve().parent.parent  # repo/evals
+
+
+def _extract_json_object(text: str) -> dict:
+    """Parse a JSON object out of a grader reply that may be pure JSON, wrapped in
+    a ```json fence, or embedded in prose (e.g. "No skills needed.\\n\\n```json
+    {...}```"). Tries direct parse, then a fenced block, then the first balanced
+    {...} object."""
+    text = text.strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
+    if fence:
+        return json.loads(fence.group(1))
+    start = text.find("{")
+    if start != -1:
+        depth = 0
+        for i in range(start, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    return json.loads(text[start:i + 1])
+    raise ValueError(f"no JSON object in grader result: {text[:120]}")
 
 
 def _build_prompt(rubric_data: dict, run: ParsedRun, skill: str, run_id: str) -> str:
@@ -73,11 +100,19 @@ def grade_rubric(run: ParsedRun, skill: str, run_id: str, *,
            "--model", grader_model or DEFAULT_GRADER_MODEL]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        if not proc.stdout.strip():
+            # claude produced nothing on stdout — surface the real cause (exit
+            # code + stderr) instead of a misleading JSONDecodeError downstream.
+            tail = (proc.stderr or "").strip()[-200:]
+            raise ValueError(f"grader produced no output (exit {proc.returncode}): {tail}")
         envelope = json.loads(proc.stdout)
         # --output-format json wraps as {"result": "<json|obj>", ...}; some modes
         # return the schema object directly. Handle both.
         raw = envelope.get("result", envelope) if isinstance(envelope, dict) else envelope
-        result = raw if isinstance(raw, dict) else json.loads(raw)
+        # `raw` may be a dict already, or a string that is pure JSON, or — even with
+        # --json-schema — a model reply that wraps the JSON in prose / a ```json
+        # fence. Extract the object tolerantly.
+        result = raw if isinstance(raw, dict) else _extract_json_object(raw)
         if "score" not in result and "overall_pass" not in result:
             raise ValueError(f"grader returned no rubric fields: {str(result)[:120]}")
     except Exception as exc:  # noqa: BLE001 — grader is best-effort
