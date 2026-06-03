@@ -53,7 +53,7 @@ def main() -> None:
                                  full_auto=args.full_auto)
             did = adapter.detect_trigger(run, args.skill)
             res = grade(p, run, cfg.checks, platform=args.harness, skill=args.skill,
-                        did_trigger=did)
+                        did_trigger=did, extended=args.full_auto)
             # Qualitative rubric (opt-in): grade the transcript with a claude
             # grader and attach to the result so the reporter can weave it into
             # the pass/fail table. Only when the skill triggered correctly —

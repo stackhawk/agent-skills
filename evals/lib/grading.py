@@ -9,10 +9,15 @@ from evals.lib.models import (
 )
 
 
-def applicable_checks(checks: list[dict], prompt_id: str) -> list[dict]:
-    """A check applies if it has no applies_to (global) or names this prompt id."""
+def applicable_checks(checks: list[dict], prompt_id: str, *,
+                      extended: bool = False) -> list[dict]:
+    """A check applies if it has no applies_to (global) or names this prompt id.
+    Checks marked `tier: extended` require a real target/execution and are graded
+    only in extended (full-auto) runs — they're skipped in observe mode."""
     out = []
     for c in checks:
+        if not extended and c.get("tier") == "extended":
+            continue
         targets = c.get("applies_to")
         if not targets or prompt_id in targets:
             out.append(c)
@@ -25,6 +30,12 @@ def _haystack(run: ParsedRun) -> str:
 
 def run_process_checks(run: ParsedRun, checks: list[dict]) -> list[ProcessCheckResult]:
     haystack = _haystack(run)
+    # A "don't RUN command X" anti-pattern is about actual execution, so it scans
+    # executed commands only — not narration. In a paper walkthrough the agent may
+    # mention a command while explaining (e.g. "after `docker compose up` …"); that
+    # is not a violation. (output_negative / file_content_negative still scan the
+    # full output / files, since those ARE about narrated/written content.)
+    bash_only = " ".join(run.bash_commands).lower()
     all_files = " ".join(run.files_written + run.files_edited).lower()
     results: list[ProcessCheckResult] = []
 
@@ -32,8 +43,9 @@ def run_process_checks(run: ParsedRun, checks: list[dict]) -> list[ProcessCheckR
         ctype = check.get("type", "command_executed")
         signals = [s.lower() for s in check.get("signals", [])]
         antis = [a.lower() for a in check.get("anti_patterns", [])]
-        signal_hit = next((s for s in signals if s in haystack), None)
-        anti_hit = next((a for a in antis if a in haystack), None)
+        hay = bash_only if ctype == "command_negative" else haystack
+        signal_hit = next((s for s in signals if s in hay), None)
+        anti_hit = next((a for a in antis if a in hay), None)
 
         if ctype in ("command_negative", "file_content_negative", "output_negative"):
             passed = anti_hit is None
@@ -116,7 +128,8 @@ def _score(checks: list[ProcessCheckResult]) -> int:
 
 
 def grade(prompt: PromptConfig, run: ParsedRun, checks: list[dict], *,
-          platform: str, skill: str, did_trigger: bool) -> EvalResult:
+          platform: str, skill: str, did_trigger: bool,
+          extended: bool = False) -> EvalResult:
     trigger_correct = (did_trigger == prompt.should_trigger)
 
     # Process checks, ad-hoc expectations, and budgets only apply when the skill
@@ -133,7 +146,7 @@ def grade(prompt: PromptConfig, run: ParsedRun, checks: list[dict], *,
             note=(run.error or ""),
         )
 
-    proc = run_process_checks(run, applicable_checks(checks, prompt.id))
+    proc = run_process_checks(run, applicable_checks(checks, prompt.id, extended=extended))
     proc += run_adhoc_expected(run, prompt.expected)
 
     blocking_failed = any(not c.passed and c.severity == "blocking" for c in proc)
