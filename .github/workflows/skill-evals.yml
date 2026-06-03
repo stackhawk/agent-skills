@@ -294,7 +294,11 @@ jobs:
 
       - name: Install StackHawk plugins
         env:
-          ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}  # agy reads ANTIGRAVITY_API_KEY, not AGY_API_KEY
+          # Feed a real Google AI Studio key (GEMINI_API_KEY secret) — agy's API key
+          # IS an AI Studio key, and AGY_API_KEY is a placeholder. Both env names set
+          # in case the installed agy version reads either. (Prong-A headless test.)
+          ANTIGRAVITY_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           echo y | agy plugin install plugins/hawkscan
           echo y | agy plugin install plugins/api
@@ -338,7 +342,10 @@ jobs:
 
       - name: Run ${{ matrix.skill }} evals
         env:
-          ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}  # agy reads ANTIGRAVITY_API_KEY, not AGY_API_KEY
+          # Real AI Studio key (GEMINI_API_KEY secret); AGY_API_KEY is a placeholder.
+          # Both env names set in case agy reads either. (Prong-A headless test.)
+          ANTIGRAVITY_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # rubric grader (claude)
           HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
           API_KEY: ${{ secrets.HAWK_API_KEY }}
