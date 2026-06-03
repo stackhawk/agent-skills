@@ -294,11 +294,11 @@ jobs:
 
       - name: Install StackHawk plugins
         env:
-          # The agy API key lives in the AGY_API_KEY secret. Expose it under both env
-          # names agy may read (ANTIGRAVITY_API_KEY is the documented one; GEMINI_API_KEY
-          # is the AI Studio fallback). (Prong-A headless auth test.)
+          # NOTE: agy ignores API-key env vars and forces interactive Google OAuth
+          # (verified empirically; upstream antigravity-cli#78 open). This mapping is
+          # kept for if/when key auth lands; headless CI needs the OAuth-token
+          # injection below.
           ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
         run: |
           echo y | agy plugin install plugins/hawkscan
           echo y | agy plugin install plugins/api
@@ -342,10 +342,9 @@ jobs:
 
       - name: Run ${{ matrix.skill }} evals
         env:
-          # The agy API key lives in the AGY_API_KEY secret. Expose it under both env
-          # names agy may read (ANTIGRAVITY_API_KEY documented; GEMINI_API_KEY fallback).
+          # agy ignores API-key env vars and forces OAuth (upstream #78); kept for
+          # if/when key auth lands. Headless CI needs OAuth-token injection (TODO).
           ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # rubric grader (claude)
           HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
           API_KEY: ${{ secrets.HAWK_API_KEY }}
