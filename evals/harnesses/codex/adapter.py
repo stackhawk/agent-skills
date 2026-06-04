@@ -36,6 +36,11 @@ CLI_SIGNALS = {
     # data-seed emits checked-in artifacts rather than a distinctive CLI.
     "stackhawk-data-seed": ["data-seed/", "data-seed/manifest", ".data-seed-credentials",
                             "manifest.yaml"],
+    # hawkscan-ci edits pipeline files rather than running a distinctive CLI; its
+    # "signals" are the provider-detect globs and the workflow artifacts it writes.
+    "hawkscan-ci": [".github/workflows", ".gitlab-ci.yml", "Jenkinsfile",
+                    ".circleci/config.yml", "stackhawk/hawkscan-action",
+                    "stackhawk/hawkscan:latest"],
 }
 
 # Invocation signals — checked against output_text only. In full-auto mode these are
@@ -77,6 +82,16 @@ INVOCATION_SIGNALS = {
         "stackhawk-data-seed: yes", "stackhawk-data-seed — yes",
         "seed data for hawkscan", "seed this repo", "minimum seed entities",
         "seed entities required", "data seed complete", "data-seed/manifest",
+    ],
+    "hawkscan-ci": [
+        "hawkscan-ci:hawkscan-ci`: yes", "hawkscan-ci:hawkscan-ci` — yes",
+        "hawkscan-ci:hawkscan-ci**: yes", "hawkscan-ci:hawkscan-ci** — yes",
+        "hawkscan-ci:hawkscan-ci: yes", "hawkscan-ci:hawkscan-ci — yes",
+        "hawkscan-ci:hawkscan-ci - yes", "hawkscan-ci**: yes",
+        "hawkscan-ci** — yes", "hawkscan-ci** - yes", "hawkscan-ci: yes",
+        "hawkscan-ci — yes", "hawkscan-ci - yes",
+        "set up hawkscan in ci", "wire hawkscan into", "stackhawk/hawkscan-action",
+        "add stackhawk to my pipeline", "hawkscan in your pipeline",
     ],
 }
 

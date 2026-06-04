@@ -83,3 +83,13 @@ def test_agy_observe_suffix_and_skill_signal():
     # The new decision line is recognized as an explicit trigger.
     run2 = ag.parse_stream("**hawkscan:hawkscan: YES** — running the scan workflow")
     assert ag.detect_trigger(run2, "hawkscan") is True
+
+
+def test_hawkscan_ci_trigger_detection():
+    from evals.lib.harness import get_adapter
+    from evals.lib.models import ParsedRun
+    a = get_adapter("claude-code")
+    yes = ParsedRun(output_text="hawkscan-ci:hawkscan-ci: YES\nHere's the workflow block...")
+    no = ParsedRun(output_text="none: NO\nThis is a local scan request.")
+    assert a.detect_trigger(yes, "hawkscan-ci") is True
+    assert a.detect_trigger(no, "hawkscan-ci") is False

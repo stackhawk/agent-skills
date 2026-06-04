@@ -25,6 +25,11 @@ CLI_SIGNALS: dict[str, list[str]] = {
     "hawkscan": [],
     "api": [],
     "stackhawk-data-seed": [],
+    # hawkscan-ci edits pipeline files rather than running a distinctive CLI; its
+    # "signals" are the provider-detect globs and the workflow artifacts it writes.
+    "hawkscan-ci": [".github/workflows", ".gitlab-ci.yml", "Jenkinsfile",
+                    ".circleci/config.yml", "stackhawk/hawkscan-action",
+                    "stackhawk/hawkscan:latest"],
 }
 
 # INVOCATION_SIGNALS: checked against output_text.
@@ -73,6 +78,16 @@ INVOCATION_SIGNALS: dict[str, list[str]] = {
         "stackhawk-data-seed: yes", "stackhawk-data-seed — yes",
         "seed data for hawkscan", "seed this repo", "minimum seed entities",
         "data seed complete", "data-seed/manifest",
+    ],
+    "hawkscan-ci": [
+        "hawkscan-ci:hawkscan-ci`: yes", "hawkscan-ci:hawkscan-ci` — yes",
+        "hawkscan-ci:hawkscan-ci**: yes", "hawkscan-ci:hawkscan-ci** — yes",
+        "hawkscan-ci:hawkscan-ci: yes", "hawkscan-ci:hawkscan-ci — yes",
+        "hawkscan-ci:hawkscan-ci - yes", "hawkscan-ci**: yes",
+        "hawkscan-ci** — yes", "hawkscan-ci** - yes", "hawkscan-ci: yes",
+        "hawkscan-ci — yes", "hawkscan-ci - yes",
+        "set up hawkscan in ci", "wire hawkscan into", "stackhawk/hawkscan-action",
+        "add stackhawk to my pipeline", "hawkscan in your pipeline",
     ],
 }
 
