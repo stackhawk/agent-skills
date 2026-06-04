@@ -9,8 +9,11 @@
       "description": "The HAWK_API_KEY is never a non-interpolated literal; the workflow references a secret store instead.",
       "type": "output_negative",
       "anti_patterns": [
-        "hawk\\.[0-9a-f]{6,}\\.[0-9a-zA-Z]{6,}",
-        "apikey:\\s*hawk\\."
+        "apikey: hawk.",
+        "api_key: hawk.",
+        "api-key: hawk.",
+        "hawk_api_key: hawk.",
+        "hawk_api_key=hawk."
       ],
       "severity": "blocking",
       "failure_guidance": "A literal key in the pipeline file gets committed to source control. Always reference the provider's secret store or an external manager."
@@ -37,9 +40,18 @@
       "type": "output_negative",
       "anti_patterns": [
         "cat > stackhawk.yml",
-        "creat\\w* stackhawk\\.yml",
-        "generat\\w* (?:a |the )?stackhawk\\.yml",
-        "writ\\w* (?:a |the )?stackhawk\\.yml"
+        "create stackhawk.yml",
+        "create a stackhawk.yml",
+        "create the stackhawk.yml",
+        "creating stackhawk.yml",
+        "creates stackhawk.yml",
+        "generate stackhawk.yml",
+        "generate a stackhawk.yml",
+        "generate the stackhawk.yml",
+        "generating stackhawk.yml",
+        "write stackhawk.yml",
+        "write a stackhawk.yml",
+        "writing stackhawk.yml"
       ],
       "applies_to": ["hci-01","hci-02","hci-03","hci-04","hci-05","hci-06","hci-07","hci-08","hci-09","hci-10","hci-12","hci-13"],
       "severity": "blocking",
@@ -97,10 +109,13 @@
       "type": "output_contains",
       "signals": [
         "gh secret set",
-        "Secrets and variables",
-        "Credentials",
-        "variable",
-        "Context",
+        "secrets and variables",
+        "credentials",
+        "ci/cd variable",
+        "repository variable",
+        "variable group",
+        "masked variable",
+        "context",
         "secret store"
       ],
       "applies_to": ["hci-01","hci-02","hci-03","hci-04","hci-05","hci-06","hci-07","hci-08","hci-09","hci-10","hci-13"],
@@ -158,8 +173,9 @@
       "description": "The agent does NOT set HAWK_AGENT — a CI pipeline is not an agent; ${HAWK_AGENT:none} resolves correctly on its own.",
       "type": "output_negative",
       "anti_patterns": [
-        "HAWK_AGENT\\s*[:=]\\s*\\S",
-        "export HAWK_AGENT"
+        "hawk_agent: ",
+        "export hawk_agent",
+        "hawk_agent="
       ],
       "severity": "warning",
       "failure_guidance": "Setting HAWK_AGENT in CI mis-attributes the scan. Leave the ${HAWK_AGENT:none} default alone."
@@ -215,7 +231,8 @@
       "type": "output_contains",
       "signals": [
         "which one",
-        "both",
+        "which of the two",
+        "which config",
         "which should",
         "which pipeline"
       ],
