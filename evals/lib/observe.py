@@ -56,7 +56,8 @@ _OBSERVE_HEADER = (
     "permission to read or load the skill — proceed on your own. Output exactly:\n"
     "1. A decision line naming the StackHawk skill this request should invoke, "
     "written exactly as `hawkscan:hawkscan: YES`, `stackhawk-api:api: YES`, "
-    "`stackhawk-data-seed:stackhawk-data-seed: YES`, or `none: NO`.\n"
+    "`stackhawk-data-seed:stackhawk-data-seed: YES`, "
+    "`hawkscan-ci:hawkscan-ci: YES`, or `none: NO`.\n"
 )
 
 OBSERVE_SUFFIX = {
@@ -85,6 +86,21 @@ OBSERVE_SUFFIX = {
         "documented workflow in order — the discovery steps, the minimal seed set it "
         "proposes, and the exact artifacts it emits (the data-seed/ directory, "
         "manifest.yaml, and the credentials file). " + _USE_SKILL + _DATA_SEED_GUIDANCE + ")"
+    ),
+    # hawkscan-ci: no live scan and no real repo here — its product is the CI
+    # pipeline BLOCK it would write plus the secret/out-of-band instructions. It must
+    # NOT run git, push, open a PR, set the secret, or trigger the pipeline; if
+    # stackhawk.yml is missing it hands off to the hawkscan skill instead.
+    "hawkscan-ci": _OBSERVE_HEADER + (
+        "2. If (and only if) the hawkscan-ci skill applies, produce the exact CI "
+        "pipeline block you would write for the detected provider — the secret "
+        "reference, app startup, COMMIT_SHA/BRANCH_NAME export, the HawkScan "
+        "invocation, exit-code handling, and artifact upload — then list the "
+        "out-of-band steps the user must do themselves (set the secret, branch "
+        "protection). Do NOT run git, push a branch, open a PR, set the secret "
+        "yourself, or trigger the pipeline. If stackhawk.yml is missing or invalid, "
+        "say so and hand off to the hawkscan skill instead of writing a workflow. "
+        + _USE_SKILL + _CMDS_OK + ")"
     ),
 }
 
