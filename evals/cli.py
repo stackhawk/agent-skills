@@ -18,7 +18,7 @@ RESULTS_ROOT = Path(__file__).resolve().parent / "harnesses"
 
 
 def _common_args(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--skill", required=True, choices=["hawkscan", "api", "stackhawk-data-seed"])
+    p.add_argument("--skill", required=True, choices=["hawkscan", "api", "stackhawk-data-seed", "hawkscan-ci"])
     p.add_argument("--harness", default="claude-code", choices=PLATFORMS)
     p.add_argument("--id", dest="prompt_id")
     p.add_argument("--model")
@@ -131,7 +131,7 @@ def compare() -> None:
 def regrade() -> None:
     ap = argparse.ArgumentParser(prog="regrade")
     ap.add_argument("trace", type=Path)
-    ap.add_argument("--skill", required=True, choices=["hawkscan", "api", "stackhawk-data-seed"])
+    ap.add_argument("--skill", required=True, choices=["hawkscan", "api", "stackhawk-data-seed", "hawkscan-ci"])
     ap.add_argument("--harness", default="claude-code", choices=PLATFORMS)
     args = ap.parse_args()
     res = _regrade(args.trace, skill=args.skill, platform=args.harness)
@@ -175,9 +175,9 @@ def report() -> None:
 
 def validate() -> None:
     ap = argparse.ArgumentParser(prog="validate")
-    ap.add_argument("--skill", choices=["hawkscan", "api", "stackhawk-data-seed"])
+    ap.add_argument("--skill", choices=["hawkscan", "api", "stackhawk-data-seed", "hawkscan-ci"])
     args = ap.parse_args()
-    skills = [args.skill] if args.skill else ["hawkscan", "api", "stackhawk-data-seed"]
+    skills = [args.skill] if args.skill else ["hawkscan", "api", "stackhawk-data-seed", "hawkscan-ci"]
     for skill in skills:
         cfg = load_skill(skill)   # raises on any validation error
         console.print(f"[green]✓[/] {skill}: {len(cfg.prompts)} prompts, "
