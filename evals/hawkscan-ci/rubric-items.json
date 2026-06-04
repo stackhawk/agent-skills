@@ -1,0 +1,32 @@
+{
+  "skill": "hawkscan-ci",
+  "version": "1.10.0",
+  "description": "Qualitative rubric for hawkscan-ci output. Dormant in observe-mode matrix runs; fires only under --full-auto --rubric.",
+  "items": [
+    {
+      "id": "workflow_well_formed",
+      "criterion": "The proposed pipeline block is syntactically plausible and idiomatic for the detected provider (correct keys, indentation, step structure).",
+      "weight": 3
+    },
+    {
+      "id": "step_ordering",
+      "criterion": "Steps are in the correct order: checkout -> build/start app -> export COMMIT_SHA/BRANCH_NAME -> invoke HawkScan -> handle exit code -> upload artifact.",
+      "weight": 3
+    },
+    {
+      "id": "secret_handling_idiomatic",
+      "criterion": "The secret is referenced via the provider's native mechanism (or an external-manager fetch step), never inlined, and the user is told exactly where to set it.",
+      "weight": 3
+    },
+    {
+      "id": "out_of_band_clarity",
+      "criterion": "Out-of-band actions (set the secret, branch protection, first-run expectations) are listed clearly, and the agent stops without pushing or triggering the pipeline.",
+      "weight": 2
+    },
+    {
+      "id": "scope_discipline",
+      "criterion": "The response stays within the CI skill's scope — it does not generate stackhawk.yml, set HAWK_AGENT, or reach into auth/findings/triage.",
+      "weight": 2
+    }
+  ]
+}
