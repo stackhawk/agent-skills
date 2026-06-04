@@ -34,7 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api, stackhawk-data-seed]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
         model: [claude-sonnet-4-6, claude-opus-4-7, claude-haiku-4-5-20251001]
     steps:
       - uses: actions/checkout@v4
@@ -109,7 +109,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api, stackhawk-data-seed]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
         model: [gpt-5.5, o3]
     steps:
       - uses: actions/checkout@v4
@@ -140,6 +140,7 @@ jobs:
           echo y | codex plugin add hawkscan@stackhawk
           echo y | codex plugin add stackhawk-api@stackhawk
           echo y | codex plugin add stackhawk-data-seed@stackhawk
+          echo y | codex plugin add hawkscan-ci@stackhawk
 
       - uses: actions/setup-java@v4
         with:
@@ -193,7 +194,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api, stackhawk-data-seed]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
         model: [default]
     steps:
       - uses: actions/checkout@v4
@@ -221,6 +222,7 @@ jobs:
           echo y | agy plugin install plugins/hawkscan
           echo y | agy plugin install plugins/api
           echo y | agy plugin install plugins/stackhawk-data-seed
+          echo y | agy plugin install plugins/hawkscan-ci
         continue-on-error: true  # depends on agy CLI; best-effort so evals still runs
 
       - uses: actions/setup-java@v4
@@ -277,7 +279,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api, stackhawk-data-seed]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
         model: [default]
     steps:
       - uses: actions/checkout@v4
