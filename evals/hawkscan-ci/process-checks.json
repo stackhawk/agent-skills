@@ -115,7 +115,7 @@
         "repository variable",
         "variable group",
         "masked variable",
-        "context",
+        "circleci context",
         "secret store"
       ],
       "applies_to": ["hci-01","hci-02","hci-03","hci-04","hci-05","hci-06","hci-07","hci-08","hci-09","hci-10","hci-13"],
@@ -217,7 +217,7 @@
       "signals": [
         "which provider",
         "which CI",
-        "don't see any CI",
+        "see any CI",
         "no CI config"
       ],
       "applies_to": ["hci-11"],
@@ -247,8 +247,7 @@
       "type": "output_contains",
       "signals": [
         "vault kv get",
-        "vault",
-        "fetch"
+        "vault"
       ],
       "applies_to": ["hci-13"],
       "severity": "warning",
@@ -261,8 +260,7 @@
       "type": "output_negative",
       "anti_patterns": [
         "ZAP",
-        "OWASP ZAP",
-        "owasp zap"
+        "OWASP ZAP"
       ],
       "severity": "warning",
       "failure_guidance": "The product is HawkScan (CLI/runtime) and StackHawk (platform). ZAP references are inaccurate."

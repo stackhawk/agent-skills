@@ -7,11 +7,11 @@ on:
   workflow_dispatch:
     inputs:
       skill:
-        description: "Skill to evaluate"
+        description: "Informational only — the matrix always evaluates all skills"
         required: true
-        default: "both"
+        default: "all"
         type: choice
-        options: [hawkscan, api, both]
+        options: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, all]
       platform:
         description: "Platform to run"
         required: true
