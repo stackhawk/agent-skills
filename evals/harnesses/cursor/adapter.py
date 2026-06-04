@@ -55,11 +55,12 @@ CLI_SIGNALS = {
     ],
     "stackhawk-data-seed": ["data-seed/", "data-seed/manifest", ".data-seed-credentials",
                             "manifest.yaml"],
-    # hawkscan-ci edits pipeline files rather than running a distinctive CLI; its
-    # "signals" are the provider-detect globs and the workflow artifacts it writes.
+    # hawkscan-ci has no distinctive CLI; the closest "it ran" signal is the agent
+    # executing provider-detection globs over CI config files. The workflow artifacts
+    # it WRITES (stackhawk/hawkscan-action, the docker image) are narrated output, so
+    # they live in INVOCATION_SIGNALS, not here.
     "hawkscan-ci": [".github/workflows", ".gitlab-ci.yml", "Jenkinsfile",
-                    ".circleci/config.yml", "stackhawk/hawkscan-action",
-                    "stackhawk/hawkscan:latest"],
+                    ".circleci/config.yml"],
 }
 
 # Invocation signals — checked against output_text only.

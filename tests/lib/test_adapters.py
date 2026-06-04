@@ -93,3 +93,26 @@ def test_hawkscan_ci_trigger_detection():
     no = ParsedRun(output_text="none: NO\nThis is a local scan request.")
     assert a.detect_trigger(yes, "hawkscan-ci") is True
     assert a.detect_trigger(no, "hawkscan-ci") is False
+
+
+def test_hawkscan_ci_cli_and_loose_signals():
+    from evals.lib.harness import get_adapter
+    from evals.lib.models import ParsedRun
+    a = get_adapter("claude-code")
+    # CLI signal: agent ran a provider-detection command (no decision line)
+    cli = ParsedRun(bash_commands=["cat .github/workflows/ci.yml"])
+    assert a.detect_trigger(cli, "hawkscan-ci") is True
+    # loose phrase in narration (no decision line)
+    loose = ParsedRun(output_text="I would set up hawkscan in CI for this repo.")
+    assert a.detect_trigger(loose, "hawkscan-ci") is True
+
+
+def test_hawkscan_ci_agy_declared_no_wins_over_prose_paths():
+    from evals.lib.harness import get_adapter
+    from evals.lib.models import ParsedRun
+    agy = get_adapter("agy")
+    # agy matches signals against prose; a correct decline that merely MENTIONS a CI
+    # path must NOT be force-triggered (agy hawkscan-ci CLI_SIGNALS are empty, so the
+    # declared NO wins).
+    decline = ParsedRun(output_text="none: NO\nThis is a local scan; you'd normally edit .github/workflows/ci.yml.")
+    assert agy.detect_trigger(decline, "hawkscan-ci") is False

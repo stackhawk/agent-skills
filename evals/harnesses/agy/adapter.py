@@ -25,11 +25,11 @@ CLI_SIGNALS: dict[str, list[str]] = {
     "hawkscan": [],
     "api": [],
     "stackhawk-data-seed": [],
-    # hawkscan-ci edits pipeline files rather than running a distinctive CLI; its
-    # "signals" are the provider-detect globs and the workflow artifacts it writes.
-    "hawkscan-ci": [".github/workflows", ".gitlab-ci.yml", "Jenkinsfile",
-                    ".circleci/config.yml", "stackhawk/hawkscan-action",
-                    "stackhawk/hawkscan:latest"],
+    # agy is text-only: CLI_SIGNALS here are matched against prose output, where a
+    # hit would override a declared `none: NO` (executed_cli wins in decide_trigger).
+    # So, like the other three skills above, hawkscan-ci's agy CLI_SIGNALS stay empty —
+    # all detection goes through INVOCATION_SIGNALS, where a declared NO can still win.
+    "hawkscan-ci": [],
 }
 
 # INVOCATION_SIGNALS: checked against output_text.
