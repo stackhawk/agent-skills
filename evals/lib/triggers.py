@@ -19,6 +19,7 @@ _DECL_NAMES = {
     "api": ["stackhawk-api:api", "stackhawk-api"],
     "stackhawk-data-seed": ["stackhawk-data-seed:stackhawk-data-seed",
                             "stackhawk-data-seed"],
+    "hawkscan-ci": ["hawkscan-ci:hawkscan-ci", "hawkscan-ci"],
 }
 
 # Decision separator between the skill name and YES/NO: colon, hyphen, en/em dash.

@@ -82,3 +82,17 @@ def test_own_yes_not_suppressed_by_other():
     # Both declared yes — this skill is still yes.
     txt = "stackhawk-api:api: YES and hawkscan:hawkscan: YES"
     assert explicit_decision(txt, "hawkscan") == "yes"
+
+
+def test_explicit_decision_hawkscan_ci():
+    from evals.lib.triggers import explicit_decision
+    # full plugin:skill form and bare name both resolve to YES
+    assert explicit_decision("hawkscan-ci:hawkscan-ci: YES", "hawkscan-ci") == "yes"
+    assert explicit_decision("**hawkscan-ci: YES**", "hawkscan-ci") == "yes"
+    assert explicit_decision("hawkscan-ci:hawkscan-ci: NO", "hawkscan-ci") == "no"
+    # choosing a different skill means hawkscan-ci was declined
+    assert explicit_decision("hawkscan:hawkscan: YES", "hawkscan-ci") == "no"
+    # global decline
+    assert explicit_decision("none: NO", "hawkscan-ci") == "no"
+    # the hyphen in the name must NOT be normalized away
+    assert explicit_decision("hawkscan-ci does not apply", "hawkscan-ci") == "no"
