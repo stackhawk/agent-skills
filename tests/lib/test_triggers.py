@@ -85,7 +85,6 @@ def test_own_yes_not_suppressed_by_other():
 
 
 def test_explicit_decision_hawkscan_ci():
-    from evals.lib.triggers import explicit_decision
     # full plugin:skill form and bare name both resolve to YES
     assert explicit_decision("hawkscan-ci:hawkscan-ci: YES", "hawkscan-ci") == "yes"
     assert explicit_decision("**hawkscan-ci: YES**", "hawkscan-ci") == "yes"

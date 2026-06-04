@@ -4,8 +4,11 @@ from evals.lib.observe import observe_suffix, OBSERVE_SUFFIX
 def test_hawkscan_ci_suffix_present_and_specific():
     s = observe_suffix("hawkscan-ci")
     assert s, "hawkscan-ci must have an observe suffix"
-    # declares the skill token
-    assert "hawkscan-ci:hawkscan-ci: YES" in s
+    # assert on body-specific text (the shared header already contains the YES token,
+    # so checking for it wouldn't prove the hawkscan-ci entry exists)
+    low0 = s.lower()
+    assert "pipeline block" in low0
+    assert "hand off to the hawkscan skill" in low0
     # bakes in the don't-take-action boundary
     low = s.lower()
     assert "do not" in low
