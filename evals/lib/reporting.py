@@ -147,7 +147,7 @@ def _pivot_cell(r: EvalResult | None) -> str:
     return f"{_PIVOT_ICON['fail']} — {_fail_reason(r)}"
 
 
-_ROLLUP_SKILLS = ["hawkscan", "api", "stackhawk-data-seed"]
+_ROLLUP_SKILLS = ["hawkscan", "api", "stackhawk-data-seed", "hawkscan-ci"]
 
 
 def _rollup_cell(cr) -> str:
