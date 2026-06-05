@@ -1,7 +1,7 @@
 {
   "skill": "stackhawk-data-seed",
-  "version": "1.11.0",
-  "description": "Deterministic process checks for the stackhawk-data-seed skill (CLI-driving stub). The skill drives `hawk perch seed --events json` and relays its JSONL phase events; the seed methodology lives in the hawk CLI, not in the agent. Checks verify the agent orchestrates the command correctly and does NOT hand-author seed artifacts. Harnesses look for these signals in agent traces, command histories, generated files, or output text.",
+  "version": "1.12.0",
+  "description": "Deterministic process checks for the stackhawk-data-seed skill (caller-driven). The skill probes for the hawk seed-flow capability, runs `hawk perch seed` (preflight), designs data-seed/manifest.yaml from the emitted digest, then validates and finalizes it via `hawk perch seed validate`/`finalize`. The seed METHODOLOGY lives in the skill now, so the agent DOES author the manifest — that is correct, not a violation. Harnesses look for these signals in agent traces, command histories, generated files, or output text.",
   "checks": [
     {
       "id": "preflight_git_repo_verified",
@@ -13,13 +13,13 @@
       "failure_guidance": "Seed artifacts and the credentials handoff land in the repo tree — the skill must run inside the intended git checkout, not a random directory."
     },
     {
-      "id": "preflight_seed_command_available",
+      "id": "preflight_seed_capability_gate",
       "phase": "phase_0",
-      "description": "Agent confirms `hawk perch seed` exists before using it, and PUNTS (tells the user to upgrade hawk) if it does not — instead of falling back to hand-authoring seed data (Phase 0.2).",
+      "description": "Agent probes that hawk supports the caller-driven seed flow (`hawk perch seed validate --help` and `finalize --help`). If unsupported it PUNTS with an upgrade instruction (hawk >= min version, brew upgrade / download) instead of hand-authoring seed data (Phase 0.2).",
       "type": "command_or_output",
-      "signals": ["hawk perch seed --help", "NO-SEED-COMMAND", "upgrade", "brew upgrade stackhawk/cli/hawk", "download.stackhawk.com"],
+      "signals": ["hawk perch seed validate --help", "hawk perch seed finalize --help", "SEED-FLOW-UNSUPPORTED", "SEED-FLOW-OK", "hawk version", "upgrade", "brew upgrade stackhawk/cli/hawk", "download.stackhawk.com"],
       "severity": "blocking",
-      "failure_guidance": "The seed methodology now lives in `hawk perch seed`. If that command is absent the only correct move is to tell the user to upgrade hawk — NOT to revert to hand-writing discovery + a manifest."
+      "failure_guidance": "The new seed flow only exists on a recent hawk. If the subcommands are absent the only correct move is to tell the user to upgrade — NOT to hand-author seed data or fall back to an older single-command flow."
     },
     {
       "id": "preflight_existing_seed_checked",
@@ -31,55 +31,45 @@
       "failure_guidance": "Silently overwriting an existing data-seed/ destroys prior human-curated artifacts. The skill must surface the choice."
     },
     {
-      "id": "runs_hawk_perch_seed",
+      "id": "runs_preflight_and_routes_outcome",
       "phase": "phase_1",
-      "description": "Agent invokes `hawk perch seed --events json` (with --app-host) as a subprocess to do the seeding (Phase 1). This is the core action.",
+      "description": "Agent runs `hawk perch seed --events json` (the static pre-flight) and routes on the `done` event's `outcome` — `needs_synthesis` (continue), `no_local_storage` (recurse into resolved upstreams), or `nothing_to_seed` (honest stop) (Phase 1).",
+      "type": "command_or_output",
+      "signals": ["hawk perch seed", "--events json", "outcome", "needs_synthesis", "no_local_storage", "nothing_to_seed", "digest", "upstreams"],
+      "severity": "blocking",
+      "failure_guidance": "The pre-flight outcome decides the whole run. Ignoring it (or never running it) means the agent can't tell a seedable repo from a gateway from a no-op."
+    },
+    {
+      "id": "agent_designs_manifest",
+      "phase": "phase_2",
+      "description": "When the outcome is `needs_synthesis`, the agent AUTHORS data-seed/manifest.yaml from the digest (minimal, FK-ordered, idempotent, v1 schema). This is now correct behavior — the methodology lives in the skill. (Inverts the old stub's do-not-handauthor prohibition.)",
+      "type": "output_or_file",
+      "signals": ["data-seed/manifest.yaml", "version: 1", "prerequisites", "targets", "steps", "idempotent", "ON CONFLICT", "upsert"],
+      "severity": "blocking",
+      "failure_guidance": "The skill's whole job in the needs_synthesis case is to design the manifest. Refusing to author it (or expecting the CLI to synthesize it) is a failure under the caller-driven model."
+    },
+    {
+      "id": "drives_validate_then_finalize",
+      "phase": "phase_3_4",
+      "description": "Agent validates the drafted manifest with `hawk perch seed validate <manifest>` (fixing reported errors) and then writes artifacts with `hawk perch seed finalize <manifest>` (Phases 3-4).",
       "type": "command_executed",
-      "signals": ["hawk perch seed", "--events json", "--app-host"],
+      "signals": ["hawk perch seed validate", "hawk perch seed finalize", "data-seed/manifest.yaml", "--events json"],
       "severity": "blocking",
-      "failure_guidance": "The whole point of the stub is to drive the CLI. If the agent does not run `hawk perch seed`, it is not using the skill's mechanism."
+      "failure_guidance": "validate + finalize are the deterministic steps the CLI provides. Skipping validate (finalizing an unchecked manifest) or skipping finalize (no artifacts written) breaks the contract."
     },
     {
-      "id": "consumes_jsonl_phase_events",
+      "id": "honest_noop_or_upstream_routing",
       "phase": "phase_1",
-      "description": "Agent consumes/relays the JSONL phase events emitted on stdout (one object per line) and surfaces progress to the user (Phase 1).",
+      "description": "On `nothing_to_seed` the agent relays the honest no-op; on `no_local_storage` it routes to the resolved upstream repos (and reports unresolved ones) rather than fabricating local seed records.",
       "type": "output_contains",
-      "signals": ["phase", "starting", "extracting", "synthesizing", "validating", "finalizing", "done", "jq"],
+      "signals": ["nothing to seed", "no local storage", "upstream", "gateway", "resolvedPath", "unresolvedReason", "no-op"],
       "severity": "warning",
-      "failure_guidance": "The skill's cross-agent contract is the JSONL phase stream. Ignoring it means the user gets no progress and review prompts may be missed."
-    },
-    {
-      "id": "does_not_handauthor_seed",
-      "phase": "any",
-      "description": "Agent does NOT hand-author seed data — no manual discovery greps for storage signals and no hand-written data-seed/manifest.yaml or per-service seed scripts. Producing the artifacts is the CLI's job.",
-      "type": "command_negative",
-      "anti_patterns": [
-        "grep -r",
-        "Liquibase",
-        "Flyway",
-        "Prisma",
-        "Alembic",
-        "schema.sql",
-        "cat > data-seed/manifest.yaml",
-        "tee data-seed/manifest.yaml",
-        "Write data-seed/manifest.yaml"
-      ],
-      "severity": "blocking",
-      "failure_guidance": "Reverting to manual discovery + manifest authoring defeats the purpose (the methodology is intentionally inside the CLI). The agent should run `hawk perch seed`, not reimplement it. Note: if `hawk perch seed` is unavailable it must PUNT (Phase 0.2), not hand-author."
-    },
-    {
-      "id": "honest_noop_for_no_storage",
-      "phase": "phase_1",
-      "description": "When the run reports no local storage / nothing to seed (e.g. an API gateway with storageKind NONE), the agent relays that honest outcome rather than fabricating seed records.",
-      "type": "output_contains",
-      "signals": ["no local storage", "nothing to seed", "storageKind", "no-op", "gateway", "no data to seed"],
-      "severity": "warning",
-      "failure_guidance": "A no-op manifest for a storage-less gateway is the correct, honest result. Fabricating fake entities to look productive is a failure. Only fires when the run actually reports no storage."
+      "failure_guidance": "A storage-less gateway has nothing local to seed — fabricating fake entities to look productive is a failure. The honest outcome (or upstream routing) is correct."
     },
     {
       "id": "handoff_reported",
-      "phase": "phase_2",
-      "description": "On success the agent reports what was written (data-seed/ + manifest.yaml + .data-seed-credentials.env) and the next steps, including that hawkscan consumes the credentials env (Phase 2).",
+      "phase": "phase_5",
+      "description": "On success the agent reports what was written (data-seed/ + manifest.yaml + .data-seed-credentials.env) and the next steps, including that hawkscan consumes the credentials env (Phase 5).",
       "type": "output_contains",
       "signals": ["data-seed", "manifest.yaml", ".data-seed-credentials.env", "Next steps", "hawkscan", "Review"],
       "severity": "warning",
@@ -101,7 +91,7 @@
       "type": "command_negative",
       "anti_patterns": ["docker-compose up", "docker compose up", "npm start", "npm run dev", "./gradlew bootRun", "go run ", "rails server", "python manage.py runserver"],
       "severity": "warning",
-      "failure_guidance": "The skill orchestrates `hawk perch seed`; it does not start the user's application stack. (Note: `hawk perch seed` itself manages its own HSTE daemon — that is the CLI, not the agent running compose/bootRun.)"
+      "failure_guidance": "The skill orchestrates `hawk perch seed`; it does not start the user's application stack."
     },
     {
       "id": "antipattern_no_credentials_committed",
