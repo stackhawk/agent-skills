@@ -79,7 +79,10 @@ If `data-seed/` exists, ask the user whether to **augment**, **replace** (`mv da
 ## Phase 1: Run the pre-flight and route on the outcome
 
 ```bash
+# With an app host (recommended when known — enriches the digest with served-OpenAPI routes):
 hawk perch seed --events json --app-host "$APP_HOST"
+# Without a host — OMIT the flag entirely; do NOT pass an empty --app-host:
+hawk perch seed --events json
 ```
 
 - `--app-host` — the target app's URL (e.g. `http://localhost:8080`). Optional; when reachable it enriches the digest with served-OpenAPI routes. Ask the user if a host is handy, otherwise omit it.
@@ -92,10 +95,10 @@ Phase events: `starting` → `extracting` → `done`. **Read the `done` event's 
 | `outcome` | What it means | What you do |
 |---|---|---|
 | `nothing_to_seed` | No local datastore and no upstreams | Report the honest no-op and stop. Nothing to author. |
-| `no_local_storage` | Entities live in upstream services | The `done` payload lists `upstreams` / `upstreamResults` (each with a `resolvedPath` or `unresolvedReason`) and writes a shared `.data-seed-identity.env`. For each **resolved** upstream, `cd` into its repo and run this whole flow there (it reuses the shared identity so cross-service IDs line up). Report any **unresolved** upstreams to the user. |
+| `no_local_storage` | Entities live in upstream services | The `done` payload lists `upstreams` / `upstreamResults` (each with a `resolvedPath` or `unresolvedReason`) and writes a shared `.data-seed-identity.env`. For each **resolved** upstream, run this whole flow again with the working directory rooted at that upstream's `resolvedPath` (a fresh subprocess/session at that path — a bare `cd` may not persist across calls for every agent). It reuses the shared identity so cross-service IDs line up. Report any **unresolved** upstreams to the user. |
 | `needs_synthesis` | A local datastore is present | Continue to Phase 2 using the `done` payload's `digest`. |
 
-If the process exits non-zero, report the `done` event's message (plus relevant stderr) and stop — do not improvise seed artifacts.
+If the process exits non-zero, report the `done` event's message (plus relevant stderr) and stop — do not improvise seed artifacts. If no `done` event was emitted at all (e.g. the process crashed), report the last stderr line.
 
 ---
 
@@ -121,7 +124,7 @@ targets: {}                # map; datastores/endpoints the steps write to (may b
 steps: []                  # list; the ordered, idempotent seed operations (may be empty)
 ```
 
-**No-op manifests:** if the digest reports `storageKind: NONE` with no routes or migrations (e.g. an API gateway), a valid manifest with empty `prerequisites`, `targets`, and `steps` is the correct, honest result — do NOT fabricate seed records. (In practice the pre-flight returns `nothing_to_seed`/`no_local_storage` for these and you never reach Phase 2.)
+**No-op manifests:** a valid manifest with empty `prerequisites`, `targets`, and `steps` is an acceptable, honest result when there is genuinely nothing to seed — never fabricate seed records to look productive. (In practice the pre-flight returns `nothing_to_seed`/`no_local_storage` before Phase 2 for storage-less repos; this guidance is here for completeness.)
 
 **Shared identity (cross-service consistency):** if `.data-seed-identity.env` is present (or `SEED_ORG_ID` / `SEED_USER_ID` / `SEED_APP_ID` / `SEED_USER_EMAIL` / `SEED_USER_PASSWORD` are in the environment), create the seeded entities with **those exact IDs/values** — do not mint your own. This keeps the same org/user/app consistent across every upstream service so a gateway's cross-service routes resolve.
 
@@ -133,7 +136,7 @@ steps: []                  # list; the ordered, idempotent seed operations (may 
 hawk perch seed validate data-seed/manifest.yaml --events json
 ```
 
-Read the `done` event: `{"valid": true}` → proceed to Phase 4. `{"valid": false, "errors": [...]}` (and a non-zero exit) → fix the reported `errors` in the manifest and re-validate. If it won't converge after a few attempts, report the errors and stop — do NOT finalize an invalid manifest.
+Read the `done` event: `{"valid": true}` → proceed to Phase 4. `{"valid": false, "errors": [...]}` (and a non-zero exit) → fix the reported `errors` in the manifest and re-validate. After **3** unsuccessful validate attempts, report the errors and stop — do NOT finalize an invalid manifest.
 
 ---
 
@@ -171,6 +174,8 @@ Commit reminder:
 git add data-seed/ .gitignore
 git commit -m "chore: add data seed artifacts for HawkScan"
 ```
+
+(Stage `.gitignore` only if you added an entry for `.data-seed-credentials.env`.)
 
 `.data-seed-credentials.env` is gitignored and must not be committed.
 
