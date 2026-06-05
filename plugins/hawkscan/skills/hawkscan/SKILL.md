@@ -488,14 +488,14 @@ no seeded dev user or key). If the recipe itself is wrong or ambiguous instead, 
 - **Gate first** — seeding needs a hawk that carries the caller-driven seed subcommands. Probe:
   `hawk perch seed validate --help >/dev/null 2>&1 && hawk perch seed finalize --help >/dev/null 2>&1`.
 - If the probe **succeeds** and `stackhawk-data-seed` is installed → invoke it. It runs
-  `hawk perch seed` (preflight → designs the manifest → validate → finalize) and produces a
+  `hawk perch seed` (preflight → synthesizes the manifest **if the outcome calls for it** → validate → finalize), or reports an honest no-op for a storage-less repo, and on success produces a
   `.data-seed-credentials.env` handoff this skill then consumes.
 - If the probe **fails** (hawk too old) → **do not block the scan.** Continue the hawkscan flow and
   tell the user once: "Empty results here could be enriched by seeding test data, but that needs
   hawk ≥ `__MIN_HAWK_SEED_VERSION__` — `brew upgrade stackhawk/cli/hawk` to enable it." Seeding is an
   optional enhancement, not a prerequisite for scanning.
-- If the skill is **not installed** (but hawk supports it) → tell the user to install it
-  (`/plugin install stackhawk-data-seed@stackhawk`) and re-run; still not a hard blocker for the scan.
+- If `stackhawk-data-seed` is **not in your available skills/plugins** (or invoking it errors as unavailable) but hawk supports the flow → tell the user to install it
+  (`/plugin install stackhawk-data-seed@stackhawk`) and re-run the seeding step; still not a hard blocker for the scan.
 - **Cross-repo:** for a gateway / multi-service app the credential or entity usually lives in an
   **upstream** service's datastore (e.g. the auth service), not the target repo. Run the seed
   against that upstream repo (or let data-seed resolve the upstream dependency); seeding the gateway
