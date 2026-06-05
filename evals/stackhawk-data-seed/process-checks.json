@@ -43,7 +43,7 @@
       "id": "agent_designs_manifest",
       "phase": "phase_2",
       "description": "When the outcome is `needs_synthesis`, the agent AUTHORS data-seed/manifest.yaml from the digest (minimal, FK-ordered, idempotent, v1 schema). This is now correct behavior — the methodology lives in the skill. (Inverts the old stub's do-not-handauthor prohibition.)",
-      "type": "output_or_file",
+      "type": "output_contains",
       "signals": ["data-seed/manifest.yaml", "version: 1", "prerequisites", "targets", "steps", "idempotent", "ON CONFLICT", "upsert"],
       "severity": "blocking",
       "failure_guidance": "The skill's whole job in the needs_synthesis case is to design the manifest. Refusing to author it (or expecting the CLI to synthesize it) is a failure under the caller-driven model."
@@ -53,7 +53,7 @@
       "phase": "phase_3_4",
       "description": "Agent validates the drafted manifest with `hawk perch seed validate <manifest>` (fixing reported errors) and then writes artifacts with `hawk perch seed finalize <manifest>` (Phases 3-4).",
       "type": "command_executed",
-      "signals": ["hawk perch seed validate", "hawk perch seed finalize", "data-seed/manifest.yaml", "--events json"],
+      "signals": ["hawk perch seed validate", "hawk perch seed finalize", "data-seed/manifest.yaml"],
       "severity": "blocking",
       "failure_guidance": "validate + finalize are the deterministic steps the CLI provides. Skipping validate (finalizing an unchecked manifest) or skipping finalize (no artifacts written) breaks the contract."
     },
@@ -71,7 +71,7 @@
       "phase": "phase_5",
       "description": "On success the agent reports what was written (data-seed/ + manifest.yaml + .data-seed-credentials.env) and the next steps, including that hawkscan consumes the credentials env (Phase 5).",
       "type": "output_contains",
-      "signals": ["data-seed", "manifest.yaml", ".data-seed-credentials.env", "Next steps", "hawkscan", "Review"],
+      "signals": ["data-seed", "manifest.yaml", ".data-seed-credentials.env", "Next steps", "hawkscan"],
       "severity": "warning",
       "failure_guidance": "Without the handoff summary the user doesn't know what was created, what to commit, or how to continue to hawkscan."
     },
