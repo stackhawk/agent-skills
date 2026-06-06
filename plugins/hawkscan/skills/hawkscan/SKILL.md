@@ -492,7 +492,7 @@ no seeded dev user or key). If the recipe itself is wrong or ambiguous instead, 
   `.data-seed-credentials.env` handoff this skill then consumes.
 - If the probe **fails** (hawk too old) → **do not block the scan.** Continue the hawkscan flow and
   tell the user once: "Empty results here could be enriched by seeding test data, but that needs
-  hawk ≥ `__MIN_HAWK_SEED_VERSION__` — `brew upgrade stackhawk/cli/hawk` to enable it." Seeding is an
+  hawk ≥ `5.6.11` — `brew upgrade stackhawk/cli/hawk` to enable it." Seeding is an
   optional enhancement, not a prerequisite for scanning.
 - If `stackhawk-data-seed` is **not in your available skills/plugins** (or invoking it errors as unavailable) but hawk supports the flow → tell the user to install it
   (`/plugin install stackhawk-data-seed@stackhawk`) and re-run the seeding step; still not a hard blocker for the scan.
