@@ -1,16 +1,16 @@
 {
   "skill": "stackhawk-data-seed",
-  "grader_prompt": "You are evaluating whether a stackhawk-data-seed skill run was orchestrated correctly. This skill is CALLER-DRIVEN: the agent probes that hawk supports the seed flow, runs `hawk perch seed` (a static pre-flight that emits an outcome + repo digest), DESIGNS data-seed/manifest.yaml from that digest (the seed methodology lives in the skill — authoring the manifest is the agent's job and is CORRECT), then validates it with `hawk perch seed validate` and writes artifacts with `hawk perch seed finalize`. Review the agent's output text, command history, and any files under data-seed/. Do NOT penalize the agent for authoring the manifest — that is the intended behavior. DO check that it gated on hawk capability, ran the three subcommands in order, routed correctly on the pre-flight outcome, and handed off cleanly. For each check below, determine pass/fail and write a one-sentence explanation. Return a JSON object conforming to rubric-schema.json.",
+  "grader_prompt": "You are evaluating whether a stackhawk-data-seed skill run was orchestrated correctly. This skill is CALLER-DRIVEN: the agent probes that hawk supports the seed flow, runs `hawk perch seed` (a static pre-flight that emits an outcome + repo digest), DESIGNS data-seed/manifest.yaml from that digest (the seed methodology lives in the skill — authoring the manifest is the agent's job and is CORRECT), then validates it with `hawk perch seed validate` and writes artifacts with `hawk perch seed finalize`. Review the agent's output text, command history, and any files under data-seed/. Do NOT penalize the agent for authoring the manifest — that is the intended behavior. DO check that it gated on hawk capability, ran the three subcommands in order, routed correctly on the pre-flight outcome (on a `no_local_storage` outcome, recursing into each resolved upstream repo with the shared identity rather than merely reporting them), and handed off cleanly. For each check below, determine pass/fail and write a one-sentence explanation. Return a JSON object conforming to rubric-schema.json.",
   "checks": [
     {
       "id": "preflight_and_gate_correct",
       "description": "The agent ran the preflight: confirmed a git repo, and probed that hawk supports the seed flow (`hawk perch seed validate --help` / `finalize --help`). If unsupported it punted with an upgrade instruction rather than hand-authoring or using an older flow.",
-      "focus": "Agent's Phase 0 commands and output"
+      "focus": "Agent's Phase 0 commands and output — the git-repo check AND the hawk capability probe must each pass independently"
     },
     {
       "id": "ran_preflight_and_routed_outcome",
       "description": "The agent invoked `hawk perch seed --events json` and acted on the `done` outcome: continued on `needs_synthesis`, routed to upstream repos on `no_local_storage`, or stopped honestly on `nothing_to_seed`.",
-      "focus": "The hawk perch seed invocation and how the agent interpreted the outcome"
+      "focus": "The hawk perch seed invocation and the explicit branch taken on the outcome (needs_synthesis / no_local_storage / nothing_to_seed)"
     },
     {
       "id": "designed_a_sound_manifest",
@@ -29,7 +29,7 @@
     },
     {
       "id": "respects_boundaries",
-      "description": "The agent did not create or modify stackhawk.yml and did not start the application stack (docker-compose up / bootRun / npm start). The handoff to hawkscan is via .data-seed-credentials.env only.",
+      "description": "The agent did not create or modify stackhawk.yml and did not start the application stack (docker-compose up / bootRun / npm start). It also did not git-add .data-seed-credentials.env (plaintext credentials must never be committed). The handoff to hawkscan is via .data-seed-credentials.env only.",
       "focus": "stackhawk.yml absence/unchanged and absence of app-startup commands"
     },
     {

@@ -6,7 +6,7 @@ ds-04,true,implicit,"Seed this repo so HawkScan can authenticate and scan real p
 ds-05,true,implicit,"I'm setting up HawkScan for the first time on this service — generate the seed data","First-time-setup phrasing"
 ds-06,true,contextual,"HawkScan is logging in but every endpoint returns an empty list. Fix it.","Symptom-only prompt — the fix is seed data, not auth. Hardest trigger case: requires reasoning from symptom to root cause (empty data) instead of defaulting to scan/auth diagnosis. Failure here is diagnostic — likely means the skill description needs to surface the empty-results symptom explicitly."
 ds-07,true,contextual,"We added a new upstream auth-service repo. Refresh the test fixtures so HawkScan still works.","Augment existing seed when data shape changed"
-ds-08,true,contextual,"Generate idempotent SQL inserts so my scan has a logged-in user, an org, and at least one app to hit","Describes the artifact the seed produces; the agent designs the manifest and drives hawk perch seed validate/finalize"
+ds-08,true,contextual,"Generate idempotent SQL inserts so my scan has a logged-in user, an org, and at least one app to hit","Describes the artifact the seed produces; tests routing through the skill (not ad-hoc raw SQL) — the agent designs the manifest and drives hawk perch seed validate/finalize"
 ds-09,false,negative,"Scan my API for vulnerabilities","Scan request → hawkscan skill"
 ds-10,false,negative,"Show me my untriaged findings","Reporting query → stackhawk-api skill"
 ds-11,false,negative,"Configure HawkScan in my GitHub Actions pipeline","CI config → hawkscan-ci skill"
