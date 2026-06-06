@@ -1,6 +1,6 @@
 {
   "skill": "stackhawk-data-seed",
-  "version": "1.12.0",
+  "version": "1.11.0",
   "description": "Deterministic process checks for the stackhawk-data-seed skill (caller-driven). The skill probes for the hawk seed-flow capability, runs `hawk perch seed` (preflight), designs data-seed/manifest.yaml from the emitted digest, then validates and finalizes it via `hawk perch seed validate`/`finalize`. The seed METHODOLOGY lives in the skill now, so the agent DOES author the manifest — that is correct, not a violation. Harnesses look for these signals in agent traces, command histories, generated files, or output text.",
   "checks": [
     {
