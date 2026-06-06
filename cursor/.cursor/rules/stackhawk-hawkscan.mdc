@@ -482,10 +482,12 @@ no seeded dev user or key). If the recipe itself is wrong or ambiguous instead, 
 - If the probe **succeeds** and `stackhawk-data-seed` is installed → invoke it. It runs
   `hawk perch seed` (preflight → synthesizes the manifest **if the outcome calls for it** → validate → finalize), or reports an honest no-op for a storage-less repo, and on success produces a
   `.data-seed-credentials.env` handoff this skill then consumes.
-- If the probe **fails** (hawk too old) → **do not block the scan.** Continue the hawkscan flow and
-  tell the user once: "Empty results here could be enriched by seeding test data, but that needs
-  hawk ≥ `5.6.11` — `brew upgrade stackhawk/cli/hawk` to enable it." Seeding is an
-  optional enhancement, not a prerequisite for scanning.
+- If the probe **fails** (hawk too old) → seeding is the fix for *this* failure (auth can't pass an
+  empty datastore without a seeded user/credential), but it can't run on this hawk. Don't crash the
+  skill: tell the user the authenticated scan can't get past the empty backend without seed data, and
+  to either **upgrade** (`brew upgrade stackhawk/cli/hawk`, hawk ≥ `5.6.11`) to enable seeding or
+  manually create the dev user/credential, then re-run. If they proceed without seeding, the scan
+  still runs but authenticated endpoints return empty/unauthorized — flag that results will be limited.
 - If `stackhawk-data-seed` is **not in your available skills/plugins** (or invoking it errors as unavailable) but hawk supports the flow → tell the user to install it
   (`/plugin install stackhawk-data-seed@stackhawk`) and re-run the seeding step; still not a hard blocker for the scan.
 - **Cross-repo:** for a gateway / multi-service app the credential or entity usually lives in an
@@ -799,8 +801,10 @@ After generating fix tasks, instruct the agent:
   First rule out *empty backend data*: if auth **succeeded** yet path coverage is ~0 and
   authenticated endpoints returned empty bodies (list routes `[]`, detail routes 404) rather than the
   app being genuinely secure or small, **suggest** seeding backend data with the `stackhawk-data-seed`
-  skill (don't auto-run it) so the scan has something to exercise, then rescan. See **Phase 1c.6** for
-  the cross-repo (upstream) caveat.
+  skill (don't auto-run it) so the scan has something to exercise, then rescan. Here seeding is an
+  optional enhancement (auth already works); if hawk is older than `5.6.11` it can't seed, so note that
+  upgrading (`brew upgrade stackhawk/cli/hawk`) would enable richer results. See **Phase 1c.6** for the
+  cross-repo (upstream) caveat.
 - **Exit code 42**: Hand fix tasks to the coding agent. After fixes, **re-run the scan**
   to confirm remediation. Repeat until exit 0 or only accepted-risk findings remain.
 - **Exit code 1**: Do NOT hand fix tasks. Run validation commands to diagnose first:

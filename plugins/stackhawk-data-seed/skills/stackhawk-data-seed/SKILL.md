@@ -79,9 +79,9 @@ If `data-seed/` exists, ask the user whether to **augment**, **replace** (`mv da
 ## Phase 1: Run the pre-flight and route on the outcome
 
 ```bash
-# With an app host (recommended when known — enriches the digest with served-OpenAPI routes):
-hawk perch seed --events json --app-host "$APP_HOST"
-# Without a host — OMIT the flag entirely; do NOT pass an empty --app-host:
+# If you know the app host, pass it (enriches the digest with served-OpenAPI routes), e.g.:
+#   hawk perch seed --events json --app-host "http://localhost:8080"
+# Otherwise run without it — omit the flag entirely; do NOT pass an empty --app-host:
 hawk perch seed --events json
 ```
 
@@ -95,7 +95,7 @@ Phase events: `starting` → `extracting` → `done`. **Read the `done` event's 
 | `outcome` | What it means | What you do |
 |---|---|---|
 | `nothing_to_seed` | No local datastore and no upstreams | Report the honest no-op and stop. Nothing to author. |
-| `no_local_storage` | Entities live in upstream services | The `done` payload lists `upstreams` / `upstreamResults` (each with a `resolvedPath` or `unresolvedReason`) and writes a shared `.data-seed-identity.env`. For each **resolved** upstream, run this whole flow again with the working directory rooted at that upstream's `resolvedPath` (a fresh subprocess/session at that path — a bare `cd` may not persist across calls for every agent). It reuses the shared identity so cross-service IDs line up. Report any **unresolved** upstreams to the user. |
+| `no_local_storage` | Entities live in upstream services | The `done` payload lists `upstreams` / `upstreamResults` (each with a `resolvedPath` or `unresolvedReason`) and writes a shared `.data-seed-identity.env`. For each **resolved** upstream, run this whole flow again with the working directory rooted at that upstream's `resolvedPath` (a fresh subprocess/session at that path — a bare `cd` may not persist across calls for every agent). It reuses the shared identity so cross-service IDs line up. Seed **direct upstreams only (one hop)**: if a resolved upstream's own pre-flight also reports `no_local_storage`, report that to the user instead of recursing further (prevents unbounded or circular recursion). Report any **unresolved** upstreams to the user. |
 | `needs_synthesis` | A local datastore is present | Continue to Phase 2 using the `done` payload's `digest`. |
 
 If the process exits non-zero, report the `done` event's message (plus relevant stderr) and stop — do not improvise seed artifacts. If no `done` event was emitted at all (e.g. the process crashed), report the last stderr line.

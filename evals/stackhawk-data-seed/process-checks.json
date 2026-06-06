@@ -27,7 +27,7 @@
       "description": "Agent checks whether a data-seed/ directory already exists and asks the user augment/replace/cancel before overwriting (Phase 0.3).",
       "type": "command_or_output",
       "signals": ["test -d data-seed", "ls data-seed", "augment", "replace", "data-seed already exists", "EXISTS", "cancel"],
-      "severity": "warning",
+      "severity": "blocking",
       "failure_guidance": "Silently overwriting an existing data-seed/ destroys prior human-curated artifacts. The skill must surface the choice."
     },
     {
