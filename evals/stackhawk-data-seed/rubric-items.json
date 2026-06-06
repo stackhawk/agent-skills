@@ -1,40 +1,40 @@
 {
   "skill": "stackhawk-data-seed",
-  "grader_prompt": "You are evaluating whether a stackhawk-data-seed skill run was orchestrated correctly. This skill is a thin CLI-driving stub: it drives `hawk perch seed --events json` and relays the command's JSONL phase events. The seed methodology (discovery, manifest synthesis, idempotency) lives INSIDE the hawk CLI — the agent's job is orchestration, not authoring. Review the agent's output text and command history (preflight checks, the `hawk perch seed` invocation, how it relayed phase events, the final handoff) and any files under data-seed/ that the CLI produced. Do NOT penalize the agent for not hand-writing discovery logic or a manifest — that is correct. For each check below, determine pass/fail and write a one-sentence explanation. Return a JSON object conforming to rubric-schema.json.",
+  "grader_prompt": "You are evaluating whether a stackhawk-data-seed skill run was orchestrated correctly. This skill is CALLER-DRIVEN: the agent probes that hawk supports the seed flow, runs `hawk perch seed` (a static pre-flight that emits an outcome + repo digest), DESIGNS data-seed/manifest.yaml from that digest (the seed methodology lives in the skill — authoring the manifest is the agent's job and is CORRECT), then validates it with `hawk perch seed validate` and writes artifacts with `hawk perch seed finalize`. Review the agent's output text, command history, and any files under data-seed/. Do NOT penalize the agent for authoring the manifest — that is the intended behavior. DO check that it gated on hawk capability, ran the three subcommands in order, routed correctly on the pre-flight outcome, and handed off cleanly. For each check below, determine pass/fail and write a one-sentence explanation. Return a JSON object conforming to rubric-schema.json.",
   "checks": [
     {
-      "id": "preflight_correct",
-      "description": "The agent ran the preflight: confirmed it is in a git repo, and confirmed `hawk perch seed` is available (e.g. `hawk perch seed --help`). If the command was unavailable it punted with an upgrade instruction rather than hand-authoring seed data.",
+      "id": "preflight_and_gate_correct",
+      "description": "The agent ran the preflight: confirmed a git repo, and probed that hawk supports the seed flow (`hawk perch seed validate --help` / `finalize --help`). If unsupported it punted with an upgrade instruction rather than hand-authoring or using an older flow.",
       "focus": "Agent's Phase 0 commands and output"
     },
     {
-      "id": "invokes_seed_cli_with_events",
-      "description": "The agent invoked `hawk perch seed --events json` (with an --app-host the user supplied or was asked for) as the seeding mechanism, rather than reimplementing discovery/synthesis itself.",
-      "focus": "The hawk perch seed invocation in the command history"
+      "id": "ran_preflight_and_routed_outcome",
+      "description": "The agent invoked `hawk perch seed --events json` and acted on the `done` outcome: continued on `needs_synthesis`, routed to upstream repos on `no_local_storage`, or stopped honestly on `nothing_to_seed`.",
+      "focus": "The hawk perch seed invocation and how the agent interpreted the outcome"
     },
     {
-      "id": "relays_phase_events_faithfully",
-      "description": "The agent consumed the JSONL phase events (starting/extracting/synthesizing/validating/finalizing/done) and surfaced concise, accurate progress to the user, and acted on any review prompt or non-zero exit instead of ignoring it.",
-      "focus": "How agent output tracks the emitted phase events"
+      "id": "designed_a_sound_manifest",
+      "description": "On `needs_synthesis`, the agent authored data-seed/manifest.yaml that is minimal, ordered by foreign-key dependency, idempotent, and conforms to the v1 contract (version 1; name/description/prerequisites/targets/steps present). Authoring is expected — grade its quality, not its existence.",
+      "focus": "The manifest the agent designed (data-seed/manifest.yaml)"
     },
     {
-      "id": "did_not_handauthor",
-      "description": "The agent did NOT hand-author seed artifacts — no manual storage-signal greps (Liquibase/Flyway/Prisma/etc.) and no hand-written data-seed/manifest.yaml or per-service seed scripts. Any artifacts under data-seed/ were produced by the CLI, not typed by the agent.",
-      "focus": "Command history for manual discovery/authoring vs. delegation to the CLI"
+      "id": "validated_then_finalized",
+      "description": "The agent ran `hawk perch seed validate` on its manifest (fixing reported errors and re-validating), then `hawk perch seed finalize` to write artifacts — and did not finalize an invalid manifest.",
+      "focus": "The validate/finalize subcommand calls and error-fix loop"
     },
     {
       "id": "honest_result_handling",
-      "description": "The agent reported the run's actual outcome honestly. In particular, if the run reported no local storage / nothing to seed (e.g. a gateway with storageKind NONE), it relayed that no-op result rather than fabricating fake entities to appear productive.",
-      "focus": "Agent's interpretation of the run result, especially the empty/no-op case"
+      "description": "The agent reported the run's actual outcome honestly: a storage-less gateway (`nothing_to_seed`/`no_local_storage`) was relayed as such (or routed to upstreams) rather than fabricated into fake entities.",
+      "focus": "Agent's interpretation of the pre-flight outcome, especially the no-op / gateway case"
     },
     {
       "id": "respects_boundaries",
-      "description": "The agent did not create or modify stackhawk.yml (hawkscan's domain) and did not start the application stack (docker-compose up / bootRun / npm start). The handoff to hawkscan is via .data-seed-credentials.env only.",
+      "description": "The agent did not create or modify stackhawk.yml and did not start the application stack (docker-compose up / bootRun / npm start). The handoff to hawkscan is via .data-seed-credentials.env only.",
       "focus": "stackhawk.yml absence/unchanged and absence of app-startup commands"
     },
     {
       "id": "handoff_clear",
-      "description": "On success the agent clearly reported what the CLI wrote (data-seed/ + manifest.yaml + .data-seed-credentials.env), the next steps (review, replay, run hawkscan), and that hawkscan reads .data-seed-credentials.env. Reminded the user the credentials file is gitignored and must not be committed.",
+      "description": "On success the agent clearly reported what was written (data-seed/ + manifest.yaml + .data-seed-credentials.env), the next steps (review, replay, run hawkscan), and that hawkscan reads .data-seed-credentials.env. Reminded the user the credentials file is gitignored and must not be committed.",
       "focus": "Final agent output / handoff summary"
     }
   ]

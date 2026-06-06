@@ -6,7 +6,7 @@ ds-04,true,implicit,"Seed this repo so HawkScan can authenticate and scan real p
 ds-05,true,implicit,"I'm setting up HawkScan for the first time on this service — generate the seed data","First-time-setup phrasing"
 ds-06,true,contextual,"HawkScan is logging in but every endpoint returns an empty list. Fix it.","Symptom-only prompt — the fix is seed data, not auth. Hardest trigger case: requires reasoning from symptom to root cause (empty data) instead of defaulting to scan/auth diagnosis. Failure here is diagnostic — likely means the skill description needs to surface the empty-results symptom explicitly."
 ds-07,true,contextual,"We added a new upstream auth-service repo. Refresh the test fixtures so HawkScan still works.","Augment existing seed when data shape changed"
-ds-08,true,contextual,"Generate idempotent SQL inserts so my scan has a logged-in user, an org, and at least one app to hit","Describes the artifact, not the skill"
+ds-08,true,contextual,"Generate idempotent SQL inserts so my scan has a logged-in user, an org, and at least one app to hit","Describes the artifact the seed produces; the agent designs the manifest and drives hawk perch seed validate/finalize"
 ds-09,false,negative,"Scan my API for vulnerabilities","Scan request → hawkscan skill"
 ds-10,false,negative,"Show me my untriaged findings","Reporting query → stackhawk-api skill"
 ds-11,false,negative,"Configure HawkScan in my GitHub Actions pipeline","CI config → hawkscan-ci skill"
@@ -15,3 +15,4 @@ ds-13,false,negative,"Refactor the user service to use repositories instead of d
 ds-14,false,negative,"Bootstrap a new Spring Boot project for me","Generic 'bootstrap' meaning project scaffolding — not our skill's domain"
 ds-15,false,negative,"Write a database migration to add a 'role' column to users","DB migration is not seed data; not our skill's domain"
 ds-16,false,negative,"Start the docker-compose stack and run the integration tests","Environment startup — skill explicitly forbids running services"
+ds-17,true,explicit,"Set up seed data for HawkScan — note my hawk CLI is an older version without the seed subcommands","Capability-gate case: agent should probe, find the seed flow unsupported, and PUNT with an upgrade instruction rather than hand-authoring"
