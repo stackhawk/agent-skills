@@ -146,9 +146,9 @@ If the pipeline deploys to an ephemeral environment before scanning (preview URL
 
 ## Pattern 8 — Authenticated scans: confirm, don't replicate
 
-Every pattern above stops at *the app is reachable*. An **authenticated** scan also needs a credential that exists at scan time. The wrong instinct is to hand-roll that in the pipeline — mint a token with `curl`, seed a user — which duplicates, in CI, work the scan engine already owns and which should run identically on a laptop and in CI.
+Every pattern above stops at *the app is reachable*. An **authenticated** scan also needs a credential that exists at scan time. The wrong instinct is to hand-roll that in the pipeline — mint a token with `curl`, seed a user — which duplicates, in CI, work the scan engine already owns.
 
-**The credential is the scan's job, not the pipeline's.** HawkScan obtains its own credential from the `authentication:` block in `stackhawk.yml` — including `app.authentication.script` for multi-step flows (CSRF → register/login → mint a token). That recipe is owned by the `hawkscan` skill (its Phase 1c / 1c.5 / `hawk perch onboard` flow). Once configured, the same `hawk scan` authenticates the same way in CI with no extra pipeline steps.
+**The credential is the scan's job, not the pipeline's.** HawkScan obtains its own credential from the `authentication:` block in `stackhawk.yml` — including `app.authentication.script` for multi-step flows (e.g. CSRF → log in → mint a token). That recipe is owned by the `hawkscan` skill (its Phase 1c / 1c.5 / `hawk perch onboard` flow). Once configured, the same `hawk scan` authenticates the same way on a laptop and in CI, with no extra pipeline steps.
 
 So in CI, in priority order:
 
@@ -157,7 +157,7 @@ So in CI, in priority order:
    grep -qE '^\s*authentication:' stackhawk.yml && echo "auth configured"
    ```
    The `hawkscan` skill validates it with `hawk validate auth`. If it's there and valid, you're done — add nothing to the pipeline.
-2. **Not configured, or the scan can't obtain the credential itself?** Not a pipeline problem — **route the user to the `hawkscan` skill** to add or repair the `authentication:` recipe (an `authentication.script` for register/mint flows), and to `stackhawk-data-seed` if the app needs seed *data* before authenticated routes return anything.
+2. **Not configured, or the scan can't obtain the credential itself?** Not a pipeline problem — **route the user to the `hawkscan` skill** to add or repair the `authentication:` recipe (an `authentication.script` for multi-step login/token-mint flows), and to `stackhawk-data-seed` if the app needs seed *data* before authenticated routes return anything.
 3. **Last resort — a credential that genuinely cannot live inside the scan.** Rare: e.g. a secret that must be injected into a datastore out-of-band before the app accepts any login, with no scan-expressible path. Only then does the pipeline add a pre-scan step, and even then prefer replaying committed `data-seed/` artifacts over bespoke scripting. Note: `stackhawk-data-seed`'s `.data-seed-credentials.env` is gitignored, so it is not on the runner — reconstruct values deterministically from the committed seed scripts or pull them from the CI secret store.
 
 ### The seam — who owns what
@@ -206,4 +206,4 @@ timeout 60 bash -c 'until nc -z localhost 8080; do sleep 2; done'
 - **`npm start &` without `wait-for-it`.** The `&` returns immediately; the scan starts against a not-yet-listening port. Always pair with a wait loop.
 - **Leaving the app running across steps without `set -e`.** A failed wait loop should fail the job. With `set -e` and `timeout 60`, the job dies if the app never comes up — which is the desired behavior.
 - **Scanning an image that doesn't contain the commit under test.** If the app-under-test service uses a published `image:` tag (`:latest`/`:<branch>`) built elsewhere, the scan gates code that isn't in this PR. Building in-job (`--build` / a `build:` override) and build→push→pull both work; scanning a stale or upstream tag is the bug. See Pattern 1.
-- **Hand-rolling auth bootstrapping in the pipeline.** The scan credential is the scan's job, not CI's — it comes from `stackhawk.yml`'s `authentication:` block (including `authentication.script` for multi-step register/mint flows), so the scan authenticates identically on a laptop and in CI. Confirm it's configured and route to the `hawkscan` skill if not; add a pipeline step only for a credential that genuinely can't live inside the scan. See Pattern 8.
+- **Hand-rolling auth bootstrapping in the pipeline.** The scan credential is the scan's job, not CI's — it comes from `stackhawk.yml`'s `authentication:` block (including `authentication.script` for multi-step login/token-mint flows), so the scan authenticates identically on a laptop and in CI. Confirm it's configured and route to the `hawkscan` skill if not; add a pipeline step only for a credential that genuinely can't live inside the scan. See Pattern 8.
