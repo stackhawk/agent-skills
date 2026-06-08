@@ -197,32 +197,36 @@ test -f Makefile && grep -E '^(start|run|serve):' Makefile 2>/dev/null
 ls pom.xml build.gradle build.gradle.kts 2>/dev/null
 ```
 
-- **Docker Compose detected** → `docker compose up -d` + wait-for-it on the health endpoint. **If the app-under-test service is `image:`-pulled (a published tag, no `build:` block), add `--build` or a `build:` override — otherwise you scan upstream's published image, not the code under test.** See [`references/app-startup-patterns.md`](references/app-startup-patterns.md) Pattern 1.
+- **Docker Compose detected** → `docker compose up -d` + wait-for-it on the health endpoint. **Make sure the scanned image is built from the commit under test — build in-job (`--build` / a `build:` override) or build→push→pull; a stale or upstream `image:` tag gates code that isn't in this PR.** See [`references/app-startup-patterns.md`](references/app-startup-patterns.md) Pattern 1.
 - **npm start script** → `npm install && npm start &` + wait-for-it.
 - **Maven / Gradle** → `./mvnw spring-boot:run &` or `./gradlew bootRun &` + wait-for-it.
 - **None detected** → ask the user for the start command.
 
 App-startup pattern menu lives in [`references/app-startup-patterns.md`](references/app-startup-patterns.md).
 
-### 5.2.5 — Bootstrap auth if the scan is authenticated
+### 5.2.5 — Confirm authenticated scans are self-contained
 
-If the scan authenticates (the `hawkscan` skill configured an auth recipe in
-`stackhawk.yml`), the credential has to exist **at scan time**. In CI the
-database is usually ephemeral, so no user/token exists yet — insert a bootstrap
-step after the readiness wait and before the scan:
+If the scan authenticates, the credential should come from the scan itself, not
+the pipeline. HawkScan authenticates from the `authentication:` block in
+`stackhawk.yml` — including `app.authentication.script` for multi-step
+register/login/mint flows — owned by the `hawkscan` skill, so the same scan
+authenticates identically on a laptop and in CI. Confirm that's in place rather
+than replicating it in the workflow:
 
-- App has a `data-seed/` directory → replay its manifest against the running
-  stack (Pattern 8a).
-- App needs authenticated routes but has no `data-seed/` → **route the user to
-  the `stackhawk-data-seed` skill** to generate the seed artifacts, then resume.
-- App exposes a register/login/token API instead → mint a credential at runtime
-  and export it (Pattern 8b).
+- `stackhawk.yml` already has a validated `authentication:` block → add nothing
+  to the pipeline; the scan handles auth itself.
+- Auth isn't configured, or the scan can't obtain the credential on its own →
+  **route the user to the `hawkscan` skill** to add/repair the auth recipe
+  (`authentication.script` for register/mint flows), and to `stackhawk-data-seed`
+  if the app needs seed *data* to have authenticated routes worth scanning.
+- A credential that genuinely cannot live inside the scan (must be seeded
+  out-of-band) → only then add a pre-scan step, preferring a committed
+  `data-seed/` replay over bespoke scripting.
 
-This skill owns only the *plumbing* — step placement, secret masking, and
-exporting the credential under the env var the `stackhawk.yml` auth recipe
-interpolates. It does **not** pick the auth recipe (that's `hawkscan`) or decide
-what to seed (that's `stackhawk-data-seed`). Full menu + the seam-ownership
-table: [`references/app-startup-patterns.md`](references/app-startup-patterns.md)
+Don't hand-roll a token-mint step in the workflow: if you're about to, it almost
+certainly belongs in the scan's `authentication.script` instead. Full priority
+order + ownership table:
+[`references/app-startup-patterns.md`](references/app-startup-patterns.md)
 Pattern 8.
 
 ### 5.3 — Export traceability env vars
@@ -333,6 +337,6 @@ After writing/patching the workflow file:
 - **Don't try to set the secret autonomously.** Prompt the user and tell them where to put it.
 - **Don't forget GitLab's key-split rule.** `HAWK_API_KEY` in the form `hawk.<id>.<secret>` triggers GitLab's variable-masking bug. Split into `HAWK_API_ID` + `HAWK_API_SECRET` and reassemble in the job.
 - **Don't write `_STACKHAWK_GIT_*` tags from this skill.** Those live in `stackhawk.yml`; if they're missing, hand off to the `hawkscan` skill for the edit. The CI skill only exports the env vars the tags interpolate from.
-- **Don't scan a pulled image.** If the compose service for the app under test is `image:`-pulled with no `build:` block, the scan tests upstream's code, not the changes in the checkout — add `--build`, a `build:` override, or build explicitly. See [`references/app-startup-patterns.md`](references/app-startup-patterns.md) Pattern 1.
-- **Don't run an authenticated scan without bootstrapping the credential.** CI's database is fresh; no user/token exists until you create one. Seed (`data-seed/` replay, or route to `stackhawk-data-seed`) or mint via the app's API before scanning — otherwise the scan crawls unauthenticated and a clean result is a false all-clear. See Pattern 8.
+- **Don't scan an image that doesn't contain the commit under test.** A published `image:` tag built elsewhere gates code that isn't in this PR. Building in-job (`--build` / a `build:` override) and build→push→pull both work; scanning a stale or upstream tag is the bug. See [`references/app-startup-patterns.md`](references/app-startup-patterns.md) Pattern 1.
+- **Don't hand-roll auth bootstrapping in the pipeline.** The scan credential is the scan's job — it comes from `stackhawk.yml`'s `authentication:` block (including `authentication.script` for register/mint flows), owned by the `hawkscan` skill, so it's portable local↔CI. Confirm it's configured and route to `hawkscan` if not; add a pipeline step only for a credential that genuinely can't live in the scan. See Pattern 8.
 - **Don't trigger the pipeline.** Editing the workflow file is the skill's full scope; running it is the user's call.

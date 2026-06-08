@@ -23,13 +23,12 @@ docker compose up -d
 timeout 60 bash -c 'until curl -fsS http://localhost:8080/health; do sleep 2; done'
 ```
 
-**Build the code under test — don't scan a pulled image.** If the compose service for the app under test declares `image:` pointing at a published registry tag (e.g. a `:latest` or `:<branch>` image) with **no** `build:` block, `docker compose up` pulls *upstream's* published build. The scan then exercises that image, not the code in the checkout — so any fix made in the same pipeline is invisible to the scan, and a fix-and-rescan loop silently verifies nothing. Force a local build one of three ways:
+**Scan an artifact built from the commit under test.** A PR scan should gate the code in *this* checkout. If the compose service for the app under test declares `image:` pointing at a published registry tag (e.g. `:latest` or `:<branch>`) with **no** `build:` block, `docker compose up` pulls whatever that tag currently is — which may have been built elsewhere from different code, so the scan gates a commit that isn't the one under review. Make sure the scanned image corresponds to this commit. Any of these are fine:
 
-- `docker compose up -d --build` — but `--build` only rebuilds services that already have a `build:` stanza; a service defined purely by `image:` ignores it.
-- Add a `build:` block for the app service via a compose override (`docker-compose.override.yml` with `build: { context: ., dockerfile: ... }`), which `up` merges automatically.
-- Build the image explicitly earlier in the job and point the service's `image:` at that local tag.
+- Build in the job: `docker compose up -d --build` (note `--build` only rebuilds services that have a `build:` stanza — a service defined purely by `image:` ignores it), or add a `build:` block via a compose override (`docker-compose.override.yml`).
+- Build → push → pull: build the image from this commit in an earlier step, push it, and point the compose `image:` at that exact tag or digest. Pulling is fine here — the tag was built from the commit under test.
 
-Confirm the app-under-test service actually builds from the checkout before trusting the scan.
+The anti-pattern is scanning a published tag built elsewhere from different code, not "pulling" per se. Confirm the image under scan matches the commit before trusting the result.
 
 **Wait-for-it variants:**
 - `curl --fail --silent --max-time 2` in a loop is the simplest.
@@ -145,57 +144,31 @@ If the pipeline deploys to an ephemeral environment before scanning (preview URL
 
 `stackhawk.yml`'s `host:` field must use `${APP_HOST:...}` interpolation for this to work — the `hawkscan` skill already enforces that pattern.
 
-## Pattern 8 — Bootstrap auth at runtime
+## Pattern 8 — Authenticated scans: confirm, don't replicate
 
-Every pattern above stops at *the app is reachable*. An **authenticated** scan needs one more rung: a credential that exists at scan time. In CI the database is usually ephemeral and freshly created, so no user, token, or API key exists yet. Skip this and the scan runs unauthenticated — the spider stalls at login walls, coverage collapses, and a green result is a false all-clear.
+Every pattern above stops at *the app is reachable*. An **authenticated** scan also needs a credential that exists at scan time. The wrong instinct is to hand-roll that in the pipeline — mint a token with `curl`, seed a user — which duplicates, in CI, work the scan engine already owns and which should run identically on a laptop and in CI.
 
-This step belongs **after** the readiness wait and **before** the scan. Two shapes:
+**The credential is the scan's job, not the pipeline's.** HawkScan obtains its own credential from the `authentication:` block in `stackhawk.yml` — including `app.authentication.script` for multi-step flows (CSRF → register/login → mint a token). That recipe is owned by the `hawkscan` skill (its Phase 1c / 1c.5 / `hawk perch onboard` flow). Once configured, the same `hawk scan` authenticates the same way in CI with no extra pipeline steps.
 
-### 8a — Replay committed seed data
+So in CI, in priority order:
 
-If the repo has a `data-seed/` directory (produced by the `stackhawk-data-seed` skill), it holds an ordered manifest of SQL/HTTP/gRPC/shell steps that create the minimal authenticated entities (a user, a parent org/tenant, one scannable resource). Replay it against the running stack, then let the scan's auth recipe use the resulting credentials.
-
-- `data-seed/` **present** → add a job step that replays the manifest (per its `README.md`) against the now-running services.
-- App needs authenticated routes but `data-seed/` is **absent** → this isn't a pipeline problem. Route the user to the `stackhawk-data-seed` skill to generate the seed artifacts first, then resume here.
-- **CI caveat:** `stackhawk-data-seed`'s `.data-seed-credentials.env` handoff file is gitignored, so it is **not** on the runner. The credential *values* must be deterministic (reconstructed from the committed seed scripts / `credentials.env.example`) or supplied from the CI secret store — never assume the local `.env` travels to CI.
-
-### 8b — Mint a credential through the app's own API
-
-When the app has no seedable datastore credential but exposes a registration/login/token endpoint, drive that flow in a job step to obtain a runtime credential (session cookie, JWT, or API token). Many apps protect these endpoints with CSRF, so the flow is usually: fetch a CSRF token → register or log in a throwaway user (the ephemeral DB makes the username free every run) → exchange for the scan credential.
-
-Skeleton — **placeholder paths; substitute the app's real endpoints and field names:**
-
-```bash
-set -euo pipefail
-BASE=http://localhost:8080
-JAR=$(mktemp)
-
-CSRF=$(curl -s -c "$JAR" -b "$JAR" "$BASE/<csrf-endpoint>" | jq -r .token)
-curl -s -c "$JAR" -b "$JAR" -X POST "$BASE/<register-or-login>" \
-  -H 'Content-Type: application/json' -H "<csrf-header>: $CSRF" \
-  -d '{"username":"<throwaway>","password":"<throwaway>"}' -o /dev/null
-
-CSRF=$(curl -s -c "$JAR" -b "$JAR" "$BASE/<csrf-endpoint>" | jq -r .token)
-TOKEN=$(curl -s -c "$JAR" -b "$JAR" -X POST "$BASE/<mint-token>" \
-  -H 'Content-Type: application/json' -H "<csrf-header>: $CSRF" \
-  -d '{"label":"hawkscan-ci"}' | jq -r .<secret-field>)
-rm -f "$JAR"
-
-[ -n "$TOKEN" ] && [ "$TOKEN" != null ] || { echo "token mint failed" >&2; exit 1; }
-# Mask the secret in logs and export it for the scan step using the provider's
-# own mechanism (e.g. GitHub Actions: `echo "::add-mask::$TOKEN"` then write to
-# $GITHUB_ENV; GitLab: a masked job variable; etc.).
-```
+1. **Confirm auth is self-contained.** If the scan authenticates, check `stackhawk.yml` already carries a working `authentication:` block:
+   ```bash
+   grep -qE '^\s*authentication:' stackhawk.yml && echo "auth configured"
+   ```
+   The `hawkscan` skill validates it with `hawk validate auth`. If it's there and valid, you're done — add nothing to the pipeline.
+2. **Not configured, or the scan can't obtain the credential itself?** Not a pipeline problem — **route the user to the `hawkscan` skill** to add or repair the `authentication:` recipe (an `authentication.script` for register/mint flows), and to `stackhawk-data-seed` if the app needs seed *data* before authenticated routes return anything.
+3. **Last resort — a credential that genuinely cannot live inside the scan.** Rare: e.g. a secret that must be injected into a datastore out-of-band before the app accepts any login, with no scan-expressible path. Only then does the pipeline add a pre-scan step, and even then prefer replaying committed `data-seed/` artifacts over bespoke scripting. Note: `stackhawk-data-seed`'s `.data-seed-credentials.env` is gitignored, so it is not on the runner — reconstruct values deterministically from the committed seed scripts or pull them from the CI secret store.
 
 ### The seam — who owns what
 
 | Concern | Owner |
 |---|---|
-| *Where* the bootstrap step goes, ordering, log-masking, exporting the credential to the scan step | **this skill** (CI plumbing) |
-| *What* entities/credentials to seed and the seed artifacts themselves | `stackhawk-data-seed` |
-| *Which* auth recipe consumes the credential (`stackhawk.yml` auth block, env interpolation) | `hawkscan` |
+| Obtaining the scan credential — auth recipe, `authentication.script`, token mint, login | `hawkscan` (runs *inside* the scan, portable local↔CI) |
+| What entities/data must exist for authenticated routes to return results | `stackhawk-data-seed` |
+| Confirming the above is in place; orchestrating an out-of-band seed step only when unavoidable | **this skill** (CI plumbing) |
 
-This skill guarantees only that the credential **exists at runtime and is exported** under the env var the `stackhawk.yml` auth recipe interpolates. It does not pick the recipe or invent the seed. If you can't tell whether the app even needs authenticated scanning, that's a `hawkscan`-skill question — hand off rather than guess.
+This skill does not teach how to mint a credential. If you're about to write a token-minting step in the workflow, stop and check whether it belongs in the scan's `authentication.script` instead — it almost always does.
 
 ## Networking Gotchas
 
@@ -232,5 +205,5 @@ timeout 60 bash -c 'until nc -z localhost 8080; do sleep 2; done'
 - **Spider can't find auth routes because the app is partially started.** Login pages render before the database is ready; the spider thinks the API is broken. Health-check the *backing services too*, not just the HTTP port.
 - **`npm start &` without `wait-for-it`.** The `&` returns immediately; the scan starts against a not-yet-listening port. Always pair with a wait loop.
 - **Leaving the app running across steps without `set -e`.** A failed wait loop should fail the job. With `set -e` and `timeout 60`, the job dies if the app never comes up — which is the desired behavior.
-- **Scanning a pulled image instead of your built code.** If the app-under-test service in the compose file is defined by `image:` (a published registry tag) with no `build:` block, `docker compose up` runs upstream's code — your changes, including security fixes, are never scanned, and a fix-and-rescan loop silently verifies nothing. Add `--build` (with a `build:` stanza), a compose `build:` override, or build the image explicitly. See Pattern 1.
-- **Running an authenticated scan with no runtime credential.** In CI the database is fresh — no user or token exists until you create one. Scanning without bootstrapping auth (Pattern 8) yields an unauthenticated crawl that stalls at login walls; coverage tanks and a clean result is meaningless. Seed (`data-seed/` replay, or route to `stackhawk-data-seed`) or mint the credential via the app's API before the scan, and confirm `hawk validate auth` passes.
+- **Scanning an image that doesn't contain the commit under test.** If the app-under-test service uses a published `image:` tag (`:latest`/`:<branch>`) built elsewhere, the scan gates code that isn't in this PR. Building in-job (`--build` / a `build:` override) and build→push→pull both work; scanning a stale or upstream tag is the bug. See Pattern 1.
+- **Hand-rolling auth bootstrapping in the pipeline.** The scan credential is the scan's job, not CI's — it comes from `stackhawk.yml`'s `authentication:` block (including `authentication.script` for multi-step register/mint flows), so the scan authenticates identically on a laptop and in CI. Confirm it's configured and route to the `hawkscan` skill if not; add a pipeline step only for a credential that genuinely can't live inside the scan. See Pattern 8.
