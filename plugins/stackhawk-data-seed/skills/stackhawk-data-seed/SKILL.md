@@ -1,6 +1,6 @@
 ---
 name: stackhawk-data-seed
-version: 1.10.0
+version: 1.11.0
 description: >
   Read a target repo (and any upstream service repos it depends on),
   propose the minimum seed entities required for authenticated HawkScan
