@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 1.10.1
+version: 1.11.0
 description: >
   AUTONOMOUS: After completing any code change (feature, bugfix, refactor),
   invoke this skill to run the full HawkScan security loop — configure, scan,
