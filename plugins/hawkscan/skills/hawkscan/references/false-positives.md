@@ -143,6 +143,60 @@ hawkop scan triage \
   --note "Reviewing with team; suspected false positive on /actuator/info"
 ```
 
+> **Permission-independent alternative:** `hawkop finding note` adds the same kind
+> of annotation through an ungated route (`POST .../findings/triage/notes`), so it
+> works even without `WRITE_TRIAGE`. Prefer it for comment-only annotations when the
+> account may lack triage permission. See
+> [When triage is denied](#when-triage-is-denied-no-write_triage).
+
+### When triage is denied (no `WRITE_TRIAGE`)
+
+`hawkop scan triage` writes through the permission-gated
+`POST .../findings/triage` endpoint. If the account lacks `WRITE_TRIAGE` — either by
+role default, or because the org enabled the `LIMITED_MEMBER_ROLE` setting that turns
+off member finding-triage (it revokes `WRITE_TRIAGE` from the MEMBER role) — the
+command fails with an unauthorized-feature error (a 401 after a valid login).
+
+Detection is **reactive**: attempt `hawkop scan triage`; if it returns the
+unauthorized-feature error, fall back to `hawkop finding note`, which writes through
+the ungated `POST .../findings/triage/notes` route (any org member, no
+`WRITE_TRIAGE`). The note route ignores status, so it can only annotate.
+
+**Intent was `ADD_COMMENT`** — re-issue as a note; the result is identical, so
+annotation never fails for lack of permission:
+
+```bash
+hawkop finding note \
+  --scan <SCAN_UUID> \
+  --hash <FINDING_HASH> \
+  --note "Reviewing with team; suspected false positive on /actuator/info [triaged by ${HAWK_AGENT:-agent}]"
+```
+
+**Intent was `FALSE_POSITIVE`** — the status cannot change without `WRITE_TRIAGE`.
+Record the reasoning as a note (audit trail preserved), prefixed so a reviewer knows
+the status action is still pending, then escalate to the user:
+
+```bash
+hawkop finding note \
+  --scan <SCAN_UUID> \
+  --hash <FINDING_HASH> \
+  --note "[Agent-proposed FALSE_POSITIVE — apply status in UI; WRITE_TRIAGE required] CSP finding on JSON endpoint /api/health which never serves HTML; inapplicable [triaged by ${HAWK_AGENT:-agent}]"
+```
+
+Then tell the user, for example:
+
+> Recorded my false-positive reasoning as a note on finding `<hash>`, but changing
+> its status needs `WRITE_TRIAGE`, which this account lacks (possibly due to the
+> org's limited-member setting). A workspace admin can apply FALSE_POSITIVE in the
+> platform UI.
+
+Bulk notes use the same `--from-file` form (max 100 per call); each entry needs only
+`finding_hash` and `note` (no `status`):
+
+```bash
+hawkop finding note --scan <SCAN_UUID> --from-file notes.yaml
+```
+
 ### How to get the finding hash
 
 The finding hash (`--hash`) comes from the scan JSON output:

@@ -160,6 +160,13 @@ hawkop scan triage --scan <SCAN_UUID> --from-file triage.yaml
 The `--note` is required for `FALSE_POSITIVE` and `ADD_COMMENT`.
 It must explain the reasoning clearly enough for a human to review and reverse if wrong.
 
+**If `hawkop scan triage` is denied** — the account lacks `WRITE_TRIAGE`, by role or
+because the org's `LIMITED_MEMBER_ROLE` setting turned off member finding-triage —
+fall back to `hawkop finding note`, which records a note through an ungated route. A
+comment transfers cleanly; an intended `FALSE_POSITIVE` is recorded as a note and the
+status change is escalated to a `WRITE_TRIAGE` holder. See
+[`false-positives.md`](false-positives.md#when-triage-is-denied-no-write_triage).
+
 → Bulk triage file format and false-positive heuristics:
   [`references/false-positives.md`](false-positives.md)
 
