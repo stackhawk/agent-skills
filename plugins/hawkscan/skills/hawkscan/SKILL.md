@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 1.10.0
+version: 1.10.1
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Use when the user
@@ -61,6 +61,7 @@ CLI. Read-only lookups this skill relies on:
 | Set specific tech flags       | `hawkop app tech-flags set --app <NAME> Key=true`                                |
 | Triage a finding              | `hawkop scan triage --scan <ID> --hash <HASH> --status false-positive --note ""` |
 | Bulk triage from file         | `hawkop scan triage --scan <ID> --from-file triage.yaml`                         |
+| Annotate w/o triage perm      | `hawkop finding note --scan <ID> --hash <HASH> --note "..."`                     |
 
 If `hawkop` is not installed, the api skill documents raw REST fallbacks.
 Prefer `hawkop`; fall back only if unavailable.
@@ -742,6 +743,7 @@ hawkop scan triage --scan <SCAN_UUID> --from-file triage.yaml
 - ❌ **Never mark `RISK_ACCEPTED`** — human decision only
 - ❌ **Never mark `ASSIGNED`** — human decision only
 - ❌ Do NOT suppress findings in the codebase — don't change code to hide scanner results
+- ⚠️ **If `scan triage` is denied** (no `WRITE_TRIAGE` — by role or the org's limited-member setting): fall back to `hawkop finding note`. A comment transfers as-is; an intended `FALSE_POSITIVE` becomes a note and you MUST tell the user a `WRITE_TRIAGE` holder has to apply the status. See [`references/false-positives.md`](references/false-positives.md#when-triage-is-denied-no-write_triage).
 
 **When uncertain:** route to the fix loop. A false negative is worse than a false positive.
 
