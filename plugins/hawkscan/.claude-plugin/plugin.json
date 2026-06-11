@@ -18,5 +18,6 @@
     "stackhawk",
     "api-security",
     "vulnerability-scanning"
-  ]
+  ],
+  "hooks": "./hooks/hooks.json"
 }
