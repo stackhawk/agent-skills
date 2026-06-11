@@ -42,18 +42,26 @@ fi
 
 case "$platform" in
   cursor)
-    dest="${target}/.cursor/rules"
-    source="${REPO_ROOT}/cursor/.cursor/rules"
+    rules_dest="${target}/.cursor/rules"
+    rules_source="${REPO_ROOT}/cursor/.cursor/rules"
+    skills_dest="${target}/.cursor/skills"
+    hooks_dest="${target}/.cursor/hooks"
+    plugins_source="${REPO_ROOT}/plugins"
+    cursor_hooks_source="${REPO_ROOT}/plugins/hawkscan/hooks/cursor"
 
-    if [ ! -d "$source" ]; then
+    if [ ! -d "$rules_source" ]; then
       echo "ERROR: Cursor rules not found. Run 'bash scripts/generate-cursor-rules.sh' first." >&2
       exit 1
     fi
 
-    if [ -d "$dest" ] && ls "$dest"/stackhawk-*.mdc >/dev/null 2>&1; then
-      echo "WARNING: StackHawk Cursor rules already exist in ${dest}/"
-      echo "Files that will be overwritten:"
-      ls "$dest"/stackhawk-*.mdc 2>/dev/null | while read -r f; do echo "  $(basename "$f")"; done
+    # Check for existing StackHawk artifacts
+    existing=()
+    [ -d "$rules_dest" ] && ls "$rules_dest"/stackhawk-*.mdc >/dev/null 2>&1 && existing+=("rules")
+    [ -d "$skills_dest/hawkscan" ] && existing+=("skills")
+    [ -f "${target}/.cursor/hooks.json" ] && existing+=("hooks")
+
+    if [ ${#existing[@]} -gt 0 ]; then
+      echo "WARNING: StackHawk Cursor artifacts already exist: ${existing[*]}"
       echo ""
       read -rp "Overwrite? [y/N] " confirm
       if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
@@ -62,10 +70,36 @@ case "$platform" in
       fi
     fi
 
-    mkdir -p "$dest"
-    cp "$source"/stackhawk-*.mdc "$dest/"
-    count=$(ls "$dest"/stackhawk-*.mdc 2>/dev/null | wc -l | tr -d ' ')
-    echo "Installed ${count} Cursor rules to ${dest}/"
+    # Rules
+    mkdir -p "$rules_dest"
+    cp "$rules_source"/stackhawk-*.mdc "$rules_dest/"
+    count=$(ls "$rules_dest"/stackhawk-*.mdc 2>/dev/null | wc -l | tr -d ' ')
+    echo "Installed ${count} Cursor rules to ${rules_dest}/"
+
+    # Skills
+    mkdir -p \
+      "${skills_dest}/hawkscan" \
+      "${skills_dest}/api" \
+      "${skills_dest}/hawkscan-ci" \
+      "${skills_dest}/stackhawk-data-seed"
+    cp -r "${plugins_source}/hawkscan/skills/hawkscan/"* "${skills_dest}/hawkscan/"
+    cp -r "${plugins_source}/api/skills/api/"* "${skills_dest}/api/"
+    cp -r "${plugins_source}/hawkscan-ci/skills/hawkscan-ci/"* "${skills_dest}/hawkscan-ci/"
+    cp -r "${plugins_source}/stackhawk-data-seed/skills/stackhawk-data-seed/"* "${skills_dest}/stackhawk-data-seed/"
+    echo "Installed 4 Cursor skills to ${skills_dest}/"
+    echo "  hawkscan/            — DAST scanning skill"
+    echo "  api/                 — StackHawk API reporting skill"
+    echo "  hawkscan-ci/         — CI/CD pipeline skill"
+    echo "  stackhawk-data-seed/ — Data seed skill"
+
+    # Hooks
+    mkdir -p "$hooks_dest"
+    cp "${cursor_hooks_source}/hooks.json" "${target}/.cursor/hooks.json"
+    cp "${cursor_hooks_source}/stop.sh" "${hooks_dest}/stop.sh"
+    chmod +x "${hooks_dest}/stop.sh"
+    echo "Installed Cursor hooks to ${target}/.cursor/"
+    echo "  hooks.json           — hook configuration"
+    echo "  hooks/stop.sh        — scan reminder on session end"
     ;;
 
   copilot)

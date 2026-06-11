@@ -81,7 +81,7 @@ jobs:
       - name: Validate symlinks resolve
         run: |
           errors=0
-          for link in skills/*/; do
+          for link in skills/*/ .opencode/skills/*/ .cursor/skills/*/; do
             link_name="${link%/}"
             if [ -L "$link_name" ]; then
               if [ ! -e "$link_name" ]; then
@@ -100,7 +100,7 @@ jobs:
       - name: Validate hook scripts are executable
         run: |
           errors=0
-          for hook in plugins/*/hooks/*; do
+          for hook in plugins/*/hooks/* plugins/*/hooks/cursor/*; do
             # Skip JSON config files and .cmd wrappers
             if [[ "$hook" == *.json ]] || [[ "$hook" == *.cmd ]]; then
               continue
