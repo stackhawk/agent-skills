@@ -1,266 +1,186 @@
 ---
 name: stackhawk-data-seed
-version: 1.10.1
+version: 1.11.0
 description: >
-  Read a target repo (and any upstream service repos it depends on),
-  propose the minimum seed entities required for authenticated HawkScan
-  to find non-trivial paths, dialog with the user to confirm/adjust,
-  then emit checked-in artifacts: per-service SQL / HTTP / gRPC / Mongo /
-  shell scripts, a manifest.yaml that orders them, and a
-  .data-seed-credentials.env handoff file that hawkscan consumes.
-  Use when the user says "set up data for HawkScan", "my scan has no
-  data to hit", "seed this repo for scanning", or as a planned
-  first-time-setup step before invoking hawkscan on a fresh repo. NOT
-  autonomous — the user explicitly asks.
+  Set up checked-in seed data so authenticated HawkScan can reach non-trivial
+  paths. Drives the `hawk perch seed` preflight, designs the minimum seed
+  manifest from the repo digest, then validates and finalizes it via
+  `hawk perch seed validate` / `finalize` — emitting reviewed artifacts under
+  data-seed/ (manifest.yaml, per-service SQL / HTTP / gRPC / Mongo / shell
+  scripts, and a .data-seed-credentials.env handoff hawkscan consumes).
+  Use when the user says "set up data for HawkScan", "my scan has no data to
+  hit", "seed this repo for scanning", or as a first-time-setup step before
+  invoking hawkscan on a fresh repo. NOT autonomous — the user explicitly asks.
 ---
 
 # StackHawk Data Seed Skill
 
-This skill produces checked-in, reproducible seed-data artifacts for a target repository so HawkScan has authenticated entities to scan. It runs once per repo (or once per major data-shape change) and emits files under `data-seed/` that humans review, commit, and eventually replay via the future Runner (Tool C).
+This skill produces checked-in, reproducible seed-data artifacts for a target repo so authenticated HawkScan finds non-empty results. The `hawk perch seed` command provides the deterministic steps — a static repo **pre-flight** (storage + upstream detection), a manifest **validator**, and an artifact **finalizer**. This skill supplies the reasoning between them: it reads the pre-flight's digest and designs the minimum seed manifest. It works the same across every agent that can run a subprocess and read its output.
 
-It does NOT run the artifacts. It does NOT start the environment. It does NOT write `stackhawk.yml`. Those concerns belong to the human, the user's environment tooling, and the `hawkscan` skill respectively.
+It does NOT run the artifacts, start the environment, or write `stackhawk.yml` — those belong to the human, the user's tooling, and the `hawkscan` skill respectively.
 
 ---
 
-## When to Run This Skill
+## When to Run
 
-Invoke explicitly when one of these is true:
+Invoke explicitly when:
 
 - User says "set up data for HawkScan" / "seed this repo" / "my scan has no data to hit."
-- User is configuring HawkScan against a repo for the first time and the app needs authenticated routes to scan.
-- A previous `data-seed/` exists but the data shape has changed (new entity types, new upstream service added).
+- Configuring HawkScan against a repo for the first time and the app needs authenticated routes to scan.
+- A previous `data-seed/` exists but the data shape changed (new entity types, new upstream service).
 
-Do NOT run autonomously after code changes — this skill is a setup tool, not a per-commit safety net.
+Do NOT run autonomously after code changes — this is a setup tool, not a per-commit safety net.
 
 ---
 
 ## Phase 0: Preflight
 
-Run these checks first; if any fails, stop and tell the user.
-
 ### 0.1 — Confirm working directory
 
-The user must invoke this skill from inside the target repo (the repo HawkScan will scan). Verify:
+The user must invoke from inside the target repo (the repo HawkScan will scan):
 
 ```bash
 test -d .git || echo "NOT-A-REPO"
 pwd
 ```
 
-If not in a git repo, ask the user to `cd` to the correct directory and re-invoke.
+If not a git repo, ask the user to `cd` to the target repo and re-invoke.
 
-### 0.2 — Check for existing data-seed
+### 0.2 — Confirm hawk supports the seed flow (capability gate)
+
+This skill drives the caller-driven `hawk perch seed` subcommands (`validate` and `finalize`). Probe for them directly:
+
+```bash
+if hawk perch seed validate --help >/dev/null 2>&1 && hawk perch seed finalize --help >/dev/null 2>&1; then
+  echo "SEED-FLOW-OK"
+else
+  echo "SEED-FLOW-UNSUPPORTED"
+fi
+hawk version 2>/dev/null || hawk --version 2>/dev/null   # for the message only; never gates
+```
+
+If `SEED-FLOW-UNSUPPORTED`, **PUNT** — do NOT hand-author seed data:
+
+> Your installed hawk (`<version from above, if any>`) doesn't include the data-seed flow yet. Upgrade to **hawk ≥ `5.6.11`** to enable seeding:
+> `brew upgrade stackhawk/cli/hawk` (or download from https://download.stackhawk.com/hawk), then re-invoke this skill.
+
+The probe — not the version number — is the gate; the version is shown only to help the user.
+
+### 0.3 — Check for existing data-seed
 
 ```bash
 test -d data-seed && echo "EXISTS"
 ```
 
-If `data-seed/` already exists, ask the user whether to:
-- **Augment** — read the existing manifest and only propose additions for new entities.
-- **Replace** — back up the existing dir (`mv data-seed data-seed.bak-$(date +%s)`) and start fresh.
-- **Cancel** — exit without changes.
-
-### 0.3 — Confirm scanning intent
-
-Confirm the user wants the seed for **authenticated HawkScan** (not just generic dev data). The skill's defaults are tuned for "the minimum that lets an authenticated scan find non-empty results."
+If `data-seed/` exists, ask the user whether to **augment**, **replace** (`mv data-seed data-seed.bak-$(date +%s)`), or **cancel**.
 
 ---
 
-## Phase 1: Discover
+## Phase 1: Run the pre-flight and route on the outcome
 
-Build an internal model of the target repo + its upstream service deps + each service's storage type. This phase is read-only.
+```bash
+# If you know the app host, pass it (enriches the digest with served-OpenAPI routes), e.g.:
+#   hawk perch seed --events json --app-host "http://localhost:8080"
+# Otherwise run without it — omit the flag entirely; do NOT pass an empty --app-host:
+hawk perch seed --events json
+```
 
-### 1.1 — Repo-scan pass (target repo)
+- `--app-host` — the target app's URL (e.g. `http://localhost:8080`). Optional; when reachable it enriches the digest with served-OpenAPI routes. Ask the user if a host is handy, otherwise omit it.
+- `--output <dir>` — optional; directory to write `data-seed/` under (defaults to the current directory).
 
-Scan for signals. See `references/discovery.md` for the full per-ecosystem detection matrix.
+**stdout** carries JSONL phase events (one JSON object per line — parse with `jq -c .`). **stderr** carries human-readable text — tee it for the user, don't discard it.
 
-Cover at minimum:
-- **Storage layer evidence:** Liquibase, Flyway, Prisma, Alembic, Knex, Django, Rails, gorm, Mongo schema files, DynamoDB CDK, Cosmos SDK.
-- **API definitions:** OpenAPI, protobuf, GraphQL schemas.
-- **Auth signals:** Spring Security, Passport, Auth0 SDK, custom middleware.
-- **Env config:** `.env*`, `application.yml`, `appsettings.json`, `config.json`.
-- **Compose:** `docker-compose.yml` services + ports.
-- **Integration tests:** they often contain the working minimal seed.
-- **Client imports / SDK uses** that imply upstream services.
+Phase events: `starting` → `extracting` → `done`. **Read the `done` event's `outcome`** and branch:
 
-→ Deep reference: [`references/discovery.md`](references/discovery.md)
+| `outcome` | What it means | What you do |
+|---|---|---|
+| `nothing_to_seed` | No local datastore and no upstreams | Report the honest no-op and stop. Nothing to author. |
+| `no_local_storage` | Entities live in upstream services | The `done` payload lists `upstreams` / `upstreamResults` (each with a `resolvedPath` or `unresolvedReason`) and writes a shared `.data-seed-identity.env`. For each **resolved** upstream, run this whole flow again with the working directory rooted at that upstream's `resolvedPath` (a fresh subprocess/session at that path — a bare `cd` may not persist across calls for every agent). It reuses the shared identity so cross-service IDs line up. Seed **direct upstreams only (one hop)**: if a resolved upstream's own pre-flight also reports `no_local_storage`, report that to the user instead of recursing further (prevents unbounded or circular recursion). Report any **unresolved** upstreams to the user. |
+| `needs_synthesis` | A local datastore is present | Continue to Phase 2 using the `done` payload's `digest`. |
 
-### 1.2 — Dep-discovery pass
-
-Identify upstream services referenced (host:port literals, URL env vars, gRPC client stubs, service-name conventions). Resolve to local repo paths.
-
-See `references/cross-repo-deps.md` for the full resolution flow (sibling-directory search, `DATA_SEED_REPO_<NAME>` env var convention, user-confirmation fallback).
-
-→ Deep reference: [`references/cross-repo-deps.md`](references/cross-repo-deps.md)
-
-### 1.3 — Per-dep exploration pass
-
-For each upstream repo identified in 1.2, run the repo-scan pass (1.1) against it. Capture storage type and idiom per service.
-
-### 1.4 — Honesty rule
-
-If discovery cannot determine something (storage type ambiguous, dep repo not findable), STOP and ask the user. Do NOT silently guess.
+If the process exits non-zero, report the `done` event's message (plus relevant stderr) and stop — do not improvise seed artifacts. If no `done` event was emitted at all (e.g. the process crashed), report the last stderr line.
 
 ---
 
-## Phase 2: Propose and dialog
+## Phase 2: Design the manifest (your job)
 
-Build the minimal seed proposal and confirm with the user.
+From the pre-flight `digest` (storage kind, migrations, routes, schema signals), design the **minimum** seed needed to authenticate and exercise routes, and write `data-seed/manifest.yaml`.
 
-### 2.1 — Compute minimal seed
+**Methodology:**
 
-For an authenticated scan to find non-empty results, the floor is:
-- One user with a known password (so hawkscan can log in).
-- One organization / tenant / parent entity the user belongs to (so listing endpoints have a scope).
-- One scannable resource (app, project, document, repo — whatever the target repo's primary entity is) so detail endpoints return non-empty.
+1. Pick the smallest set of entities that unblock authenticated, non-trivial routes — typically one org, one user (with credentials), and at least one owned resource (app/project/record) the routes read.
+2. Order steps by foreign-key dependency (create the org before the user that references it, etc.).
+3. Make every step **idempotent** (e.g. `INSERT … ON CONFLICT DO NOTHING`, upserts, "create if absent") so replaying the seed is safe.
+4. Keep it minimal. Do NOT start services or run the artifacts.
 
-Where each entity lives depends on Phase 1's per-service model. Auto-propose values:
-- User: `test-owner@example.com` / password `ExampleSeedPass1!` (meets most policy floors).
-- Org: `Example Test Org`.
-- Resource: `target-app-1` (or whatever the target's vocabulary is).
+**v1 manifest contract** (what `hawk perch seed validate` enforces) — a valid manifest is a YAML doc with these top-level keys:
 
-If discovery found a password storage column in the auth schema (e.g. `password VARCHAR` with bcrypt encoding in a `users` or `credentials` table), additionally propose seeding a known test password (default `ExampleSeedPass1!`) so downstream auth tools can use the simpler `usernamePassword` recipe rather than API-key-to-JWT exchange. Hash is bcrypt-encoded in SQL; plaintext lives only in `.data-seed-credentials.env`. See `references/discovery.md` §Auth-Signal Detection for the grep commands that identify bcrypt usage, and `references/idempotency-patterns.md` §Password-Hash Seeding for the emit-time hashing strategy.
-
-### 2.2 — Surface to user
-
-```
-To make this scannable, you need:
-- 1 user (test-owner@example.com / ExampleSeedPass1!)  ← password seeded into auth table
-- 1 org (Example Test Org)
-- 1 app (target-app-1)
-
-I'll seed user + org in <service-A> via <type>, and app via <service-B> via <type>.
-OK to proceed, or expand? (e.g. need a READ_ONLY user, multiple apps, etc.)
+```yaml
+version: 1                 # must be exactly 1
+name: <repo>-data-seed     # identifier
+description: <one line>    # what this seed sets up
+prerequisites: {}          # map; tools/services the steps assume (may be empty)
+targets: {}                # map; datastores/endpoints the steps write to (may be empty)
+steps: []                  # list; the ordered, idempotent seed operations (may be empty)
 ```
 
-The `← password seeded into auth table` annotation appears only when discovery detected a password-storage column (e.g., `users.password_hash` with BCrypt encoding). When present it signals that hawkscan can use the `usernamePassword` auth recipe rather than requiring a pre-fetched JWT.
+**No-op manifests:** a valid manifest with empty `prerequisites`, `targets`, and `steps` is an acceptable, honest result when there is genuinely nothing to seed — never fabricate seed records to look productive. (In practice the pre-flight returns `nothing_to_seed`/`no_local_storage` before Phase 2 for storage-less repos; this guidance is here for completeness.)
 
-Use the actual service names + storage types from Phase 1.
-
-### 2.3 — Iterate
-
-If the user expands, repeat 2.1 / 2.2 with the additions. Loop until the user confirms.
+**Shared identity (cross-service consistency):** if `.data-seed-identity.env` is present (or `SEED_ORG_ID` / `SEED_USER_ID` / `SEED_APP_ID` / `SEED_USER_EMAIL` / `SEED_USER_PASSWORD` are in the environment), create the seeded entities with **those exact IDs/values** — do not mint your own. This keeps the same org/user/app consistent across every upstream service so a gateway's cross-service routes resolve.
 
 ---
 
-## Phase 3: Emit artifacts
+## Phase 3: Validate
 
-Write the artifacts to disk under `data-seed/`.
-
-### 3.1 — Create directory layout
-
-```
-data-seed/
-├── manifest.yaml
-├── README.md
-├── credentials.env.example
-└── <one subdirectory per service>/
-    ├── 001-<entity>.<ext>
-    └── 002-<entity>.<ext>
+```bash
+hawk perch seed validate data-seed/manifest.yaml --events json
 ```
 
-Plus a sibling `.data-seed-credentials.env` in the repo root (gitignored).
-
-### 3.2 — Per-step file emission
-
-For each step in the plan:
-- Pick the file extension by step type: `.sql` / `.http` / `.json` (grpc) / `.js` (mongo) / `.sh`.
-- Generate idempotent content. See `references/idempotency-patterns.md` for per-dialect patterns.
-- Numeric prefixes (`001-`, `002-`, ...) reflect intra-service order. Cross-service order is in `manifest.yaml`.
-
-→ Deep reference: [`references/idempotency-patterns.md`](references/idempotency-patterns.md)
-
-### 3.3 — Manifest emission
-
-Write `data-seed/manifest.yaml` per the Contract B schema.
-
-→ Full schema reference: [`references/manifest-schema.md`](references/manifest-schema.md)
-
-### 3.4 — Self-validation
-
-Before writing, verify:
-
-1. Every step has `id`, `type`, `file`, `target`, `idempotency`.
-2. All `depends_on` references resolve to existing step IDs.
-3. No circular dependencies (topo-sort succeeds).
-4. Every referenced `file:` path exists in the emitted tree.
-5. Every `outputs:` key is referenced by or produced by at least one step (warn if not).
-
-If any check fails, STOP, surface the problem to the user, do NOT write a half-broken manifest.
-
-### 3.5 — README + .gitignore
-
-Write `data-seed/README.md` covering: prerequisites (env vars, running services), how to manually replay each step (the future Runner will automate this; for now humans replay), what entities got created, where credentials live.
-
-Append `.data-seed-credentials.env` to the repo's `.gitignore` if not already present.
-
-### 3.6 — Credentials handoff
-
-Write `.data-seed-credentials.env` (gitignored) with the chosen values:
-
-```
-TEST_USER=test-owner@example.com
-TEST_PASS=ExampleSeedPass1!
-TEST_PASSWORD=ExampleSeedPass1!  # alias for compatibility with hawkscan usernamePassword recipe
-TEST_ORG_ID=<id>
-TEST_APP_ID=<id>
-<any other outputs from the manifest>
-```
-
-`TEST_PASSWORD` is emitted in addition to `TEST_PASS` whenever a password was seeded into an auth table. Both keys carry the same value. `TEST_PASS` preserves compatibility with existing hawkscan integration that predates the `usernamePassword` recipe; `TEST_PASSWORD` is the canonical key that hawkscan's `usernamePassword` auth block references.
-
-Write `data-seed/credentials.env.example` (checked in) with the same keys but placeholder values, so future devs know the schema.
+Read the `done` event: `{"valid": true}` → proceed to Phase 4. `{"valid": false, "errors": [...]}` (and a non-zero exit) → fix the reported `errors` in the manifest and re-validate. After **3** unsuccessful validate attempts, report the errors and stop — do NOT finalize an invalid manifest.
 
 ---
 
-## Phase 4: Handoff
+## Phase 4: Finalize
 
-Report to the user what was created and what to do next.
+```bash
+hawk perch seed finalize data-seed/manifest.yaml --events json
+```
 
-### 4.1 — Summarize emitted artifacts
+Writes the manifest + per-service scripts under `data-seed/` and the `.data-seed-credentials.env` handoff. The `done` event carries `{"success": true, "writtenFiles": [...], "credsPath": "..."}`. A non-zero exit or `success: false` → report the message and stop.
+
+> Event-parsing note: the terminal `done` keys differ per subcommand — the pre-flight and `finalize` use `success`, `validate` uses `valid`. **Treat any non-zero exit as failure** regardless of payload.
+
+---
+
+## Phase 5: Handoff
+
+On a successful finalize:
 
 ```
-Data seed complete. Created:
-- data-seed/manifest.yaml (<N> steps across <M> services)
-- data-seed/<service>/<files>
+Data seed complete. Created under <outputDir>:
+- data-seed/manifest.yaml
+- per-service seed scripts
 - .data-seed-credentials.env (gitignored)
 
 Next steps:
 1. Review data-seed/manifest.yaml and the per-service files.
-2. Start your stack: <suggest command from docker-compose.yml / Makefile if found, otherwise leave blank>
-3. Replay the manifest manually (see data-seed/README.md). The Runner that automates this is a future tool.
-4. Invoke hawkscan to configure stackhawk.yml. It will read .data-seed-credentials.env automatically.
+2. Start your stack, then replay the manifest (see data-seed/README.md if present).
+3. Invoke hawkscan to configure stackhawk.yml — it reads .data-seed-credentials.env automatically.
 ```
 
-### 4.2 — Commit reminder
-
-Suggest:
+Commit reminder:
 
 ```bash
 git add data-seed/ .gitignore
 git commit -m "chore: add data seed artifacts for HawkScan"
 ```
 
-`.data-seed-credentials.env` is gitignored and will not be committed.
+(Stage `.gitignore` only if you added an entry for `.data-seed-credentials.env`.)
+
+`.data-seed-credentials.env` is gitignored and must not be committed.
 
 ---
 
 ## Boundaries with hawkscan
 
-This skill never:
-- Writes or modifies `stackhawk.yml`.
-- Selects authentication recipes (`cookieAuthorization` vs `tokenExtraction` vs `script`).
-- Creates Apps or Envs on the StackHawk platform.
-
-Hawkscan's Phase 1c / 1c.5 owns all of that. The handoff is one file: `.data-seed-credentials.env`. Hawkscan reads it and plugs values into whatever auth recipe it selects.
-
----
-
-## Common mistakes to avoid
-
-- **Do not silently guess.** If discovery is ambiguous, ask the user.
-- **Do not emit non-idempotent steps without flagging.** Every step needs an idempotency check; if the user accepts `none: true`, surface a warning in the manifest comment.
-- **Do not commit `.data-seed-credentials.env`.** Always append to `.gitignore`.
-- **Do not write `stackhawk.yml`.** Hawkscan owns that. The handoff is the env file.
-- **Do not run `docker-compose up` or any startup command.** Document the prereq; let the human or future Runner execute.
-- **Do not skip self-validation.** A half-broken manifest is worse than a clear error.
+This skill never writes or modifies `stackhawk.yml`, selects authentication recipes, or creates Apps/Envs on the StackHawk platform. The handoff is one file: `.data-seed-credentials.env`. Hawkscan reads it and plugs the values into whatever auth recipe it selects.
