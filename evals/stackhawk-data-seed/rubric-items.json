@@ -1,66 +1,41 @@
 {
   "skill": "stackhawk-data-seed",
-  "grader_prompt": "You are evaluating whether a stackhawk-data-seed skill run produced correct, high-quality output. Review the agent's output text, the contents of data-seed/ (manifest.yaml, README.md, per-service step files, credentials.env.example), the .data-seed-credentials.env file, and the .gitignore. For each check below, determine pass/fail and write a one-sentence explanation. Return a JSON object conforming to rubric-schema.json.",
+  "grader_prompt": "You are evaluating whether a stackhawk-data-seed skill run was orchestrated correctly. This skill is CALLER-DRIVEN: the agent probes that hawk supports the seed flow, runs `hawk perch seed` (a static pre-flight that emits an outcome + repo digest), DESIGNS data-seed/manifest.yaml from that digest (the seed methodology lives in the skill — authoring the manifest is the agent's job and is CORRECT), then validates it with `hawk perch seed validate` and writes artifacts with `hawk perch seed finalize`. Review the agent's output text, command history, and any files under data-seed/. Do NOT penalize the agent for authoring the manifest — that is the intended behavior. DO check that it gated on hawk capability, ran the three subcommands in order, routed correctly on the pre-flight outcome (on a `no_local_storage` outcome, recursing into each resolved upstream repo with the shared identity rather than merely reporting them), and handed off cleanly. For each check below, determine pass/fail and write a one-sentence explanation. Return a JSON object conforming to rubric-schema.json.",
   "checks": [
     {
-      "id": "discovery_is_grounded_not_guessed",
-      "description": "The discovery summary cites specific files, schemas, ports, or env vars actually found in the repo — not generic boilerplate. When something couldn't be determined, the skill asked the user rather than inventing a value.",
-      "focus": "Agent output during Phase 1 — concrete file paths and signals vs. invented details"
+      "id": "preflight_and_gate_correct",
+      "description": "The agent ran the preflight: confirmed a git repo, and probed that hawk supports the seed flow (`hawk perch seed validate --help` / `finalize --help`). If unsupported it punted with an upgrade instruction rather than hand-authoring or using an older flow.",
+      "focus": "Agent's Phase 0 commands and output — the git-repo check AND the hawk capability probe must each pass independently"
     },
     {
-      "id": "minimum_seed_dialog_present",
-      "description": "Phase 2 surfaced an explicit proposal listing the entities (1 user, 1 org, 1 resource) with the proposed default values and waited for the user to confirm or expand before emitting files.",
-      "focus": "Agent output for the Phase 2 proposal block and the pause for user confirmation"
+      "id": "ran_preflight_and_routed_outcome",
+      "description": "The agent invoked `hawk perch seed --events json` and acted on the `done` outcome: continued on `needs_synthesis`, routed to upstream repos on `no_local_storage`, or stopped honestly on `nothing_to_seed`.",
+      "focus": "The hawk perch seed invocation and the explicit branch taken on the outcome (needs_synthesis / no_local_storage / nothing_to_seed)"
     },
     {
-      "id": "manifest_has_required_fields",
-      "description": "data-seed/manifest.yaml has version, name, description, prerequisites, targets, steps, and outputs at the top level. Every step has id, type, file, target, and idempotency. No step is missing a required field.",
-      "focus": "data-seed/manifest.yaml structure"
+      "id": "designed_a_sound_manifest",
+      "description": "On `needs_synthesis`, the agent authored data-seed/manifest.yaml that is minimal, ordered by foreign-key dependency, idempotent, and conforms to the v1 contract (version 1; name/description/prerequisites/targets/steps present). Authoring is expected — grade its quality, not its existence.",
+      "focus": "The manifest the agent designed (data-seed/manifest.yaml)"
     },
     {
-      "id": "manifest_dependencies_resolve",
-      "description": "Every depends_on entry in data-seed/manifest.yaml references an existing step id, and the dependency graph is acyclic.",
-      "focus": "data-seed/manifest.yaml steps[].depends_on"
+      "id": "validated_then_finalized",
+      "description": "The agent ran `hawk perch seed validate` on its manifest (fixing reported errors and re-validating), then `hawk perch seed finalize` to write artifacts — and did not finalize an invalid manifest.",
+      "focus": "The validate/finalize subcommand calls and error-fix loop"
     },
     {
-      "id": "manifest_paths_exist",
-      "description": "Every steps[].file path in data-seed/manifest.yaml corresponds to an actual file that was emitted under data-seed/.",
-      "focus": "Cross-reference between manifest entries and emitted artifact files"
+      "id": "honest_result_handling",
+      "description": "The agent reported the run's actual outcome honestly: a storage-less gateway (`nothing_to_seed`/`no_local_storage`) was relayed as such (or routed to upstreams) rather than fabricated into fake entities.",
+      "focus": "Agent's interpretation of the pre-flight outcome, especially the no-op / gateway case"
     },
     {
-      "id": "seed_steps_are_idempotent",
-      "description": "Each emitted SQL / HTTP / gRPC / Mongo / shell step uses a per-dialect idempotency idiom (ON CONFLICT, PUT, upsert, check-then-create) so re-running the manifest is safe. Any 'none: true' is intentional and called out in the manifest comment.",
-      "focus": "Contents of data-seed/<service>/*.{sql,http,sh,js,json}"
+      "id": "respects_boundaries",
+      "description": "The agent did not create or modify stackhawk.yml and did not start the application stack (docker-compose up / bootRun / npm start). It also did not git-add .data-seed-credentials.env (plaintext credentials must never be committed). The handoff to hawkscan is via .data-seed-credentials.env only.",
+      "focus": "stackhawk.yml absence/unchanged and absence of app-startup commands"
     },
     {
-      "id": "credentials_handoff_correct",
-      "description": ".data-seed-credentials.env exists, contains the values produced by the manifest (TEST_USER, TEST_PASS/TEST_PASSWORD, TEST_ORG_ID, TEST_APP_ID, plus any manifest outputs), and a matching data-seed/credentials.env.example is committed with the same keys but placeholder values.",
-      "focus": ".data-seed-credentials.env and data-seed/credentials.env.example"
-    },
-    {
-      "id": "gitignore_protects_credentials",
-      "description": ".gitignore contains an entry that matches .data-seed-credentials.env (exact path or wildcard). The agent verified or added the entry before suggesting any git commit.",
-      "focus": ".gitignore content"
-    },
-    {
-      "id": "no_stackhawk_yml_touched",
-      "description": "The agent did not create or modify stackhawk.yml. The handoff to hawkscan is via the credentials env file only.",
-      "focus": "stackhawk.yml absence/unchanged"
-    },
-    {
-      "id": "no_services_started",
-      "description": "The agent did not run docker-compose up, npm start, gradlew bootRun, or any other command that starts services. It only emitted artifacts and documented the prerequisite startup commands in data-seed/README.md.",
-      "focus": "Commands executed during the run"
-    },
-    {
-      "id": "phase_order_respected",
-      "description": "Phases executed in order: Phase 0 (preflight) → Phase 1 (discover) → Phase 2 (propose + confirm) → Phase 3 (emit) → Phase 4 (handoff). No phase was skipped; Phase 3 did not start before Phase 2 confirmation.",
-      "focus": "Sequence of agent decisions and outputs"
-    },
-    {
-      "id": "handoff_to_hawkscan_explicit",
-      "description": "The Phase 4 summary explicitly mentions that hawkscan is the next step and that it will read .data-seed-credentials.env automatically.",
-      "focus": "Final agent output"
+      "id": "handoff_clear",
+      "description": "On success the agent clearly reported what was written (data-seed/ + manifest.yaml + .data-seed-credentials.env), the next steps (review, replay, run hawkscan), and that hawkscan reads .data-seed-credentials.env. Reminded the user the credentials file is gitignored and must not be committed.",
+      "focus": "Final agent output / handoff summary"
     }
   ]
 }
