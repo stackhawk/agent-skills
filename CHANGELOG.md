@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-06-11
+
+### Added
+- `stackhawk-data-seed` plugin: caller-driven `hawk perch seed` CLI-driving stub with a 3-subcommand flow and a hawk-capability gate that degrades gracefully when unsupported
+- hawkscan routing to `stackhawk-data-seed` when backend credentials are missing or scan data is empty (gated on hawk capability)
+- Skill-eval harness scaling: compare mode, per-prompt budgets, and an efficiency grader (uv + shared lib)
+
+### Fixed
+- `tag-on-merge` workflow now checks the **remote** for an existing tag (`git ls-remote`) instead of the local clone. `actions/checkout` does a shallow fetch without tags, so the prior local `git rev-parse` guard never matched and the step failed at `git push` when `VERSION` was unchanged
+
 ## [1.6.2] - 2026-05-21
 
 ### Added

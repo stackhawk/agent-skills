@@ -18,8 +18,11 @@ jobs:
           version=$(cat VERSION)
           tag="v${version}"
 
-          if git rev-parse --verify "refs/tags/${tag}" >/dev/null 2>&1; then
-            echo "Tag '${tag}' already exists — skipping (VERSION was not bumped in this push)"
+          # Check the remote, not the local clone: actions/checkout does a
+          # shallow fetch without tags, so a local rev-parse would always miss
+          # an existing tag and then fail at `git push` (tag already exists).
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "Tag '${tag}' already exists on remote — skipping (VERSION was not bumped in this push)"
             exit 0
           fi
 
