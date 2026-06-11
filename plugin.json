@@ -1,6 +1,6 @@
 {
   "name": "stackhawk",
-  "version": "1.12.0",
+  "version": "1.13.0",
   "description": "StackHawk security scanning and API reporting skills. Includes hawkscan (DAST scanning) and api (security posture reporting).",
   "author": {
     "name": "StackHawk",

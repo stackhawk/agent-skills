@@ -8,10 +8,12 @@ Multi-platform agent skills repo serving Claude, Codex, Gemini, Copilot, Cursor,
 
 ## Structure
 
-- `plugins/hawkscan/` — HawkScan DAST scanning skill (SKILL.md + references)
+- `plugins/hawkscan/` — HawkScan DAST scanning skill (SKILL.md + references + hooks)
 - `plugins/api/` — StackHawk API reporting skill (SKILL.md + references)
 - `skills/` — Symlinks for Gemini/Copilot discovery (points into plugins/)
 - `.opencode/skills/` — Symlinks for OpenCode discovery (points into plugins/)
+- `.cursor/skills/` — Symlinks for Cursor native skills discovery (points into plugins/)
+- `plugins/hawkscan/hooks/cursor/` — Cursor hook scripts and hooks.json
 - `cursor/` — Generated Cursor .mdc rules (do NOT edit manually)
 - `scripts/generate-cursor-rules.sh` — Transforms SKILL.md → Cursor .mdc format
 - `scripts/bump-version.sh` — Updates all version-bearing files atomically (reads `.version-bump.json`)
@@ -68,7 +70,7 @@ See `RELEASING.md` for the full release process including how to update the mark
 | Codex | `.codex-plugin/marketplace.json` + `plugins/*/.codex-plugin/plugin.json` |
 | Gemini | `gemini-extension.json` |
 | Copilot | No manifest — discovers via `skills/` symlinks |
-| Cursor | Generated into `cursor/.cursor/rules/` |
+| Cursor | Rules: generated into `cursor/.cursor/rules/`; Skills: symlinks in `.cursor/skills/`; Hooks: `plugins/hawkscan/hooks/cursor/` |
 
 `.version-bump.json` lists every version-bearing file. `bump-version.sh` reads it to update all files atomically. When adding a new plugin, add its manifests and SKILL.md to `.version-bump.json`.
 
@@ -78,7 +80,7 @@ CI (`generate-and-validate.yml`) validates version consistency on every PR. The 
 
 1. Create `plugins/<name>/skills/<name>/SKILL.md` with `name:`, `version:`, `description:` frontmatter
 2. Create `plugins/<name>/.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`
-3. Add symlinks in `skills/` and `.opencode/skills/`
+3. Add symlinks in `skills/`, `.opencode/skills/`, and `.cursor/skills/` (pointing into the new plugin)
 4. Add entries to `scripts/generate-cursor-rules.sh` `MAPPINGS` array (controls Cursor .mdc generation)
 5. Add all new manifests and SKILL.md to `.version-bump.json`
 6. Run `bash scripts/bump-version.sh --minor` so version propagates
@@ -93,10 +95,21 @@ source_path|output_name|description|globs (comma-separated or empty)|alwaysApply
 
 `cursor/` is generated output — never edit `.mdc` files directly. Edit the source SKILL.md or references, then regenerate. CI blocks PRs where cursor rules are out of sync.
 
+## Cursor Hooks
+
+Cursor hooks live in `plugins/hawkscan/hooks/cursor/` and are copied to users' projects by `install.sh`. They are NOT generated — edit them directly.
+
+- `hooks.json` — Cursor hooks config (version 1, `stop` hook only)
+- `stop.sh` — Fires when the agent loop ends; outputs `followup_message` to auto-trigger a scan if code was modified without scanning
+
+The `stop` hook's `followup_message` causes Cursor to automatically continue with that message, prompting the agent to run the hawkscan skill. This is more powerful than the Claude Code equivalent (`stopReason` is display-only).
+
 ## Gotchas
 
 - `cursor/` is generated output — edit the source SKILL.md, then regenerate
-- `skills/` and `.opencode/skills/` entries are symlinks, not copies — don't break the relative paths
+- `skills/`, `.opencode/skills/`, and `.cursor/skills/` entries are symlinks, not copies — don't break the relative paths
+- Cursor skills `name:` field must match the symlink folder name (they all do: `hawkscan`, `api`, `hawkscan-ci`, `stackhawk-data-seed`)
+- Cursor hook `command` path (`.cursor/hooks/stop.sh`) is relative to the project root — correct for both user-level (`~`) and project-level installs
 - `docs/superpowers/` is gitignored (design specs/plans kept locally)
 - `.claude/` dir is gitignored (local settings only)
 - SKILL.md frontmatter requires `name:`, `version:`, and `description:` — CI validates all three
