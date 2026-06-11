@@ -1,0 +1,80 @@
+- id: api-01
+  should_trigger: true
+  invocation_type: explicit
+  prompt: Use the $api skill to show me my org's security posture
+  notes: Direct skill reference by name
+- id: api-02
+  should_trigger: true
+  invocation_type: implicit
+  prompt: Show me the security posture of my StackHawk organization
+  notes: '''security posture'' keyword from skill description'
+- id: api-03
+  should_trigger: true
+  invocation_type: implicit
+  prompt: What are my untriaged findings across all apps?
+  notes: '''untriaged findings'' keyword'
+- id: api-04
+  should_trigger: true
+  invocation_type: implicit
+  prompt: Give me a security dashboard overview for my org
+  notes: '''security dashboard'' keyword'
+- id: api-05
+  should_trigger: true
+  invocation_type: implicit
+  prompt: Show me the scan history for my payment-api application
+  notes: '''scan history'' keyword'
+- id: api-06
+  should_trigger: true
+  invocation_type: implicit
+  prompt: What needs immediate security attention in my org?
+  notes: '''what needs attention'' keyword'
+- id: api-07
+  should_trigger: true
+  invocation_type: contextual
+  prompt: Which of my apps have HIGH severity findings that haven't been addressed?
+  notes: Finding severity query; no keyword match — tests whether description alone triggers
+- id: api-08
+  should_trigger: true
+  invocation_type: contextual
+  prompt: What changed in my security findings since last week?
+  notes: Delta / diff query; tests 'what's new' path in Step 4
+- id: api-09
+  should_trigger: true
+  invocation_type: contextual
+  prompt: Which apps haven't been scanned in over 30 days?
+  notes: Stale app detection; tests Step 3 posture with stale-app focus
+- id: api-10
+  should_trigger: true
+  invocation_type: contextual
+  prompt: I need a security report for the team's weekly standup
+  notes: Reporting use case with no API-specific keywords
+- id: api-11
+  should_trigger: true
+  invocation_type: contextual
+  prompt: Pull the full finding details for the checkout-service — the PM wants a severity breakdown
+  notes: App deep dive; tests Step 4 path
+- id: api-12
+  should_trigger: false
+  invocation_type: negative
+  prompt: Run a DAST scan on my API
+  notes: Scan request → hawkscan skill; 'scan' should not route to api skill
+- id: api-13
+  should_trigger: false
+  invocation_type: negative
+  prompt: Scan my app on localhost:8080 for vulnerabilities
+  notes: Explicit scan request → hawkscan
+- id: api-14
+  should_trigger: false
+  invocation_type: negative
+  prompt: Create a stackhawk.yml for my service
+  notes: Config generation → hawkscan
+- id: api-15
+  should_trigger: false
+  invocation_type: negative
+  prompt: Fix the CORS misconfiguration that HawkScan found
+  notes: Code fix → hawkscan + code change; api skill reads only
+- id: api-16
+  should_trigger: false
+  invocation_type: negative
+  prompt: Run HawkScan against my staging environment
+  notes: Scan request → hawkscan; 'StackHawk' keyword should not override scan intent

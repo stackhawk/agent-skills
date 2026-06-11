@@ -1,0 +1,5 @@
+{"platform":"claude-code","skill":"hawkscan","model":"haiku","commit":"abc1234",
+ "results":[
+   {"platform":"claude-code","skill":"hawkscan","run_id":"hw-01","should_trigger":true,"did_trigger":true,"trigger_correct":true,"verdict":"pass","budget_breaches":[],"process_checks":[],"score":100,"cost_usd":0.05},
+   {"platform":"claude-code","skill":"hawkscan","run_id":"hw-14","should_trigger":false,"did_trigger":true,"trigger_correct":false,"verdict":"fail","budget_breaches":[],"process_checks":[],"score":0,"cost_usd":0.02}
+ ]}

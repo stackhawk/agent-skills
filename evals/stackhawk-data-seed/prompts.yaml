@@ -1,0 +1,80 @@
+- id: ds-01
+  should_trigger: true
+  invocation_type: explicit
+  prompt: Use the $stackhawk-data-seed skill to set up seed data for my repo
+  notes: Direct skill reference by name
+- id: ds-02
+  should_trigger: true
+  invocation_type: implicit
+  prompt: Set up data for HawkScan in this repo
+  notes: Top-line trigger phrase from skill description
+- id: ds-03
+  should_trigger: true
+  invocation_type: implicit
+  prompt: My HawkScan run has no data to hit — can you seed it?
+  notes: '''no data to hit'' keyword from description'
+- id: ds-04
+  should_trigger: true
+  invocation_type: implicit
+  prompt: Seed this repo so HawkScan can authenticate and scan real paths
+  notes: '''seed this repo'' phrasing'
+- id: ds-05
+  should_trigger: true
+  invocation_type: implicit
+  prompt: I'm setting up HawkScan for the first time on this service — generate the seed data
+  notes: First-time-setup phrasing
+- id: ds-06
+  should_trigger: true
+  invocation_type: contextual
+  prompt: HawkScan is logging in but every endpoint returns an empty list. Fix it.
+  notes: 'Symptom-only prompt — the fix is seed data, not auth. Hardest trigger case: requires reasoning from symptom to root cause (empty data) instead of defaulting to scan/auth diagnosis. Failure here is diagnostic — likely means the skill description needs to surface the empty-results symptom explicitly.'
+- id: ds-07
+  should_trigger: true
+  invocation_type: contextual
+  prompt: We added a new upstream auth-service repo. Refresh the test fixtures so HawkScan still works.
+  notes: Augment existing seed when data shape changed
+- id: ds-08
+  should_trigger: true
+  invocation_type: contextual
+  prompt: Generate idempotent SQL inserts so my scan has a logged-in user, an org, and at least one app to hit
+  notes: Describes the artifact, not the skill
+- id: ds-09
+  should_trigger: false
+  invocation_type: negative
+  prompt: Scan my API for vulnerabilities
+  notes: Scan request → hawkscan skill
+- id: ds-10
+  should_trigger: false
+  invocation_type: negative
+  prompt: Show me my untriaged findings
+  notes: Reporting query → stackhawk-api skill
+- id: ds-11
+  should_trigger: false
+  invocation_type: negative
+  prompt: Configure HawkScan in my GitHub Actions pipeline
+  notes: CI config → hawkscan-ci skill
+- id: ds-12
+  should_trigger: false
+  invocation_type: negative
+  prompt: I just fixed a bug in the payment endpoint
+  notes: Routine code change — skill is NOT autonomous; must not fire on post-change hook
+- id: ds-13
+  should_trigger: false
+  invocation_type: negative
+  prompt: Refactor the user service to use repositories instead of direct queries
+  notes: Refactor — not autonomous; must not fire
+- id: ds-14
+  should_trigger: false
+  invocation_type: negative
+  prompt: Bootstrap a new Spring Boot project for me
+  notes: Generic 'bootstrap' meaning project scaffolding — not our skill's domain
+- id: ds-15
+  should_trigger: false
+  invocation_type: negative
+  prompt: Write a database migration to add a 'role' column to users
+  notes: DB migration is not seed data; not our skill's domain
+- id: ds-16
+  should_trigger: false
+  invocation_type: negative
+  prompt: Start the docker-compose stack and run the integration tests
+  notes: Environment startup — skill explicitly forbids running services

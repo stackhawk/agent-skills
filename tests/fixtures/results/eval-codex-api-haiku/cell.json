@@ -1,0 +1,4 @@
+{"platform":"codex","skill":"api","model":"haiku","commit":"abc1234",
+ "results":[
+   {"platform":"codex","skill":"api","run_id":"api-01","should_trigger":true,"did_trigger":true,"trigger_correct":true,"verdict":"pass","budget_breaches":[],"process_checks":[],"score":100,"cost_usd":0.04}
+ ]}

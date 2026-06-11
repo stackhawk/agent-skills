@@ -1,0 +1,168 @@
+"""Grading: process checks (ported from the claude-code harness), per-prompt
+ad-hoc expectations, budget scoring, and the three-state verdict."""
+from __future__ import annotations
+import re
+
+from evals.lib.models import (
+    ParsedRun, PromptConfig, BudgetSpec, ExpectedCheck, Verdict,
+    ProcessCheckResult, EvalResult,
+)
+
+
+def applicable_checks(checks: list[dict], prompt_id: str, *,
+                      extended: bool = False) -> list[dict]:
+    """A check applies if it has no applies_to (global) or names this prompt id.
+    Checks marked `tier: extended` require a real target/execution and are graded
+    only in extended (full-auto) runs — they're skipped in observe mode."""
+    out = []
+    for c in checks:
+        if not extended and c.get("tier") == "extended":
+            continue
+        targets = c.get("applies_to")
+        if not targets or prompt_id in targets:
+            out.append(c)
+    return out
+
+
+def _haystack(run: ParsedRun) -> str:
+    return " ".join([*run.bash_commands, run.output_text]).lower()
+
+
+def run_process_checks(run: ParsedRun, checks: list[dict]) -> list[ProcessCheckResult]:
+    haystack = _haystack(run)
+    # A "don't RUN command X" anti-pattern is about actual execution, so it scans
+    # executed commands only — not narration. In a paper walkthrough the agent may
+    # mention a command while explaining (e.g. "after `docker compose up` …"); that
+    # is not a violation. (output_negative / file_content_negative still scan the
+    # full output / files, since those ARE about narrated/written content.)
+    bash_only = " ".join(run.bash_commands).lower()
+    all_files = " ".join(run.files_written + run.files_edited).lower()
+    results: list[ProcessCheckResult] = []
+
+    for check in checks:
+        ctype = check.get("type", "command_executed")
+        signals = [s.lower() for s in check.get("signals", [])]
+        antis = [a.lower() for a in check.get("anti_patterns", [])]
+        hay = bash_only if ctype == "command_negative" else haystack
+        signal_hit = next((s for s in signals if s in hay), None)
+        anti_hit = next((a for a in antis if a in hay), None)
+
+        if ctype in ("command_negative", "file_content_negative", "output_negative"):
+            passed = anti_hit is None
+        elif ctype in ("file_absent", "file_absent_or_unchanged"):
+            # The file(s) must NOT have been written/edited. Supports either a
+            # single target_file or a list of anti_pattern paths (data-seed uses
+            # both forms). "_or_unchanged" is the same absence test here — the
+            # eval doesn't diff pre-existing content.
+            target = check.get("target_file", "").lower()
+            passed = (not target or target not in all_files) and \
+                     not any(a in all_files for a in antis)
+        elif ctype == "file_present":
+            # The artifact should exist: written/edited for real (execution mode)
+            # OR named in the agent's narration (observe mode).
+            passed = any(s in all_files or s in haystack for s in signals)
+        elif ctype == "conditional_command":
+            condition_str = check.get("condition", "")
+            m = re.search(r"'([^']+)'", condition_str)
+            if condition_str and m is None:
+                raise ValueError(
+                    f"conditional_command check '{check['id']}': condition "
+                    f"'{condition_str}' has no single-quoted keyword")
+            keyword = m.group(1).lower() if m else None
+            passed = True if (keyword and keyword not in haystack) else signal_hit is not None
+        elif ctype == "command_preference":
+            preferred = [p.lower() for p in check.get("preferred", [])]
+            if preferred:
+                passed = any(p in haystack for p in preferred) and anti_hit is None
+            else:
+                passed = anti_hit is None  # no preference expressed; only anti-patterns matter
+        else:
+            passed = signal_hit is not None and (anti_hit is None if antis else True)
+
+        results.append(ProcessCheckResult(
+            id=check["id"], passed=passed,
+            severity=check.get("severity", "warning"),
+            signal_found=signal_hit, anti_found=anti_hit,
+        ))
+    return results
+
+
+def run_adhoc_expected(run: ParsedRun, expected: list[ExpectedCheck]) -> list[ProcessCheckResult]:
+    """Per-prompt expectations. signal/anti_pattern are blocking; check_id refs are
+    resolved by the caller against process-checks and skipped here."""
+    haystack = _haystack(run)
+    results: list[ProcessCheckResult] = []
+    for i, exp in enumerate(expected):
+        if exp.check_id is not None:
+            continue  # handled via applies_to / process checks
+        if exp.signal is not None:
+            hit = exp.signal.lower() in haystack
+            results.append(ProcessCheckResult(
+                id=f"expected[{i}]:signal", passed=hit, severity="blocking",
+                signal_found=exp.signal if hit else None))
+        elif exp.anti_pattern is not None:
+            hit = exp.anti_pattern.lower() in haystack
+            results.append(ProcessCheckResult(
+                id=f"expected[{i}]:anti", passed=not hit, severity="blocking",
+                anti_found=exp.anti_pattern if hit else None))
+    return results
+
+
+def check_budget(run: ParsedRun, budget: BudgetSpec) -> list[str]:
+    breaches: list[str] = []
+    if budget.cost_usd is not None and run.cost_usd > budget.cost_usd:
+        breaches.append(f"cost_usd {run.cost_usd:.3f} > {budget.cost_usd:.3f}")
+    if budget.bash_commands is not None and len(run.bash_commands) > budget.bash_commands:
+        breaches.append(f"bash_commands {len(run.bash_commands)} > {budget.bash_commands}")
+    if budget.output_tokens is not None and (run.output_tokens or 0) > budget.output_tokens:
+        breaches.append(f"output_tokens {run.output_tokens} > {budget.output_tokens}")
+    if budget.wall_seconds is not None and (run.wall_seconds or 0) > budget.wall_seconds:
+        breaches.append(f"wall_seconds {run.wall_seconds:.0f} > {budget.wall_seconds:.0f}")
+    return breaches
+
+
+def _score(checks: list[ProcessCheckResult]) -> int:
+    blocking = sum(1 for c in checks if not c.passed and c.severity == "blocking")
+    warning = sum(1 for c in checks if not c.passed and c.severity == "warning")
+    return max(0, 100 - blocking * 15 - warning * 5)
+
+
+def grade(prompt: PromptConfig, run: ParsedRun, checks: list[dict], *,
+          platform: str, skill: str, did_trigger: bool,
+          extended: bool = False) -> EvalResult:
+    trigger_correct = (did_trigger == prompt.should_trigger)
+
+    # Process checks, ad-hoc expectations, and budgets only apply when the skill
+    # should have fired AND did. For correct non-triggers, false positives, and
+    # false negatives, the verdict is purely the trigger outcome (no process grading).
+    if not (prompt.should_trigger and did_trigger):
+        return EvalResult(
+            platform=platform, skill=skill, run_id=prompt.id,
+            should_trigger=prompt.should_trigger, did_trigger=did_trigger,
+            trigger_correct=trigger_correct,
+            verdict=Verdict.PASS if trigger_correct else Verdict.FAIL,
+            budget_breaches=[], process_checks=[],
+            score=100 if trigger_correct else 0, cost_usd=run.cost_usd,
+            note=(run.error or ""),
+        )
+
+    proc = run_process_checks(run, applicable_checks(checks, prompt.id, extended=extended))
+    proc += run_adhoc_expected(run, prompt.expected)
+
+    blocking_failed = any(not c.passed and c.severity == "blocking" for c in proc)
+    verdict = Verdict.FAIL if blocking_failed else Verdict.PASS
+
+    breaches: list[str] = []
+    if verdict == Verdict.PASS and prompt.budget is not None:
+        breaches = check_budget(run, prompt.budget)
+        if breaches:
+            verdict = Verdict.PASS_SLOW
+
+    return EvalResult(
+        platform=platform, skill=skill, run_id=prompt.id,
+        should_trigger=prompt.should_trigger, did_trigger=did_trigger,
+        trigger_correct=trigger_correct,
+        verdict=verdict, budget_breaches=breaches, process_checks=proc,
+        score=_score(proc), cost_usd=run.cost_usd,
+        note=(run.error or ""),
+    )

@@ -1,25 +1,38 @@
 name: Skill Evals
 
 on:
+  # Manual, on-demand only — matches origin/main's deliberate design (commit c860e47
+  # "ci: remove pull_request trigger — evals run on workflow_dispatch only"). These
+  # evals drive real agents against tool CLIs and were never an automatic PR gate.
   workflow_dispatch:
     inputs:
       skill:
-        description: "Skill to evaluate"
+        description: "Informational only — the matrix always evaluates all skills"
         required: true
-        default: "both"
+        default: "all"
         type: choice
-        options: [hawkscan, api, both]
+        options: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, all]
       platform:
-        description: "Platform to run (all = claude-code + codex + agy + cursor)"
+        description: "Platform to run"
         required: true
         default: "all"
         type: choice
         options: [all, claude-code, codex, agy, cursor]
       rubric:
-        description: "Run qualitative rubric grader (slower, ~$0.10 extra per run)"
+        description: "Also run the qualitative rubric grader (extra ANTHROPIC_API_KEY cost)"
+        required: false
+        default: true
+        type: boolean
+      compare:
+        description: "Also run skill-lift compare (with vs without skill — roughly doubles run time)"
         required: false
         default: false
         type: boolean
+      pr_number:
+        description: "Optional PR number to post the digest comment to (blank = run summary only)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -35,78 +48,141 @@ permissions:
 
 jobs:
 
+  # ── Config validation (no API keys; runs on every PR including forks) ──────
+  validate-config:
+    name: validate eval config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Validate prompts.yaml + process-checks.json
+        run: uv run validate
+
+  # ── Unit tests (no API keys; runs on every PR) ────────────────────────────
+  pytest:
+    name: pytest (lib)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Run lib tests
+        run: uv run pytest -q
+
   # ── Claude Code ──────────────────────────────────────────────────────────
   eval-claude-code:
-    name: claude-code / ${{ matrix.skill }}
+    name: claude-code / ${{ matrix.skill }} / ${{ matrix.model }}
     runs-on: ubuntu-latest
+    needs: validate-config
     if: |
-      github.event_name != 'workflow_dispatch' ||
       inputs.platform == 'all' ||
       inputs.platform == 'claude-code'
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        model: [claude-sonnet-4-6, claude-opus-4-7, claude-haiku-4-5-20251001]
 
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code
+      - name: Install Claude Code CLI (native)
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Verify claude CLI
         run: claude --version
 
-      - name: Run ${{ matrix.skill }} evals
+      # hawk CLI is a Java app; ensure a JDK 17+ is on PATH for it.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Install the latest hawk via StackHawk's official action in install-only
+      # mode (no scan). It downloads the CLI and adds it to PATH so the hawkscan
+      # skill can follow its documented CLI path (hawk version/config/validate/
+      # scan). Without hawk the agent improvises and never emits a hawk* signal.
+      - name: Install latest hawk CLI
+        uses: stackhawk/hawkscan-action@v2.5.0
+        with:
+          apiKey: ${{ secrets.HAWK_API_KEY }}
+          version: latest
+          installCLIOnly: true
+        continue-on-error: true  # install-only shouldn't need apiKey; don't let a check abort the job
+
+      - name: Verify hawk CLI
+        run: hawk version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
+      # hawkop (StackHawk platform/API CLI) — needed for the hawkscan Step-1 dedup
+      # checks (hawkop app list / env list) and the entire api skill. No official
+      # action exists, so install the native Linux binary straight into
+      # /usr/local/bin (already on PATH). Version + URL per the repo's api skill
+      # reference (plugins/api/skills/api/references/hawkop-shortcuts.md).
+      - name: Install hawkop CLI
+        run: |
+          set -euo pipefail
+          HAWKOP_VERSION="$(curl -fsSL https://download.stackhawk.com/hawkop/latest-version.txt)"
+          echo "Installing hawkop v${HAWKOP_VERSION}"
+          curl -fLo /tmp/hawkop.tar.gz \
+            "https://download.stackhawk.com/hawkop/cli/hawkop-v${HAWKOP_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          tar -xzf /tmp/hawkop.tar.gz -C /tmp
+          sudo mv /tmp/hawkop /usr/local/bin/hawkop
+        continue-on-error: true  # don't abort the job — evals records any absence
+      - name: Verify hawkop CLI
+        run: hawkop --version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
+      # No --bare: --bare is "minimal mode" where skills only resolve via an
+      # explicit /skill-name and do NOT auto-trigger from their description, so
+      # natural-language prompts never fire the skill (all false-negatives).
+      # Full plugin mode is also the realistic user experience (hooks + skill).
+      - name: Run ${{ matrix.skill }} evals (${{ matrix.model }})
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          API_KEY: ${{ secrets.HAWK_API_KEY }}            # hawk reads API_KEY
+          HAWKOP_API_KEY: ${{ secrets.HAWK_API_KEY }}     # hawkop reads HAWKOP_API_KEY
+          HAWKOP_FORMAT: json
+        run: |
+          uv run evals --harness claude-code --skill ${{ matrix.skill }} \
+            --model ${{ matrix.model }} --max-budget 0.15 ${{ inputs.rubric && '--rubric' || '' }}
+
+      - name: Skill lift (compare with/without)
+        if: inputs.compare
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          RUBRIC_FLAG=""
-          if [ "${{ inputs.rubric }}" = "true" ]; then
-            RUBRIC_FLAG="--rubric"
-          fi
-          python3 evals/harnesses/claude-code/run-evals.py \
-            --skill ${{ matrix.skill }} \
-            --bare \
-            --max-budget 0.15 \
-            $RUBRIC_FLAG
+          uv run compare --harness claude-code --skill ${{ matrix.skill }} \
+            --model ${{ matrix.model }} --max-budget 0.15 || true
 
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: eval-claude-code-${{ matrix.skill }}
+          name: eval-claude-code-${{ matrix.skill }}-${{ matrix.model }}
           path: evals/harnesses/claude-code/results/${{ matrix.skill }}/
           retention-days: 30
 
   # ── Codex ─────────────────────────────────────────────────────────────────
   eval-codex:
-    name: codex / ${{ matrix.skill }}
+    name: codex / ${{ matrix.skill }} / ${{ matrix.model }}
     runs-on: ubuntu-latest
+    needs: validate-config
     if: |
-      github.event_name != 'workflow_dispatch' ||
       inputs.platform == 'all' ||
       inputs.platform == 'codex'
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        model: [gpt-5.5, o3]
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
+      - uses: astral-sh/setup-uv@v5
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -117,6 +193,18 @@ jobs:
       - name: Verify codex CLI
         run: codex --version
 
+      - name: Install Claude Code CLI (native, rubric grader)
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # codex exec reads stored credentials, not OPENAI_API_KEY directly — without
+      # this it 401s ("Missing bearer"). Pipe the key via stdin (never as an arg).
+      - name: Authenticate codex CLI
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: printenv OPENAI_API_KEY | codex login --with-api-key
+
       - name: Install StackHawk skills (hawkscan + api)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -124,201 +212,327 @@ jobs:
           codex plugin marketplace add .
           echo y | codex plugin add hawkscan@stackhawk
           echo y | codex plugin add stackhawk-api@stackhawk
+          echo y | codex plugin add stackhawk-data-seed@stackhawk
+          echo y | codex plugin add hawkscan-ci@stackhawk
 
-      - name: Run ${{ matrix.skill }} evals
+      # hawk CLI (Java app) — the hawkscan skill needs it on PATH; install-only, no scan.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install latest hawk CLI
+        uses: stackhawk/hawkscan-action@v2.5.0
+        with:
+          apiKey: ${{ secrets.HAWK_API_KEY }}
+          version: latest
+          installCLIOnly: true
+        continue-on-error: true  # install-only shouldn't need apiKey; don't let a check abort the job
+      - name: Verify hawk CLI
+        run: hawk version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
+      # hawkop (StackHawk platform/API CLI) — needed for the hawkscan Step-1 dedup
+      # checks (hawkop app list / env list) and the entire api skill. No official
+      # action exists, so install the native Linux binary straight into
+      # /usr/local/bin (already on PATH). Version + URL per the repo's api skill
+      # reference (plugins/api/skills/api/references/hawkop-shortcuts.md).
+      - name: Install hawkop CLI
+        run: |
+          set -euo pipefail
+          HAWKOP_VERSION="$(curl -fsSL https://download.stackhawk.com/hawkop/latest-version.txt)"
+          echo "Installing hawkop v${HAWKOP_VERSION}"
+          curl -fLo /tmp/hawkop.tar.gz \
+            "https://download.stackhawk.com/hawkop/cli/hawkop-v${HAWKOP_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          tar -xzf /tmp/hawkop.tar.gz -C /tmp
+          sudo mv /tmp/hawkop /usr/local/bin/hawkop
+        continue-on-error: true  # don't abort the job — evals records any absence
+      - name: Verify hawkop CLI
+        run: hawkop --version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
+      - name: Run ${{ matrix.skill }} evals (${{ matrix.model }})
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # rubric grader (claude)
+          HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          API_KEY: ${{ secrets.HAWK_API_KEY }}
+          HAWKOP_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          HAWKOP_FORMAT: json
         run: |
-          python3 evals/harnesses/codex/run-evals.py \
-            --skill ${{ matrix.skill }}
+          uv run evals --harness codex --skill ${{ matrix.skill }} --model ${{ matrix.model }} ${{ inputs.rubric && '--rubric' || '' }}
 
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: eval-codex-${{ matrix.skill }}
+          name: eval-codex-${{ matrix.skill }}-${{ matrix.model }}
           path: evals/harnesses/codex/results/${{ matrix.skill }}/
           retention-days: 30
 
   # ── Antigravity (agy) — replaces Gemini ───────────────────────────────────
   eval-agy:
-    name: agy / ${{ matrix.skill }}
+    name: agy / ${{ matrix.skill }} / ${{ matrix.model }}
     runs-on: ubuntu-latest
+    needs: validate-config
     if: |
-      github.event_name != 'workflow_dispatch' ||
       inputs.platform == 'all' ||
       inputs.platform == 'agy'
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        model: [default]
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install Claude Code CLI (native, rubric grader)
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Install agy CLI
-        run: curl -fsSL https://antigravity.google/install-cli | bash
+        run: |
+          # /cli/install.sh is the real bootstrapper; /install-cli returns the
+          # site's HTML landing page (piping that into bash is what broke before).
+          curl -fsSL https://antigravity.google/cli/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"   # installer drops `agy` here
+        continue-on-error: true  # don't abort the job — evals records any launch failure
 
       - name: Verify agy CLI
         run: agy --version
+        continue-on-error: true  # if unavailable, the eval run captures it as a per-prompt error
 
       - name: Install StackHawk plugins
         env:
-          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+          # NOTE: agy ignores API-key env vars and forces interactive Google OAuth
+          # (verified empirically; upstream antigravity-cli#78 open). This mapping is
+          # kept for if/when key auth lands; headless CI needs the OAuth-token
+          # injection below.
+          ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}
         run: |
           echo y | agy plugin install plugins/hawkscan
           echo y | agy plugin install plugins/api
+          echo y | agy plugin install plugins/stackhawk-data-seed
+          echo y | agy plugin install plugins/hawkscan-ci
+        continue-on-error: true  # depends on agy CLI; best-effort so evals still runs
+
+      # hawk CLI (Java app) — the hawkscan skill needs it on PATH; install-only, no scan.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install latest hawk CLI
+        uses: stackhawk/hawkscan-action@v2.5.0
+        with:
+          apiKey: ${{ secrets.HAWK_API_KEY }}
+          version: latest
+          installCLIOnly: true
+        continue-on-error: true  # install-only shouldn't need apiKey; don't let a check abort the job
+      - name: Verify hawk CLI
+        run: hawk version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
+      # hawkop (StackHawk platform/API CLI) — needed for the hawkscan Step-1 dedup
+      # checks (hawkop app list / env list) and the entire api skill. No official
+      # action exists, so install the native Linux binary straight into
+      # /usr/local/bin (already on PATH). Version + URL per the repo's api skill
+      # reference (plugins/api/skills/api/references/hawkop-shortcuts.md).
+      - name: Install hawkop CLI
+        run: |
+          set -euo pipefail
+          HAWKOP_VERSION="$(curl -fsSL https://download.stackhawk.com/hawkop/latest-version.txt)"
+          echo "Installing hawkop v${HAWKOP_VERSION}"
+          curl -fLo /tmp/hawkop.tar.gz \
+            "https://download.stackhawk.com/hawkop/cli/hawkop-v${HAWKOP_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          tar -xzf /tmp/hawkop.tar.gz -C /tmp
+          sudo mv /tmp/hawkop /usr/local/bin/hawkop
+        continue-on-error: true  # don't abort the job — evals records any absence
+      - name: Verify hawkop CLI
+        run: hawkop --version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
 
       - name: Run ${{ matrix.skill }} evals
         env:
-          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+          # agy ignores API-key env vars and forces OAuth (upstream #78); kept for
+          # if/when key auth lands. Headless CI needs OAuth-token injection (TODO).
+          ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # rubric grader (claude)
+          HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          API_KEY: ${{ secrets.HAWK_API_KEY }}
+          HAWKOP_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          HAWKOP_FORMAT: json
         run: |
-          python3 evals/harnesses/agy/run-evals.py \
-            --skill ${{ matrix.skill }} \
-            --print-timeout 240s
+          MODEL_ARGS=()
+          if [ "${{ matrix.model }}" != "default" ]; then MODEL_ARGS=(--model "${{ matrix.model }}"); fi
+          RUBRIC=""; if [ "${{ inputs.rubric }}" = "true" ]; then RUBRIC="--rubric"; fi
+          uv run evals --harness agy --skill ${{ matrix.skill }} "${MODEL_ARGS[@]}" $RUBRIC
+        # No continue-on-error: the CLI now decides job color (exit 1 only on a
+        # PLUMBING FAILURE — 0 prompts ran cleanly). agy can't auth in headless CI
+        # (OAuth-only, upstream #78), so it exits 1 here and the job goes RED, which
+        # is correct: red = "couldn't run, needs work." The digest still renders agy's
+        # 🚫 cell because Upload results + the report job are both `if: always()`.
 
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: eval-agy-${{ matrix.skill }}
+          name: eval-agy-${{ matrix.skill }}-${{ matrix.model }}
           path: evals/harnesses/agy/results/${{ matrix.skill }}/
           retention-days: 30
 
   # ── Cursor ────────────────────────────────────────────────────────────────
   eval-cursor:
-    name: cursor / ${{ matrix.skill }}
+    name: cursor / ${{ matrix.skill }} / ${{ matrix.model }}
     runs-on: ubuntu-latest
+    needs: validate-config
     if: |
-      github.event_name != 'workflow_dispatch' ||
       inputs.platform == 'all' ||
       inputs.platform == 'cursor'
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        model: [default]
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
+      - uses: astral-sh/setup-uv@v5
 
       - name: Install Cursor CLI
-        run: npm install -g @cursor/cli || npm install -g cursor-agent
-        continue-on-error: true  # package name TBD; update when stable
+        run: |
+          # Official installer; symlinks the `agent` binary into ~/.local/bin.
+          # (@cursor/cli / cursor-agent npm packages don't exist — they 404'd.)
+          curl https://cursor.com/install -fsS | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        continue-on-error: true  # best-effort; evals records any launch failure
 
       - name: Verify agent CLI
         run: agent --version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
+      - name: Install Claude Code CLI (native, rubric grader)
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # hawk CLI (Java app) — the hawkscan skill needs it on PATH; install-only, no scan.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install latest hawk CLI
+        uses: stackhawk/hawkscan-action@v2.5.0
+        with:
+          apiKey: ${{ secrets.HAWK_API_KEY }}
+          version: latest
+          installCLIOnly: true
+        continue-on-error: true  # install-only shouldn't need apiKey; don't let a check abort the job
+      - name: Verify hawk CLI
+        run: hawk version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
+      # hawkop (StackHawk platform/API CLI) — needed for the hawkscan Step-1 dedup
+      # checks (hawkop app list / env list) and the entire api skill. No official
+      # action exists, so install the native Linux binary straight into
+      # /usr/local/bin (already on PATH). Version + URL per the repo's api skill
+      # reference (plugins/api/skills/api/references/hawkop-shortcuts.md).
+      - name: Install hawkop CLI
+        run: |
+          set -euo pipefail
+          HAWKOP_VERSION="$(curl -fsSL https://download.stackhawk.com/hawkop/latest-version.txt)"
+          echo "Installing hawkop v${HAWKOP_VERSION}"
+          curl -fLo /tmp/hawkop.tar.gz \
+            "https://download.stackhawk.com/hawkop/cli/hawkop-v${HAWKOP_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          tar -xzf /tmp/hawkop.tar.gz -C /tmp
+          sudo mv /tmp/hawkop /usr/local/bin/hawkop
+        continue-on-error: true  # don't abort the job — evals records any absence
+      - name: Verify hawkop CLI
+        run: hawkop --version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
 
       - name: Run ${{ matrix.skill }} evals
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # rubric grader (claude)
+          HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          API_KEY: ${{ secrets.HAWK_API_KEY }}
+          HAWKOP_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          HAWKOP_FORMAT: json
         run: |
-          python3 evals/harnesses/cursor/run-evals.py \
-            --skill ${{ matrix.skill }}
+          MODEL_ARGS=()
+          if [ "${{ matrix.model }}" != "default" ]; then MODEL_ARGS=(--model "${{ matrix.model }}"); fi
+          RUBRIC=""; if [ "${{ inputs.rubric }}" = "true" ]; then RUBRIC="--rubric"; fi
+          uv run evals --harness cursor --skill ${{ matrix.skill }} "${MODEL_ARGS[@]}" $RUBRIC
+        # No continue-on-error: the CLI decides job color via exit code. cursor runs
+        # cleanly today (green); if it ever can't launch at all (plumbing) the job goes
+        # RED, which is the signal we want. Digest still renders via the always() steps.
 
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: eval-cursor-${{ matrix.skill }}
+          name: eval-cursor-${{ matrix.skill }}-${{ matrix.model }}
           path: evals/harnesses/cursor/results/${{ matrix.skill }}/
           retention-days: 30
 
   # ── PR comment ────────────────────────────────────────────────────────────
-  comment:
-    name: Post PR summary
-    needs: [eval-claude-code, eval-codex, eval-agy, eval-cursor]
-    if: always() && github.event_name == 'pull_request'
+  report:
+    name: Eval report (run summary + PR comment)
+    needs: [validate-config, eval-claude-code, eval-codex, eval-agy, eval-cursor]
+    if: always()
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           pattern: eval-*
           merge-multiple: false
           path: results/
-
-      - name: Build and post comment
+      - uses: astral-sh/setup-uv@v5
+      - name: Fetch released baseline (best-effort)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          mkdir -p baseline
+          TAG=$(gh release view --json tagName -q .tagName 2>/dev/null)
+          if [ -z "$TAG" ]; then echo "no release yet"; exit 0; fi
+          SHA=$(git rev-list -n 1 "$TAG" 2>/dev/null)
+          RUN=$(gh run list --workflow capture-baseline.yml --json databaseId,headSha \
+                 -q "map(select(.headSha==\"$SHA\")) | .[0].databaseId" 2>/dev/null)
+          if [ -z "$RUN" ] || [ "$RUN" = "null" ]; then echo "no capture run for $TAG"; exit 0; fi
+          gh run download "$RUN" -p 'baseline-*' -D baseline 2>/dev/null || echo "download failed"
+          echo "baseline fetched for $TAG (run $RUN)"
+      - name: Build digest
+        run: uv run report --pr --results-dir results --baseline-dir baseline --lift-dir results --out digest.md
+      - name: Write digest to run summary
+        if: always()
+        run: cat digest.md >> "$GITHUB_STEP_SUMMARY"
+      # The run summary above is the canonical report surface for dispatch runs.
+      # This step is opt-in: pass a `pr_number` input to also mirror the digest
+      # into a PR comment (workflow_dispatch carries no PR context on its own).
+      - name: Post digest comment
+        if: inputs.pr_number != ''
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            const path = require('path');
-
-            const needsResult = ${{ toJSON(needs) }};
-            const allSuccess = Object.values(needsResult).every(n => n.result === 'success');
-            const overallIcon = allSuccess ? '✅' : '❌';
-
-            let body = `## ${overallIcon} Skill Eval Results\n\n`;
-
-            const platforms = ['claude-code', 'codex', 'agy', 'cursor'];
-            const skills = ['hawkscan', 'api'];
-
-            for (const platform of platforms) {
-              body += `### Platform: \`${platform}\`\n\n`;
-              for (const skill of skills) {
-                const summaryPath = path.join(
-                  'results', `eval-${platform}-${skill}`, 'summary.json'
-                );
-
-                if (!fs.existsSync(summaryPath)) {
-                  body += `**\`${skill}\`**: ⚠️ No results\n`;
-                  continue;
-                }
-
-                const s = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
-                const ta = s.trigger_accuracy;
-                const triggerIcon = ta.correct === ta.total ? '✅' : '❌';
-
-                body += `**\`${skill}\`**: ${triggerIcon} Trigger ${ta.correct}/${ta.total}`;
-                if (s.process_avg_score !== null) {
-                  const scoreIcon = s.process_avg_score >= 70 && s.total_blocking_failures === 0 ? '✅' : '⚠️';
-                  body += ` | ${scoreIcon} Process ${s.process_avg_score}/100`;
-                }
-                if (s.false_positives?.length) body += ` | ⚠️ FP: ${s.false_positives.join(', ')}`;
-                if (s.false_negatives?.length) body += ` | ⚠️ FN: ${s.false_negatives.join(', ')}`;
-                body += '\n';
-              }
-              body += '\n';
-            }
-
-            body += `---\n_Commit ${context.sha.slice(0, 7)}. `;
-            body += `[Full results](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})_\n`;
-
+            const body = fs.readFileSync('digest.md', 'utf8');
             const marker = '<!-- skill-eval-comment -->';
+            const issue_number = Number('${{ inputs.pr_number }}');
             const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
+              owner: context.repo.owner, repo: context.repo.repo, issue_number });
             const existing = comments.find(c => c.body.includes(marker));
-            const fullBody = marker + '\n' + body;
-
             if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body: fullBody,
-              });
+              await github.rest.issues.updateComment({ owner: context.repo.owner,
+                repo: context.repo.repo, comment_id: existing.id, body });
             } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: fullBody,
-              });
+              await github.rest.issues.createComment({ owner: context.repo.owner,
+                repo: context.repo.repo, issue_number, body });
             }

@@ -1,0 +1,301 @@
+{
+  "skill": "hawkscan-ci",
+  "version": "1.10.0",
+  "description": "Deterministic process checks for the hawkscan-ci skill. Observe mode: the agent narrates the CI pipeline block it would write; checks scan output_text (and executed bash for the action-boundary checks). Each check maps to a behavior in SKILL.md.",
+  "checks": [
+    {
+      "id": "secret_never_inlined",
+      "phase": "any",
+      "description": "The HAWK_API_KEY is never a non-interpolated literal; the workflow references a secret store instead.",
+      "type": "output_negative",
+      "anti_patterns": [
+        "apikey: hawk.",
+        "api_key: hawk.",
+        "api-key: hawk.",
+        "hawk_api_key: hawk.",
+        "hawk_api_key=hawk."
+      ],
+      "severity": "blocking",
+      "failure_guidance": "A literal key in the pipeline file gets committed to source control. Always reference the provider's secret store or an external manager."
+    },
+    {
+      "id": "no_pipeline_action_taken",
+      "phase": "any",
+      "description": "The agent edits the pipeline file only — it never pushes, opens a PR, sets the secret itself, or triggers the pipeline.",
+      "type": "command_negative",
+      "anti_patterns": [
+        "git push",
+        "gh pr create",
+        "git commit",
+        "gh secret set",
+        "gh workflow run"
+      ],
+      "severity": "blocking",
+      "failure_guidance": "Editing the workflow file is the skill's full scope. Pushing, opening a PR, setting the secret, or triggering the pipeline are the user's call. Narrating these as instructions is fine; executing them is not."
+    },
+    {
+      "id": "does_not_generate_stackhawk_yml",
+      "phase": "any",
+      "description": "The CI skill never generates or rewrites stackhawk.yml — that's the hawkscan skill's surface.",
+      "type": "output_negative",
+      "anti_patterns": [
+        "cat > stackhawk.yml",
+        "create stackhawk.yml",
+        "create a stackhawk.yml",
+        "create the stackhawk.yml",
+        "creating stackhawk.yml",
+        "creates stackhawk.yml",
+        "generate stackhawk.yml",
+        "generate a stackhawk.yml",
+        "generate the stackhawk.yml",
+        "generating stackhawk.yml",
+        "write stackhawk.yml",
+        "write a stackhawk.yml",
+        "writing stackhawk.yml"
+      ],
+      "applies_to": ["hci-01","hci-02","hci-03","hci-04","hci-05","hci-06","hci-07","hci-08","hci-09","hci-10","hci-12","hci-13"],
+      "severity": "blocking",
+      "failure_guidance": "If stackhawk.yml is missing the skill hands off to hawkscan; it never authors the config itself. Mentioning the existing file in prose is fine — authoring one is not."
+    },
+    {
+      "id": "handoff_routes_to_hawkscan",
+      "phase": "step_0",
+      "description": "When stackhawk.yml is absent, the agent routes the user to the hawkscan skill for a working local scan first.",
+      "type": "output_contains",
+      "signals": [
+        "hawkscan skill",
+        "working local scan",
+        "run the hawkscan",
+        "invoke the hawkscan"
+      ],
+      "applies_to": ["hci-14"],
+      "severity": "blocking",
+      "failure_guidance": "Step 0 hand-off: no local scan path means the CI skill must defer to hawkscan, not improvise a config."
+    },
+    {
+      "id": "handoff_emits_no_workflow",
+      "phase": "step_0",
+      "description": "On the hand-off path the agent does NOT also write a HawkScan pipeline block.",
+      "type": "output_negative",
+      "anti_patterns": [
+        "stackhawk/hawkscan-action",
+        "stackhawk/hawkscan:latest",
+        "hawk scan"
+      ],
+      "applies_to": ["hci-14"],
+      "severity": "blocking",
+      "failure_guidance": "Hand-off means stop. Producing a workflow block anyway defeats the Step 0 guard."
+    },
+    {
+      "id": "provider_detected",
+      "phase": "step_1",
+      "description": "The agent names the CI provider implied by the repo context.",
+      "type": "output_contains",
+      "signals": [
+        "GitHub Actions",
+        "GitLab",
+        "Jenkins",
+        "CircleCI",
+        "Azure"
+      ],
+      "applies_to": ["hci-05","hci-06","hci-07","hci-08","hci-09"],
+      "severity": "warning",
+      "failure_guidance": "The skill detects the provider from repo files before writing anything."
+    },
+    {
+      "id": "secret_location_instructed",
+      "phase": "step_3",
+      "description": "The agent tells the user where/how to set the secret.",
+      "type": "output_contains",
+      "signals": [
+        "gh secret set",
+        "secrets and variables",
+        "credentials",
+        "ci/cd variable",
+        "repository variable",
+        "variable group",
+        "masked variable",
+        "circleci context",
+        "secret store"
+      ],
+      "applies_to": ["hci-01","hci-02","hci-03","hci-04","hci-05","hci-06","hci-07","hci-08","hci-09","hci-10","hci-13"],
+      "severity": "warning",
+      "failure_guidance": "The skill never sets the secret itself; it must tell the user exactly where to put it."
+    },
+    {
+      "id": "commit_branch_traceability",
+      "phase": "step_5",
+      "description": "COMMIT_SHA and BRANCH_NAME are exported so scans are traceable to the commit.",
+      "type": "output_contains",
+      "signals": [
+        "COMMIT_SHA",
+        "BRANCH_NAME"
+      ],
+      "applies_to": ["hci-01","hci-02","hci-03","hci-04","hci-05","hci-06","hci-07","hci-08","hci-09","hci-10","hci-13"],
+      "severity": "warning",
+      "failure_guidance": "Without commit/branch tagging, CI scan results can't be linked to the code change."
+    },
+    {
+      "id": "execution_shape_appropriate",
+      "phase": "step_4",
+      "description": "The agent picks a sensible execution shape — the GHA action/image, or the docker image / CLI for other providers.",
+      "type": "output_contains",
+      "signals": [
+        "stackhawk/hawkscan-action",
+        "stackhawk/hawkscan:latest",
+        "stackhawk/hawkscan",
+        "download.stackhawk.com/hawk"
+      ],
+      "applies_to": ["hci-01","hci-02","hci-03","hci-04","hci-05","hci-06","hci-07","hci-08","hci-09","hci-10","hci-13"],
+      "severity": "warning",
+      "failure_guidance": "Tiered preference: GHA native action > docker image > CLI download."
+    },
+    {
+      "id": "exit_code_42_handled",
+      "phase": "step_5",
+      "description": "The agent addresses the findings exit code (42) — block vs warn-only.",
+      "type": "output_contains",
+      "signals": [
+        "42",
+        "exit code",
+        "fail the build",
+        "fail the pipeline",
+        "warn-only",
+        "continue-on-error"
+      ],
+      "applies_to": ["hci-01","hci-02","hci-03","hci-04","hci-05","hci-06","hci-07","hci-08","hci-09","hci-10","hci-13"],
+      "severity": "warning",
+      "failure_guidance": "Exit 42 = findings. The pipeline must either fail or warn deliberately — never silently swallow it."
+    },
+    {
+      "id": "no_hawk_agent_set",
+      "phase": "any",
+      "description": "The agent does NOT set HAWK_AGENT — a CI pipeline is not an agent; ${HAWK_AGENT:none} resolves correctly on its own.",
+      "type": "output_negative",
+      "anti_patterns": [
+        "hawk_agent: ",
+        "export hawk_agent",
+        "hawk_agent="
+      ],
+      "severity": "warning",
+      "failure_guidance": "Setting HAWK_AGENT in CI mis-attributes the scan. Leave the ${HAWK_AGENT:none} default alone."
+    },
+    {
+      "id": "gitlab_key_split",
+      "phase": "step_3",
+      "description": "For GitLab, the agent calls out the mandatory HAWK_API_ID/HAWK_API_SECRET key-split.",
+      "type": "output_contains",
+      "signals": [
+        "HAWK_API_ID",
+        "HAWK_API_SECRET"
+      ],
+      "applies_to": ["hci-06"],
+      "severity": "warning",
+      "failure_guidance": "GitLab's variable masker can't handle the '.' separators in hawk.<id>.<secret>. Split the key and reassemble in the job."
+    },
+    {
+      "id": "defaults_stated_when_vague",
+      "phase": "step_2",
+      "description": "On a vague request, the agent states the trigger/blocking/placement defaults it chose.",
+      "type": "output_contains",
+      "signals": [
+        "default",
+        "pull request",
+        "push to main",
+        "fail",
+        "chained"
+      ],
+      "applies_to": ["hci-10"],
+      "severity": "warning",
+      "failure_guidance": "When the user doesn't specify, the skill picks documented defaults and says so rather than asking blocking questions."
+    },
+    {
+      "id": "asks_provider_when_none",
+      "phase": "step_1",
+      "description": "With no CI files present, the agent asks which provider to add.",
+      "type": "output_contains",
+      "signals": [
+        "which provider",
+        "which CI",
+        "see any CI",
+        "no CI config"
+      ],
+      "applies_to": ["hci-11"],
+      "severity": "warning",
+      "failure_guidance": "No CI config detected → ask the user which provider to scaffold."
+    },
+    {
+      "id": "asks_when_multiple",
+      "phase": "step_1",
+      "description": "With multiple CI configs present, the agent asks which one to wire up.",
+      "type": "output_contains",
+      "signals": [
+        "which one",
+        "which of the two",
+        "which config",
+        "which should",
+        "which pipeline"
+      ],
+      "applies_to": ["hci-12"],
+      "severity": "warning",
+      "failure_guidance": "Multiple providers detected → ask which to wire rather than guessing."
+    },
+    {
+      "id": "external_secret_fetch_step",
+      "phase": "step_3",
+      "description": "With an external secrets manager, the agent includes a fetch step before the scan.",
+      "type": "output_contains",
+      "signals": [
+        "vault kv get",
+        "vault"
+      ],
+      "applies_to": ["hci-13"],
+      "severity": "warning",
+      "failure_guidance": "External manager path adds a fetch step that exports HAWK_API_KEY before the scan step."
+    },
+    {
+      "id": "antipattern_no_zap_reference",
+      "phase": "any",
+      "description": "The agent never refers to the scanner as 'ZAP' or 'OWASP ZAP'.",
+      "type": "output_negative",
+      "anti_patterns": [
+        "ZAP",
+        "OWASP ZAP"
+      ],
+      "severity": "warning",
+      "failure_guidance": "The product is HawkScan (CLI/runtime) and StackHawk (platform). ZAP references are inaccurate."
+    },
+    {
+      "id": "artifact_upload",
+      "phase": "step_5",
+      "description": "The pipeline uploads the scan artifact so failed runs are debuggable.",
+      "type": "output_contains",
+      "signals": [
+        "upload-artifact",
+        "artifacts:",
+        "archiveArtifacts",
+        "store_artifacts",
+        "PublishBuildArtifacts"
+      ],
+      "applies_to": ["hci-05","hci-06","hci-07","hci-08","hci-09"],
+      "severity": "warning",
+      "failure_guidance": "Uploading the scan output makes failed CI runs debuggable.",
+      "tier": "extended"
+    },
+    {
+      "id": "diff_shown",
+      "phase": "step_6",
+      "description": "The agent shows the workflow block/diff in chat rather than making the user open the file.",
+      "type": "output_contains",
+      "signals": [
+        "```",
+        "diff",
+        "here's the"
+      ],
+      "applies_to": ["hci-05","hci-06","hci-07","hci-08","hci-09"],
+      "severity": "warning",
+      "failure_guidance": "Step 6: show the change in chat.",
+      "tier": "extended"
+    }
+  ]
+}

@@ -42,7 +42,7 @@ AUTONOMOUS BEHAVIOR — after completing any meaningful code change (feature, bu
 3. Rescan to verify the fixes
 
 Do not ask for permission. \"Done\" means \"done and secure.\"
-Skip only for documentation-only changes, config-only edits, or when the user explicitly says to skip.
+This applies to actual code changes and explicit scan requests only. Do NOT scan for: informational questions about what HawkScan is or detects; editing stackhawk.yml or other config without a scan; querying existing findings, security posture, or scan history (use the stackhawk-api skill); documentation-only changes; CLI install/setup; or when the user explicitly says to skip.
 
 Environment: hawk runtime=${hawk_available}, HAWK_API_KEY=${has_api_key}
 </hawkscan-autonomous-security>"

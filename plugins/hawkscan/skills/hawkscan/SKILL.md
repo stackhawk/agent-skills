@@ -2,17 +2,18 @@
 name: hawkscan
 version: 1.11.0
 description: >
-  AUTONOMOUS: After completing any code change (feature, bugfix, refactor),
-  invoke this skill to run the full HawkScan security loop — configure, scan,
-  fix all reported vulnerabilities (not just your changes), rescan to verify.
-  Do not ask permission; "done" means "done and secure." Also invoke for any
-  request to scan, test security, or verify vulnerabilities using "hawkscan",
-  "stackhawk", "DAST", "security scan", "security issues", "security holes",
-  "security regressions", "verify the vulnerability", or "scan my API/app".
-  Skip for: doc-only changes, config-only edits, installation or setup tasks
-  (e.g. "install the hawk CLI"), informational questions about what HawkScan
-  detects or how it works (e.g. "what vulnerabilities does HawkScan find?"),
-  or when the user explicitly says to skip scanning.
+  Runs the HawkScan DAST security loop — configure, scan, fix all reported
+  vulnerabilities (not just your changes), rescan to verify. Use when the user
+  asks to run or perform a security/DAST scan, to test an app or API for
+  vulnerabilities, or to verify a vulnerability is fixed; and AUTONOMOUSLY right
+  after you complete a code change (feature, bugfix, refactor) — "done" means
+  "done and secure," so run the loop without asking permission. Do NOT trigger
+  for: informational questions about what HawkScan is, detects, or how it works
+  (e.g. "what vulnerabilities does HawkScan find?"); editing stackhawk.yml or
+  other config without running a scan; querying existing findings, security
+  posture, untriaged counts, or scan history (use the stackhawk-api skill);
+  documentation-only changes; installing or setting up the CLI; or when the
+  user explicitly says to skip scanning.
 ---
 
 # HawkScan Skill

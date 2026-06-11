@@ -1,0 +1,133 @@
+- id: hci-01
+  should_trigger: true
+  invocation_type: explicit
+  prompt: Use $hawkscan-ci to wire HawkScan into my GitHub Actions pipeline. My repo
+    has .github/workflows/ci.yml with a build job, and stackhawk.yml validates.
+  notes: Direct skill reference by name; baseline — if this fails everything else is moot
+- id: hci-02
+  should_trigger: true
+  invocation_type: explicit
+  prompt: Use the hawkscan-ci skill to add StackHawk to my pipeline. We're on GitHub
+    Actions and the local scan already works.
+  notes: Skill name in natural language
+- id: hci-03
+  should_trigger: true
+  invocation_type: implicit
+  prompt: Set up hawkscan in CI. The repo uses GitHub Actions (.github/workflows/ci.yml)
+    and stackhawk.yml is validated.
+  notes: Core description keyword 'set up hawkscan in CI'
+- id: hci-04
+  should_trigger: true
+  invocation_type: implicit
+  prompt: Wire hawkscan into our ci/cd. We have a working local scan and a GitHub
+    Actions workflow already.
+  notes: 'Description keyword ''wire hawkscan into ci/cd'''
+- id: hci-05
+  should_trigger: true
+  invocation_type: contextual
+  prompt: My repo has .github/workflows/ci.yml (build + test) and a validated
+    stackhawk.yml. Add a HawkScan job that runs on PRs and pushes to main, fails the
+    build on findings, chained after the build. Use GitHub Actions secrets for the key.
+  notes: Fully-specified GHA — expect native action and all four choices honored
+  budget:
+    cost_usd: 0.15
+  expected:
+  - signal: stackhawk/hawkscan-action
+- id: hci-06
+  should_trigger: true
+  invocation_type: contextual
+  prompt: We use GitLab CI (.gitlab-ci.yml) and stackhawk.yml is validated. Wire
+    HawkScan into the pipeline.
+  notes: GitLab — expect the mandatory HAWK_API_ID/HAWK_API_SECRET key-split call-out
+  expected:
+  - signal: HAWK_API_ID
+- id: hci-07
+  should_trigger: true
+  invocation_type: contextual
+  prompt: Our pipeline is a Jenkinsfile and the local scan works. Add HawkScan
+    scanning to it.
+  notes: Jenkins — expect Credentials Store (UI) secret path
+- id: hci-08
+  should_trigger: true
+  invocation_type: contextual
+  prompt: We're on CircleCI (.circleci/config.yml) with a validated stackhawk.yml.
+    Add hawkscan to CI.
+  notes: CircleCI — expect docker image execution shape + Context for the secret
+- id: hci-09
+  should_trigger: true
+  invocation_type: contextual
+  prompt: Add StackHawk scanning to our Azure pipeline (azure-pipelines.yml). Local
+    scan already passes.
+  notes: Azure Pipelines — expect variable group + docker image
+- id: hci-10
+  should_trigger: true
+  invocation_type: contextual
+  prompt: Add stackhawk scanning to my GitHub pipeline.
+  notes: Vague — no trigger/blocking/placement given; expect agent to state the defaults
+    it picks (PRs+main, fail-on-42, chained-after-build)
+- id: hci-11
+  should_trigger: true
+  invocation_type: contextual
+  prompt: I want HawkScan to run in CI. The local scan works (stackhawk.yml validates),
+    but there are no CI config files in the repo yet.
+  notes: No CI files — expect the agent to ask which provider to add
+- id: hci-12
+  should_trigger: true
+  invocation_type: contextual
+  prompt: Set up hawkscan in CI. The repo has both .github/workflows/ci.yml and
+    .circleci/config.yml, and stackhawk.yml is validated.
+  notes: Multiple providers — expect the agent to ask which one to wire up
+- id: hci-13
+  should_trigger: true
+  invocation_type: contextual
+  prompt: Set up hawkscan in our GitHub Actions CI. Note we pull all CI secrets from
+    HashiCorp Vault per company policy, not from GitHub secrets.
+  notes: External secrets manager — expect a Vault fetch step before the scan
+- id: hci-14
+  should_trigger: true
+  invocation_type: contextual
+  prompt: Set up hawkscan in CI for my GitHub Actions repo. (There's no stackhawk.yml
+    in the repo yet.)
+  notes: Hand-off case — skill triggers, recognizes missing local config, routes to
+    the hawkscan skill, and writes NO workflow
+- id: hci-15
+  should_trigger: false
+  invocation_type: negative
+  prompt: Run a hawkscan scan on my app at localhost:8080
+  notes: Local scan → hawkscan skill; hawkscan-ci must NOT trigger
+- id: hci-16
+  should_trigger: false
+  invocation_type: negative
+  prompt: Show me my findings from the last StackHawk scan
+  notes: Reporting query → api skill
+- id: hci-17
+  should_trigger: false
+  invocation_type: negative
+  prompt: I just finished the payment processing endpoint. Run a security scan before
+    we deploy.
+  notes: Autonomous local scan → hawkscan skill; no CI-wiring intent
+- id: hci-18
+  should_trigger: false
+  invocation_type: negative
+  prompt: Generate a stackhawk.yml for my app
+  notes: Config generation → hawkscan skill
+- id: hci-19
+  should_trigger: false
+  invocation_type: negative
+  prompt: Set up GitHub Actions to run my unit tests
+  notes: Generic CI setup with no HawkScan intent; must NOT trigger
+- id: hci-20
+  should_trigger: false
+  invocation_type: negative
+  prompt: Add a lint step to my CI pipeline
+  notes: Generic CI edit, unrelated to HawkScan
+- id: hci-21
+  should_trigger: false
+  invocation_type: negative
+  prompt: Update the README with instructions for our CI security scanning
+  notes: Doc-only change
+- id: hci-22
+  should_trigger: false
+  invocation_type: negative
+  prompt: What CI providers does HawkScan support?
+  notes: Research question; no edit intent

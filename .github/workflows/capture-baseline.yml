@@ -1,0 +1,346 @@
+name: Capture Eval Baseline
+# Captures a per-harness × skill × model snapshot (cell.json) at a release tag so
+# the skill-evals report job can show "vs baseline" deltas. To stay apples-to-apples
+# with the live matrix, every job MUST mirror skill-evals.yml's harness setup
+# (same CLIs, same hawk/hawkop tooling, full plugin mode — NOT --bare). Two
+# deliberate differences: (1) eval runs end in `|| true` because baseline capture is
+# best-effort, not a ship gate — we want artifacts even if a harness can't run;
+# (2) no --rubric (baselines are the deterministic process-check snapshot).
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to baseline (e.g. v1.9.0)"
+        required: true
+        type: string
+permissions:
+  contents: read
+
+# ---------------------------------------------------------------------------
+# Required GitHub Actions secrets (same as skill-evals.yml):
+#   ANTHROPIC_API_KEY  — Claude Code evals
+#   OPENAI_API_KEY     — Codex evals
+#   AGY_API_KEY        — Antigravity (agy) evals
+#   CURSOR_API_KEY     — Cursor agent evals
+#   HAWK_API_KEY       — hawk + hawkop CLIs (hawkscan / api skills)
+# ---------------------------------------------------------------------------
+
+jobs:
+
+  # ── Claude Code — 3 models ─────────────────────────────────────────────────
+  capture-claude-code:
+    name: baseline / claude-code / ${{ matrix.skill }} / ${{ matrix.model }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        model: [claude-sonnet-4-6, claude-opus-4-7, claude-haiku-4-5-20251001]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install Claude Code CLI (native)
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Verify claude CLI
+        run: claude --version
+
+      # hawk CLI (Java app) — the hawkscan skill needs it on PATH; install-only, no scan.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install latest hawk CLI
+        uses: stackhawk/hawkscan-action@v2.5.0
+        with:
+          apiKey: ${{ secrets.HAWK_API_KEY }}
+          version: latest
+          installCLIOnly: true
+        continue-on-error: true  # install-only shouldn't need apiKey; don't let a check abort the job
+      - name: Verify hawk CLI
+        run: hawk version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
+      # hawkop (StackHawk platform/API CLI) — hawkscan Step-1 dedup checks + the api skill.
+      - name: Install hawkop CLI
+        run: |
+          set -euo pipefail
+          HAWKOP_VERSION="$(curl -fsSL https://download.stackhawk.com/hawkop/latest-version.txt)"
+          echo "Installing hawkop v${HAWKOP_VERSION}"
+          curl -fLo /tmp/hawkop.tar.gz \
+            "https://download.stackhawk.com/hawkop/cli/hawkop-v${HAWKOP_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          tar -xzf /tmp/hawkop.tar.gz -C /tmp
+          sudo mv /tmp/hawkop /usr/local/bin/hawkop
+        continue-on-error: true  # don't abort the job — evals records any absence
+      - name: Verify hawkop CLI
+        run: hawkop --version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
+      # No --bare: bare mode disables skill auto-trigger (skills only resolve via an
+      # explicit /skill-name), so natural-language prompts never fire — all
+      # false-negatives. Full plugin mode matches skill-evals.yml so the baseline is
+      # comparable to live runs.
+      - name: Run baseline eval (${{ matrix.model }})
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          API_KEY: ${{ secrets.HAWK_API_KEY }}            # hawk reads API_KEY
+          HAWKOP_API_KEY: ${{ secrets.HAWK_API_KEY }}     # hawkop reads HAWKOP_API_KEY
+          HAWKOP_FORMAT: json
+        run: |
+          uv run evals --harness claude-code --skill ${{ matrix.skill }} \
+            --model ${{ matrix.model }} --max-budget 0.15 || true
+      - name: Upload baseline artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-claude-code-${{ matrix.skill }}-${{ matrix.model }}
+          path: evals/harnesses/claude-code/results/${{ matrix.skill }}/cell.json
+          retention-days: 90
+
+  # ── Codex — 2 models ──────────────────────────────────────────────────────
+  capture-codex:
+    name: baseline / codex / ${{ matrix.skill }} / ${{ matrix.model }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        model: [gpt-5.5, o3]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
+      - name: Verify codex CLI
+        run: codex --version
+
+      # codex exec reads stored credentials, not OPENAI_API_KEY directly — without
+      # this it 401s ("Missing bearer"). Pipe the key via stdin (never as an arg).
+      - name: Authenticate codex CLI
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: printenv OPENAI_API_KEY | codex login --with-api-key
+
+      - name: Install StackHawk skills (hawkscan + api + data-seed)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          codex plugin marketplace add .
+          echo y | codex plugin add hawkscan@stackhawk
+          echo y | codex plugin add stackhawk-api@stackhawk
+          echo y | codex plugin add stackhawk-data-seed@stackhawk
+          echo y | codex plugin add hawkscan-ci@stackhawk
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install latest hawk CLI
+        uses: stackhawk/hawkscan-action@v2.5.0
+        with:
+          apiKey: ${{ secrets.HAWK_API_KEY }}
+          version: latest
+          installCLIOnly: true
+        continue-on-error: true  # install-only shouldn't need apiKey; don't let a check abort the job
+      - name: Verify hawk CLI
+        run: hawk version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+      - name: Install hawkop CLI
+        run: |
+          set -euo pipefail
+          HAWKOP_VERSION="$(curl -fsSL https://download.stackhawk.com/hawkop/latest-version.txt)"
+          echo "Installing hawkop v${HAWKOP_VERSION}"
+          curl -fLo /tmp/hawkop.tar.gz \
+            "https://download.stackhawk.com/hawkop/cli/hawkop-v${HAWKOP_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          tar -xzf /tmp/hawkop.tar.gz -C /tmp
+          sudo mv /tmp/hawkop /usr/local/bin/hawkop
+        continue-on-error: true  # don't abort the job — evals records any absence
+      - name: Verify hawkop CLI
+        run: hawkop --version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
+      - name: Run baseline eval (${{ matrix.model }})
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          API_KEY: ${{ secrets.HAWK_API_KEY }}
+          HAWKOP_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          HAWKOP_FORMAT: json
+        run: |
+          uv run evals --harness codex --skill ${{ matrix.skill }} --model ${{ matrix.model }} || true
+      - name: Upload baseline artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-codex-${{ matrix.skill }}-${{ matrix.model }}
+          path: evals/harnesses/codex/results/${{ matrix.skill }}/cell.json
+          retention-days: 90
+
+  # ── Antigravity (agy) — default model ─────────────────────────────────────
+  capture-agy:
+    name: baseline / agy / ${{ matrix.skill }} / ${{ matrix.model }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        model: [default]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install agy CLI
+        run: |
+          # /cli/install.sh is the real bootstrapper; /install-cli returns the
+          # site's HTML landing page (piping that into bash is what broke before).
+          curl -fsSL https://antigravity.google/cli/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"   # installer drops `agy` here
+        continue-on-error: true  # don't abort the job — evals records any launch failure
+      - name: Verify agy CLI
+        run: agy --version
+        continue-on-error: true  # if unavailable, the eval run captures it per-prompt
+
+      - name: Install StackHawk plugins
+        env:
+          # agy ignores API-key env vars and forces interactive Google OAuth
+          # (upstream antigravity-cli#78 open). Kept for if/when key auth lands.
+          ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}
+        run: |
+          echo y | agy plugin install plugins/hawkscan
+          echo y | agy plugin install plugins/api
+          echo y | agy plugin install plugins/stackhawk-data-seed
+          echo y | agy plugin install plugins/hawkscan-ci
+        continue-on-error: true  # depends on agy CLI; best-effort so evals still runs
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install latest hawk CLI
+        uses: stackhawk/hawkscan-action@v2.5.0
+        with:
+          apiKey: ${{ secrets.HAWK_API_KEY }}
+          version: latest
+          installCLIOnly: true
+        continue-on-error: true  # install-only shouldn't need apiKey; don't let a check abort the job
+      - name: Verify hawk CLI
+        run: hawk version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+      - name: Install hawkop CLI
+        run: |
+          set -euo pipefail
+          HAWKOP_VERSION="$(curl -fsSL https://download.stackhawk.com/hawkop/latest-version.txt)"
+          echo "Installing hawkop v${HAWKOP_VERSION}"
+          curl -fLo /tmp/hawkop.tar.gz \
+            "https://download.stackhawk.com/hawkop/cli/hawkop-v${HAWKOP_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          tar -xzf /tmp/hawkop.tar.gz -C /tmp
+          sudo mv /tmp/hawkop /usr/local/bin/hawkop
+        continue-on-error: true  # don't abort the job — evals records any absence
+      - name: Verify hawkop CLI
+        run: hawkop --version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
+      - name: Run baseline eval
+        env:
+          ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}
+          HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          API_KEY: ${{ secrets.HAWK_API_KEY }}
+          HAWKOP_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          HAWKOP_FORMAT: json
+        run: |
+          MODEL_ARGS=()
+          if [ "${{ matrix.model }}" != "default" ]; then MODEL_ARGS=(--model "${{ matrix.model }}"); fi
+          uv run evals --harness agy --skill ${{ matrix.skill }} "${MODEL_ARGS[@]}" || true
+      - name: Upload baseline artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-agy-${{ matrix.skill }}-${{ matrix.model }}
+          path: evals/harnesses/agy/results/${{ matrix.skill }}/cell.json
+          retention-days: 90
+
+  # ── Cursor — default model ─────────────────────────────────────────────────
+  capture-cursor:
+    name: baseline / cursor / ${{ matrix.skill }} / ${{ matrix.model }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        model: [default]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install Cursor CLI
+        run: |
+          # Official installer; symlinks the `agent` binary into ~/.local/bin.
+          # (@cursor/cli / cursor-agent npm packages don't exist — they 404'd.)
+          curl https://cursor.com/install -fsS | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        continue-on-error: true  # best-effort; evals records any launch failure
+      - name: Verify agent CLI
+        run: agent --version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install latest hawk CLI
+        uses: stackhawk/hawkscan-action@v2.5.0
+        with:
+          apiKey: ${{ secrets.HAWK_API_KEY }}
+          version: latest
+          installCLIOnly: true
+        continue-on-error: true  # install-only shouldn't need apiKey; don't let a check abort the job
+      - name: Verify hawk CLI
+        run: hawk version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+      - name: Install hawkop CLI
+        run: |
+          set -euo pipefail
+          HAWKOP_VERSION="$(curl -fsSL https://download.stackhawk.com/hawkop/latest-version.txt)"
+          echo "Installing hawkop v${HAWKOP_VERSION}"
+          curl -fLo /tmp/hawkop.tar.gz \
+            "https://download.stackhawk.com/hawkop/cli/hawkop-v${HAWKOP_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          tar -xzf /tmp/hawkop.tar.gz -C /tmp
+          sudo mv /tmp/hawkop /usr/local/bin/hawkop
+        continue-on-error: true  # don't abort the job — evals records any absence
+      - name: Verify hawkop CLI
+        run: hawkop --version
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+
+      - name: Run baseline eval
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          API_KEY: ${{ secrets.HAWK_API_KEY }}
+          HAWKOP_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          HAWKOP_FORMAT: json
+        run: |
+          MODEL_ARGS=()
+          if [ "${{ matrix.model }}" != "default" ]; then MODEL_ARGS=(--model "${{ matrix.model }}"); fi
+          uv run evals --harness cursor --skill ${{ matrix.skill }} "${MODEL_ARGS[@]}" || true
+      - name: Upload baseline artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-cursor-${{ matrix.skill }}-${{ matrix.model }}
+          path: evals/harnesses/cursor/results/${{ matrix.skill }}/cell.json
+          retention-days: 90

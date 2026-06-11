@@ -7,8 +7,10 @@ description: >
   "stackhawk api", "security posture", "findings report", "show me findings",
   "untriaged findings", "which apps", "scan history", "security dashboard",
   "triage", "what needs attention". Prefers the `hawkop` CLI when installed;
-  falls back to raw REST calls otherwise. Do NOT use for scanning — use the
-  hawkscan skill for "scan my app", "hawkscan", "stackhawk.yml", "DAST".
+  falls back to raw REST calls otherwise. Do NOT use for running scans (use the
+  hawkscan skill for "scan my app", "hawkscan", "stackhawk.yml", "DAST") or for
+  fixing/remediating code or vulnerabilities — this skill only reads and reports
+  platform data.
 ---
 
 # StackHawk API Skill
