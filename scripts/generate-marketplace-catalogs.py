@@ -51,7 +51,26 @@ def subpath_from_local_source(source):
     return raw.lstrip("./")
 
 
-def remote_source(repo, subpath, tag, sha):
+def remote_source(flavor, repo, subpath, tag, sha):
+    """Build the pinned remote plugin source. The two catalog flavors use DIFFERENT
+    remote-source schemas (verified by marketplace-install-verify.yml):
+
+      claude / copilot (.claude-plugin): {source:"github", repo, path:"plugins/x", ref, sha}
+        Claude Code resolves it; GitHub Copilot CLI reads the same .claude-plugin
+        catalog and resolves it too — no Copilot-specific manifest needed.
+
+      codex (.codex-plugin): {source:"git-subdir", url, path:"./plugins/x", ref, sha}
+        Codex does NOT understand the "github" source and silently finds no plugin;
+        it requires the "git-subdir" type with a full git URL and a `./`-relative path.
+    """
+    if flavor == "codex":
+        return {
+            "source": "git-subdir",
+            "url": f"https://github.com/{repo}.git",
+            "path": f"./{subpath}",
+            "ref": tag,
+            "sha": sha,
+        }
     return {"source": "github", "repo": repo, "path": subpath, "ref": tag, "sha": sha}
 
 
@@ -60,9 +79,10 @@ def load_local_catalog(subdir):
         return json.load(f)
 
 
-def transform(catalog, repo, tag, sha, allow, descriptions):
-    """Rewrite each plugin's source to a pinned remote github source, filter to the
-    curation allowlist, and backfill description/homepage from the richest catalog."""
+def transform(flavor, catalog, repo, tag, sha, allow, descriptions):
+    """Rewrite each plugin's source to a pinned remote source (schema per flavor),
+    filter to the curation allowlist, and backfill description/homepage from the
+    richest catalog."""
     version = tag.lstrip("v")
     out = dict(catalog)
     plugins = []
@@ -71,7 +91,7 @@ def transform(catalog, repo, tag, sha, allow, descriptions):
             continue
         np = dict(p)
         subpath = subpath_from_local_source(p["source"])
-        np["source"] = remote_source(repo, subpath, tag, sha)
+        np["source"] = remote_source(flavor, repo, subpath, tag, sha)
         np["version"] = version
         # Backfill cosmetic fields (the codex catalog is sparser than claude's).
         meta = descriptions.get(p["name"], {})
@@ -107,8 +127,9 @@ def main():
     }
 
     for subdir in CATALOG_SUBDIRS:
+        flavor = "codex" if subdir == ".codex-plugin" else "claude"
         catalog = load_local_catalog(subdir)
-        out, names = transform(catalog, args.repo, args.tag, args.sha, allow, descriptions)
+        out, names = transform(flavor, catalog, args.repo, args.tag, args.sha, allow, descriptions)
         if allow is not None:
             missing = [n for n in allow if n not in names]
             if missing:
