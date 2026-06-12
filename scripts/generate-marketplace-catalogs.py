@@ -37,7 +37,17 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Catalogs that use the github-remote-source model (path + ref + sha). Gemini
 # (gemini-extension.json, installed direct from the repo URL) and Copilot (reads
 # the .claude-plugin catalog) are intentionally not separate outputs here.
-CATALOG_SUBDIRS = (".claude-plugin", ".codex-plugin")
+# Per-flavor IO. `read` is the local in-repo catalog we pull plugin metadata from;
+# `writes` are the catalog paths to emit in the marketplace repo. Codex's CURRENT CLI
+# reads .agents/plugins/marketplace.json (verified against the real #1 codex
+# marketplace); the legacy .codex-plugin/marketplace.json is also emitted for older
+# CLIs. Claude Code reads .claude-plugin/marketplace.json and GitHub Copilot CLI reads
+# the same file — so no Copilot-specific output is needed.
+FLAVORS = (
+    {"flavor": "claude", "read": ".claude-plugin", "writes": [".claude-plugin/marketplace.json"]},
+    {"flavor": "codex", "read": ".codex-plugin",
+     "writes": [".agents/plugins/marketplace.json", ".codex-plugin/marketplace.json"]},
+)
 
 # Default curation: the set currently published to the marketplace. Keeping this
 # explicit avoids silently promoting in-development plugins to the public catalog.
@@ -126,22 +136,23 @@ def main():
         for p in claude.get("plugins", [])
     }
 
-    for subdir in CATALOG_SUBDIRS:
-        flavor = "codex" if subdir == ".codex-plugin" else "claude"
-        catalog = load_local_catalog(subdir)
+    for spec in FLAVORS:
+        flavor = spec["flavor"]
+        catalog = load_local_catalog(spec["read"])
         out, names = transform(flavor, catalog, args.repo, args.tag, args.sha, allow, descriptions)
         if allow is not None:
             missing = [n for n in allow if n not in names]
             if missing:
-                print(f"ERROR: {subdir}: requested plugins not in local catalog: {missing}",
+                print(f"ERROR: {spec['read']}: requested plugins not in local catalog: {missing}",
                       file=sys.stderr)
                 sys.exit(1)
-        out_subdir = os.path.join(args.out_dir, subdir)
-        os.makedirs(out_subdir, exist_ok=True)
-        out_path = os.path.join(out_subdir, "marketplace.json")
-        with open(out_path, "w") as f:
-            f.write(json.dumps(out, indent=2) + "\n")
-        print(f"wrote {subdir}/marketplace.json @ {args.tag} ({args.sha[:7]}): {names}")
+        out_json = json.dumps(out, indent=2) + "\n"
+        for rel in spec["writes"]:
+            out_path = os.path.join(args.out_dir, rel)
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            with open(out_path, "w") as f:
+                f.write(out_json)
+            print(f"wrote {rel} @ {args.tag} ({args.sha[:7]}): {names}")
 
 
 if __name__ == "__main__":
