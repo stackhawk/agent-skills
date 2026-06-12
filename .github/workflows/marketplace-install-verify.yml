@@ -1,33 +1,42 @@
 name: Marketplace Install Verify
 
-# Ephemeral, on-demand verification that the EXACT install commands we publish to
-# users (raptor-ui vibe getting-started, barnswallow docs) actually work against the
-# LIVE stackhawk/agent-skills-marketplace catalog.
+# Ephemeral, on-demand verification that the EXACT install path we publish to users
+# (raptor-ui vibe getting-started, barnswallow docs) actually works.
 #
 # This is deliberately NOT the skill-evals harness. skill-evals loads plugins
-# locally (claude --plugin-dir, `codex plugin marketplace add .`, `gemini
-# extensions link`, cursor copies .mdc rules) to grade skill *quality*. This
-# workflow does the opposite: it installs from the published REMOTE marketplace
-# exactly as a user would, and asserts the plugin/skill landed. Plumbing, not quality.
+# locally to grade skill *quality*. This workflow installs from a marketplace catalog
+# exactly as a user would and asserts the plugin/skill landed — plumbing, not quality.
+# Never wired into release CI; run it by hand. Each tool is its own job so they go
+# green/red independently; the run page is the acceptance artifact.
 #
-# It is never wired into release CI — run it by hand (workflow_dispatch) whenever we
-# change a catalog or want to re-prove the documented commands. Each tool is its own
-# job so they go green/red independently; the run page is the acceptance artifact.
+# SOURCE MODE
+#   local  (default while iterating): run scripts/generate-marketplace-catalogs.py
+#          against this checkout to produce the catalogs the publisher will ship, then
+#          `<tool> marketplace add <generated dir>`. Proves the GENERATED catalog (the
+#          exact bytes the release publisher pushes) is installable — without needing
+#          push access to the marketplace repo.
+#   remote: `<tool> marketplace add owner/repo` — the literal user command. Proves the
+#          end-to-end remote UX once generated catalogs are merged to the marketplace main.
 #
-# v1 is diagnostic-heavy on purpose: the non-interactive `plugin` surface for
-# claude / copilot / cursor is exactly what we're proving, so every job dumps its
-# CLI's plugin/extension help and the install output before the hard verify step.
+# The catalog plugin sources are REMOTE github sources (repo + path + ref + sha), so
+# each tool clones agent-skills to fetch the plugin. CI has no SSH key, so every
+# catalog job rewrites git SSH->HTTPS first.
 
 on:
-  # TEMPORARY (remove before merge): lets us iterate on this workflow from the
-  # feature branch. workflow_dispatch only becomes dispatchable once the file is on
-  # the default branch, so a push trigger scoped to this branch is how we test pre-merge.
+  # TEMPORARY (remove before merge): lets us iterate from the feature branch.
+  # workflow_dispatch only becomes dispatchable once the file is on the default branch.
   push:
     branches: [bdub/eng-532-marketplace-install-verification]
   workflow_dispatch:
     inputs:
+      source_mode:
+        description: "local = generate catalogs + install from dir; remote = marketplace add owner/repo"
+        required: true
+        default: "local"
+        type: choice
+        options: [local, remote]
       marketplace_repo:
-        description: "Marketplace repo (owner/repo) the catalog tools install from"
+        description: "Marketplace repo (owner/repo) used in remote mode"
         required: true
         default: "stackhawk/agent-skills-marketplace"
         type: string
@@ -52,10 +61,8 @@ env:
   # Plugin identifiers as published in the catalogs (NOTE: api is "stackhawk-api").
   PLUGIN_1: hawkscan
   PLUGIN_2: stackhawk-api
-  # workflow_dispatch inputs assigned to env once here (the recommended safe
-  # pattern) so run: steps reference $MARKETPLACE_REPO / $GEMINI_SOURCE instead of
-  # interpolating ${{ inputs.* }} into a shell command (avoids injection surface).
-  # `|| '...'` supplies the default on push events (push carries no inputs).
+  # Inputs -> env once (safe pattern); `|| '...'` supplies defaults on push.
+  SOURCE_MODE: ${{ inputs.source_mode || 'local' }}
   MARKETPLACE_REPO: ${{ inputs.marketplace_repo || 'stackhawk/agent-skills-marketplace' }}
   GEMINI_SOURCE: ${{ inputs.gemini_source || 'https://github.com/stackhawk/agent-skills' }}
 
@@ -66,23 +73,38 @@ jobs:
     if: ${{ github.event_name == 'push' || inputs.tool == 'all' || inputs.tool == 'claude-code' }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need tags for `git describe` in local mode
+      - name: Rewrite git SSH->HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
       - name: Install Claude Code CLI (native)
         run: |
           curl -fsSL https://claude.ai/install.sh | bash
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Versions + plugin surface (diagnostic)
+      - name: Resolve marketplace source
+        run: |
+          set -euxo pipefail
+          if [ "$SOURCE_MODE" = "local" ]; then
+            TAG=$(git describe --tags --abbrev=0)
+            SHA=$(git rev-list -n1 "$TAG")
+            python3 scripts/generate-marketplace-catalogs.py --tag "$TAG" --sha "$SHA" --out-dir /tmp/mp
+            echo "MP_SRC=/tmp/mp" >> "$GITHUB_ENV"
+          else
+            echo "MP_SRC=${MARKETPLACE_REPO}" >> "$GITHUB_ENV"
+          fi
+      - name: Plugin surface (diagnostic)
         continue-on-error: true
         run: |
           set -x
           claude --version
-          claude --help || true
           claude plugin --help || true
           claude plugin marketplace --help || true
       - name: Add marketplace + install plugins
         continue-on-error: true
         run: |
           set -x
-          claude plugin marketplace add "$MARKETPLACE_REPO"
+          claude plugin marketplace add "$MP_SRC"
           claude plugin install "${PLUGIN_1}@${MARKETPLACE_NAME}"
           claude plugin install "${PLUGIN_2}@${MARKETPLACE_NAME}"
       - name: List installed (diagnostic)
@@ -91,7 +113,6 @@ jobs:
           set -x
           claude plugin list || true
           claude plugin marketplace list || true
-          echo "--- ~/.claude/plugins ---"; ls -laR "$HOME/.claude/plugins" 2>/dev/null | head -80 || true
       - name: Verify both plugins present
         run: |
           set -euo pipefail
@@ -99,7 +120,7 @@ jobs:
           echo "$out"
           echo "$out" | grep -q "${PLUGIN_1}" || { echo "MISSING: ${PLUGIN_1}"; exit 1; }
           echo "$out" | grep -q "${PLUGIN_2}" || { echo "MISSING: ${PLUGIN_2}"; exit 1; }
-          echo "OK: both plugins installed from $MARKETPLACE_REPO"
+          echo "OK: both plugins installed (mode=$SOURCE_MODE src=$MP_SRC)"
 
   # ── Codex ──────────────────────────────────────────────────────────────────
   codex:
@@ -107,6 +128,11 @@ jobs:
     if: ${{ github.event_name == 'push' || inputs.tool == 'all' || inputs.tool == 'codex' }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Rewrite git SSH->HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -116,9 +142,19 @@ jobs:
         continue-on-error: true
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        # codex reads stored creds, not the env var directly; pipe via stdin.
         run: printenv OPENAI_API_KEY | codex login --with-api-key
-      - name: Versions + plugin surface (diagnostic)
+      - name: Resolve marketplace source
+        run: |
+          set -euxo pipefail
+          if [ "$SOURCE_MODE" = "local" ]; then
+            TAG=$(git describe --tags --abbrev=0)
+            SHA=$(git rev-list -n1 "$TAG")
+            python3 scripts/generate-marketplace-catalogs.py --tag "$TAG" --sha "$SHA" --out-dir /tmp/mp
+            echo "MP_SRC=/tmp/mp" >> "$GITHUB_ENV"
+          else
+            echo "MP_SRC=${MARKETPLACE_REPO}" >> "$GITHUB_ENV"
+          fi
+      - name: Plugin surface (diagnostic)
         continue-on-error: true
         run: |
           set -x
@@ -131,7 +167,7 @@ jobs:
         # <name>@<mkt>`, confirming interactive prompts with `echo y`.
         run: |
           set -x
-          codex plugin marketplace add "$MARKETPLACE_REPO"
+          codex plugin marketplace add "$MP_SRC"
           echo y | codex plugin add "${PLUGIN_1}@${MARKETPLACE_NAME}"
           echo y | codex plugin add "${PLUGIN_2}@${MARKETPLACE_NAME}"
       - name: List installed (diagnostic)
@@ -147,7 +183,7 @@ jobs:
           echo "$out"
           echo "$out" | grep -q "${PLUGIN_1}" || { echo "MISSING: ${PLUGIN_1}"; exit 1; }
           echo "$out" | grep -q "${PLUGIN_2}" || { echo "MISSING: ${PLUGIN_2}"; exit 1; }
-          echo "OK: both plugins installed from $MARKETPLACE_REPO"
+          echo "OK: both plugins installed (mode=$SOURCE_MODE src=$MP_SRC)"
 
   # ── GitHub Copilot CLI ───────────────────────────────────────────────────────
   copilot:
@@ -155,14 +191,28 @@ jobs:
     if: ${{ github.event_name == 'push' || inputs.tool == 'all' || inputs.tool == 'copilot' }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Rewrite git SSH->HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
       - name: Install GitHub Copilot CLI
-        # The new standalone CLI (github/copilot-cli), NOT the old `gh copilot`
-        # extension. Distributed on npm as @github/copilot.
         run: npm install -g @github/copilot
-      - name: Versions + plugin surface (diagnostic)
+      - name: Resolve marketplace source
+        run: |
+          set -euxo pipefail
+          if [ "$SOURCE_MODE" = "local" ]; then
+            TAG=$(git describe --tags --abbrev=0)
+            SHA=$(git rev-list -n1 "$TAG")
+            python3 scripts/generate-marketplace-catalogs.py --tag "$TAG" --sha "$SHA" --out-dir /tmp/mp
+            echo "MP_SRC=/tmp/mp" >> "$GITHUB_ENV"
+          else
+            echo "MP_SRC=${MARKETPLACE_REPO}" >> "$GITHUB_ENV"
+          fi
+      - name: Plugin surface (diagnostic)
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -170,20 +220,16 @@ jobs:
         run: |
           set -x
           copilot --version || true
-          copilot --help || true
           copilot plugin --help || true
           copilot plugin marketplace --help || true
       - name: Add marketplace + install plugins
         continue-on-error: true
-        # Copilot reads .claude-plugin/marketplace.json directly and accepts the
-        # Claude spec with object/remote sources — so it should ride our existing
-        # catalog with no copilot-specific manifest. This step proves (or disproves) it.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -x
-          copilot plugin marketplace add "$MARKETPLACE_REPO"
+          copilot plugin marketplace add "$MP_SRC"
           copilot plugin install "${PLUGIN_1}@${MARKETPLACE_NAME}"
           copilot plugin install "${PLUGIN_2}@${MARKETPLACE_NAME}"
       - name: List installed (diagnostic)
@@ -205,7 +251,7 @@ jobs:
           echo "$out"
           echo "$out" | grep -q "${PLUGIN_1}" || { echo "MISSING: ${PLUGIN_1}"; exit 1; }
           echo "$out" | grep -q "${PLUGIN_2}" || { echo "MISSING: ${PLUGIN_2}"; exit 1; }
-          echo "OK: both plugins installed from $MARKETPLACE_REPO"
+          echo "OK: both plugins installed (mode=$SOURCE_MODE src=$MP_SRC)"
 
   # ── Gemini CLI ───────────────────────────────────────────────────────────────
   gemini:
@@ -218,7 +264,15 @@ jobs:
           node-version: "20"
       - name: Install Gemini CLI
         run: npm install -g @google/gemini-cli
-      - name: Versions + extensions surface (diagnostic)
+      - name: Pre-trust workspace (avoid interactive trust prompt)
+        # gemini blocks `extensions install` on an interactive "trust this workspace?"
+        # prompt. Disable folder-trust in user settings so it proceeds non-interactively.
+        run: |
+          set -x
+          mkdir -p "$HOME/.gemini"
+          printf '%s\n' '{ "security": { "folderTrust": { "enabled": false } } }' > "$HOME/.gemini/settings.json"
+          cat "$HOME/.gemini/settings.json"
+      - name: Extensions surface (diagnostic)
         continue-on-error: true
         run: |
           set -x
@@ -226,11 +280,12 @@ jobs:
           gemini extensions --help || true
       - name: Install extension (direct from agent-skills, unpinned)
         continue-on-error: true
-        # Gemini has no catalog model — it installs the extension straight from the
-        # repo URL. Product decision: unpinned (no --ref).
+        # Gemini has no catalog model — installs straight from the repo URL. Product
+        # decision: unpinned (no --ref). </dev/null + timeout guard against any prompt.
         run: |
           set -x
-          gemini extensions install "$GEMINI_SOURCE"
+          printf 'y\n' | timeout 240 gemini extensions install "$GEMINI_SOURCE" || \
+            timeout 240 gemini extensions install "$GEMINI_SOURCE" </dev/null
       - name: List installed (diagnostic)
         continue-on-error: true
         run: |
@@ -242,8 +297,6 @@ jobs:
           set -euo pipefail
           out="$(gemini extensions list 2>&1 || true)"
           echo "$out"
-          # The extension name comes from agent-skills/gemini-extension.json; match
-          # on the repo slug or a stackhawk/hawkscan marker.
           echo "$out" | grep -iqE "stackhawk|hawkscan|agent-skills" || { echo "MISSING: stackhawk extension"; exit 1; }
           echo "OK: extension installed from $GEMINI_SOURCE"
 
@@ -256,13 +309,12 @@ jobs:
       - name: Install Cursor CLI
         continue-on-error: true
         run: |
-          # Official installer symlinks the `agent` binary into ~/.local/bin.
           curl https://cursor.com/install -fsS | bash
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Discover CLI surface (diagnostic)
-        # Cursor's marketplace is editor/dashboard-driven (/add-plugin, "Import from
-        # Repo"); whether the `agent` CLI can install a marketplace plugin headlessly
-        # is unknown. v1 only maps the surface — we design the real test from this.
+        # Cursor's marketplace is editor/dashboard-driven; whether the `agent` CLI can
+        # install a marketplace plugin headlessly is unknown. v1 maps the surface so we
+        # design the real test (or accept editor-only) from this.
         continue-on-error: true
         run: |
           set -x
@@ -272,5 +324,5 @@ jobs:
           agent marketplace --help 2>/dev/null || true
       - name: Note
         run: |
-          echo "Cursor verification is exploratory in v1 — see diagnostic output above."
+          echo "Cursor verification is exploratory — see diagnostic output above."
           echo "Cursor marketplace install is editor/dashboard-driven; CLI surface TBD."
