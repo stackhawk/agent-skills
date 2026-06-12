@@ -1,0 +1,350 @@
+name: Marketplace Install Verify
+
+# Ephemeral, on-demand verification that the EXACT install path we publish to users
+# (raptor-ui vibe getting-started, barnswallow docs) actually works.
+#
+# This is deliberately NOT the skill-evals harness. skill-evals loads plugins
+# locally to grade skill *quality*. This workflow installs from a marketplace catalog
+# exactly as a user would and asserts the plugin/skill landed — plumbing, not quality.
+# Never wired into release CI; run it by hand. Each tool is its own job so they go
+# green/red independently; the run page is the acceptance artifact.
+#
+# SOURCE MODE
+#   local  (default while iterating): run scripts/generate-marketplace-catalogs.py
+#          against this checkout to produce the catalogs the publisher will ship, then
+#          `<tool> marketplace add <generated dir>`. Proves the GENERATED catalog (the
+#          exact bytes the release publisher pushes) is installable — without needing
+#          push access to the marketplace repo.
+#   remote: `<tool> marketplace add owner/repo` — the literal user command. Proves the
+#          end-to-end remote UX once generated catalogs are merged to the marketplace main.
+#
+# The catalog plugin sources are REMOTE github sources (repo + path + ref + sha), so
+# each tool clones agent-skills to fetch the plugin. CI has no SSH key, so every
+# catalog job rewrites git SSH->HTTPS first.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_mode:
+        description: "local = generate catalogs + install from dir; remote = marketplace add owner/repo"
+        required: true
+        default: "local"
+        type: choice
+        options: [local, remote]
+      marketplace_repo:
+        description: "Marketplace repo (owner/repo) used in remote mode"
+        required: true
+        default: "stackhawk/agent-skills-marketplace"
+        type: string
+      agy_source:
+        description: "Antigravity (agy) direct-install source — agent-skills repo URL"
+        required: true
+        default: "https://github.com/stackhawk/agent-skills"
+        type: string
+      tool:
+        description: "Which tool to verify"
+        required: true
+        default: "all"
+        type: choice
+        options: [all, claude-code, codex, copilot, agy, cursor]
+
+permissions:
+  contents: read
+
+env:
+  # Marketplace `name` field in both .claude-plugin/ and .codex-plugin/ catalogs.
+  MARKETPLACE_NAME: stackhawk
+  # Plugin identifiers as published in the catalogs (NOTE: api is "stackhawk-api").
+  PLUGIN_1: hawkscan
+  PLUGIN_2: stackhawk-api
+  # Inputs -> env once (safe pattern); `|| '...'` is a defensive default.
+  SOURCE_MODE: ${{ inputs.source_mode || 'local' }}
+  MARKETPLACE_REPO: ${{ inputs.marketplace_repo || 'stackhawk/agent-skills-marketplace' }}
+  AGY_SOURCE: ${{ inputs.agy_source || 'https://github.com/stackhawk/agent-skills' }}
+
+jobs:
+  # ── Claude Code ────────────────────────────────────────────────────────────
+  claude-code:
+    name: claude-code
+    if: ${{ inputs.tool == 'all' || inputs.tool == 'claude-code' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need tags for `git describe` in local mode
+      - name: Rewrite git SSH->HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+      - name: Install Claude Code CLI (native)
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Resolve marketplace source
+        run: |
+          set -euxo pipefail
+          if [ "$SOURCE_MODE" = "local" ]; then
+            TAG=$(git describe --tags --abbrev=0)
+            SHA=$(git rev-list -n1 "$TAG")
+            python3 scripts/generate-marketplace-catalogs.py --tag "$TAG" --sha "$SHA" --out-dir /tmp/mp
+            echo "MP_SRC=/tmp/mp" >> "$GITHUB_ENV"
+          else
+            echo "MP_SRC=${MARKETPLACE_REPO}" >> "$GITHUB_ENV"
+          fi
+      - name: Plugin surface (diagnostic)
+        continue-on-error: true
+        run: |
+          set -x
+          claude --version
+          claude plugin --help || true
+          claude plugin marketplace --help || true
+      - name: Add marketplace + install plugins
+        continue-on-error: true
+        run: |
+          set -x
+          claude plugin marketplace add "$MP_SRC"
+          claude plugin install "${PLUGIN_1}@${MARKETPLACE_NAME}"
+          claude plugin install "${PLUGIN_2}@${MARKETPLACE_NAME}"
+      - name: List installed (diagnostic)
+        continue-on-error: true
+        run: |
+          set -x
+          claude plugin list || true
+          claude plugin marketplace list || true
+      - name: Verify both plugins present
+        run: |
+          set -euo pipefail
+          out="$(claude plugin list 2>&1 || true)"
+          echo "$out"
+          echo "$out" | grep -q "${PLUGIN_1}" || { echo "MISSING: ${PLUGIN_1}"; exit 1; }
+          echo "$out" | grep -q "${PLUGIN_2}" || { echo "MISSING: ${PLUGIN_2}"; exit 1; }
+          echo "OK: both plugins installed (mode=$SOURCE_MODE src=$MP_SRC)"
+
+  # ── Codex ──────────────────────────────────────────────────────────────────
+  codex:
+    name: codex
+    if: ${{ inputs.tool == 'all' || inputs.tool == 'codex' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Rewrite git SSH->HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
+      - name: Authenticate codex CLI
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: printenv OPENAI_API_KEY | codex login --with-api-key
+      - name: Resolve marketplace source
+        run: |
+          set -euxo pipefail
+          if [ "$SOURCE_MODE" = "local" ]; then
+            TAG=$(git describe --tags --abbrev=0)
+            SHA=$(git rev-list -n1 "$TAG")
+            python3 scripts/generate-marketplace-catalogs.py --tag "$TAG" --sha "$SHA" --out-dir /tmp/mp
+            echo "MP_SRC=/tmp/mp" >> "$GITHUB_ENV"
+          else
+            echo "MP_SRC=${MARKETPLACE_REPO}" >> "$GITHUB_ENV"
+          fi
+      - name: Plugin surface (diagnostic)
+        continue-on-error: true
+        run: |
+          set -x
+          codex --version
+          codex plugin --help || true
+          codex plugin marketplace --help || true
+      - name: Add marketplace + install plugins
+        continue-on-error: true
+        # skill-evals proves the verb set: `marketplace add <src>` + `plugin add
+        # <name>@<mkt>`, confirming interactive prompts with `echo y`.
+        run: |
+          set -x
+          codex plugin marketplace add "$MP_SRC"
+          echo y | codex plugin add "${PLUGIN_1}@${MARKETPLACE_NAME}"
+          echo y | codex plugin add "${PLUGIN_2}@${MARKETPLACE_NAME}"
+      - name: List installed (diagnostic)
+        continue-on-error: true
+        run: |
+          set -x
+          codex plugin list || true
+          codex plugin marketplace list || true
+      - name: Verify both plugins present
+        run: |
+          set -euo pipefail
+          out="$(codex plugin list 2>&1 || true)"
+          echo "$out"
+          echo "$out" | grep -q "${PLUGIN_1}" || { echo "MISSING: ${PLUGIN_1}"; exit 1; }
+          echo "$out" | grep -q "${PLUGIN_2}" || { echo "MISSING: ${PLUGIN_2}"; exit 1; }
+          echo "OK: both plugins installed (mode=$SOURCE_MODE src=$MP_SRC)"
+
+  # ── GitHub Copilot CLI ───────────────────────────────────────────────────────
+  copilot:
+    name: copilot
+    if: ${{ inputs.tool == 'all' || inputs.tool == 'copilot' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Rewrite git SSH->HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install GitHub Copilot CLI
+        run: npm install -g @github/copilot
+      - name: Resolve marketplace source
+        run: |
+          set -euxo pipefail
+          if [ "$SOURCE_MODE" = "local" ]; then
+            TAG=$(git describe --tags --abbrev=0)
+            SHA=$(git rev-list -n1 "$TAG")
+            python3 scripts/generate-marketplace-catalogs.py --tag "$TAG" --sha "$SHA" --out-dir /tmp/mp
+            echo "MP_SRC=/tmp/mp" >> "$GITHUB_ENV"
+          else
+            echo "MP_SRC=${MARKETPLACE_REPO}" >> "$GITHUB_ENV"
+          fi
+      - name: Plugin surface (diagnostic)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -x
+          copilot --version || true
+          copilot plugin --help || true
+          copilot plugin marketplace --help || true
+      - name: Add marketplace + install plugins
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -x
+          copilot plugin marketplace add "$MP_SRC"
+          copilot plugin install "${PLUGIN_1}@${MARKETPLACE_NAME}"
+          copilot plugin install "${PLUGIN_2}@${MARKETPLACE_NAME}"
+      - name: List installed (diagnostic)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -x
+          copilot plugin list || true
+          copilot plugin marketplace list || true
+      - name: Verify both plugins present
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          out="$(copilot plugin list 2>&1 || true)"
+          echo "$out"
+          echo "$out" | grep -q "${PLUGIN_1}" || { echo "MISSING: ${PLUGIN_1}"; exit 1; }
+          echo "$out" | grep -q "${PLUGIN_2}" || { echo "MISSING: ${PLUGIN_2}"; exit 1; }
+          echo "OK: both plugins installed (mode=$SOURCE_MODE src=$MP_SRC)"
+
+  # ── Antigravity (agy) ────────────────────────────────────────────────────────
+  # StackHawk's 5th tool is Google Antigravity (`agy`), the successor to the Gemini
+  # CLI — NOT the Gemini CLI itself (the raptor-ui card is labelled "Gemini CLI" but
+  # runs agy). This job is DISCOVERY-ONLY: it maps agy's plugin/marketplace command
+  # surface and tries both install paths, so we can decide (with the user) whether agy
+  # rides the marketplace (it uses the same .agents/ standard as Codex) or stays on
+  # direct `agy plugin install <url>`. NOTE: skill-evals documents that agy ignores
+  # API-key env and forces interactive Google OAuth in CI (antigravity-cli#78) — so an
+  # actual headless install may not complete here; the --help surface still will.
+  agy:
+    name: agy
+    if: ${{ inputs.tool == 'all' || inputs.tool == 'agy' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Rewrite git SSH->HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+      - name: Install agy CLI
+        run: |
+          # /cli/install.sh is the real bootstrapper (per skill-evals); installer drops
+          # `agy` into ~/.local/bin.
+          curl -fsSL https://antigravity.google/cli/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Command surface (diagnostic)
+        continue-on-error: true
+        # agy has NO `marketplace add`/`plugin add` verbs, but `plugin install <target>`
+        # docs say it "supports plugin@marketplace", and there is `plugin link <mp>
+        # <target>`. So agy MIGHT ride the marketplace — this job tests that for real.
+        run: |
+          set -x
+          agy --version || true
+          agy plugin --help || true
+          agy plugin link --help 2>&1 || true
+          agy plugin install --help 2>&1 || true
+      - name: Generate catalog (agy reads .agents/plugins/ like codex)
+        run: |
+          set -euxo pipefail
+          TAG=$(git describe --tags --abbrev=0)
+          SHA=$(git rev-list -n1 "$TAG")
+          python3 scripts/generate-marketplace-catalogs.py --tag "$TAG" --sha "$SHA" --out-dir /tmp/mp
+          echo "--- generated .agents/plugins/marketplace.json ---"; cat /tmp/mp/.agents/plugins/marketplace.json
+      - name: MARKETPLACE PATH — try the real verbs (discovery)
+        continue-on-error: true
+        env:
+          ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}
+        # Probe the plausible marketplace invocations; `agy plugin list` after each shows
+        # the import `source` so we can tell which (if any) registered via marketplace.
+        run: |
+          set -x
+          echo "### A: link local marketplace dir as 'stackhawk', then install name@stackhawk"
+          agy plugin link stackhawk /tmp/mp 2>&1 || echo "[link failed]"
+          echo y | agy plugin install "hawkscan@${MARKETPLACE_NAME}" 2>&1 || echo "[install name@stackhawk failed]"
+          agy plugin list 2>&1 || true
+          echo "### B: install the catalog dir directly"
+          echo y | agy plugin install /tmp/mp 2>&1 || echo "[install dir failed]"
+          agy plugin list 2>&1 || true
+          echo "### C: install plugin@<catalog-path>"
+          echo y | agy plugin install "hawkscan@/tmp/mp" 2>&1 || echo "[install name@path failed]"
+          agy plugin list 2>&1 || true
+      - name: DIRECT PATH — known-good repo-URL install (hard proof)
+        env:
+          ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}
+        run: echo y | agy plugin install "$AGY_SOURCE"
+      - name: Verify the stackhawk plugin imported
+        run: |
+          set -euo pipefail
+          out="$(agy plugin list 2>&1 || true)"
+          echo "$out"
+          echo "$out" | grep -iq '"stackhawk"' || { echo "MISSING: stackhawk import"; exit 1; }
+          echo "OK: agy imported stackhawk skills"
+
+  # ── Cursor ───────────────────────────────────────────────────────────────────
+  cursor:
+    name: cursor
+    if: ${{ inputs.tool == 'all' || inputs.tool == 'cursor' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Cursor CLI
+        continue-on-error: true
+        run: |
+          curl https://cursor.com/install -fsS | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Discover CLI surface (diagnostic)
+        # Cursor's marketplace is editor/dashboard-driven; whether the `agent` CLI can
+        # install a marketplace plugin headlessly is unknown. v1 maps the surface so we
+        # design the real test (or accept editor-only) from this.
+        continue-on-error: true
+        run: |
+          set -x
+          agent --version || true
+          agent --help || true
+          agent plugin --help 2>/dev/null || true
+          agent marketplace --help 2>/dev/null || true
+      - name: Note
+        run: |
+          echo "Cursor verification is exploratory — see diagnostic output above."
+          echo "Cursor marketplace install is editor/dashboard-driven; CLI surface TBD."

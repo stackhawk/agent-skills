@@ -178,38 +178,32 @@ jobs:
           git -C /tmp/marketplace remote set-url origin \
             "https://x-access-token:${GH_PAT}@github.com/stackhawk/agent-skills-marketplace.git"
 
-      - name: Update marketplace.json
+      - name: Generate marketplace catalogs
+        # Single source of truth (scripts/generate-marketplace-catalogs.py): emits
+        # .claude-plugin/marketplace.json (also read by GitHub Copilot CLI),
+        # .agents/plugins/marketplace.json (current Codex CLI) and
+        # .codex-plugin/marketplace.json (legacy), translating local-path plugin
+        # sources into pinned remote sources WITH the per-tool schema + `path`.
+        # Replaces the old claude-only ref/sha rewrite, which left codex orphaned and
+        # never added `path` (so installs resolved the repo root and failed).
+        env:
+          TAG: ${{ needs.release.outputs.tag }}
+          SHA: ${{ steps.sha.outputs.sha }}
         run: |
-          python3 - \
-            "${{ needs.release.outputs.tag }}" \
-            "${{ steps.sha.outputs.sha }}" \
-            /tmp/marketplace/.claude-plugin/marketplace.json \
-            << 'PYEOF'
-          import json, sys
-          tag, sha, path = sys.argv[1], sys.argv[2], sys.argv[3]
-          version = tag.lstrip('v')
-          with open(path) as f:
-              data = json.load(f)
-          for plugin in data['plugins']:
-              plugin['version'] = version
-              plugin['source']['ref'] = tag
-              plugin['source']['sha'] = sha
-          out = json.dumps(data, indent=2)
-          json.loads(out)
-          with open(path, 'w') as f:
-              f.write(out + '\n')
-          print(f"Updated {len(data['plugins'])} plugin(s) to {tag} @ {sha[:7]}")
-          PYEOF
+          python3 scripts/generate-marketplace-catalogs.py \
+            --tag "$TAG" --sha "$SHA" --out-dir /tmp/marketplace
 
       - name: Commit and push
+        env:
+          TAG: ${{ needs.release.outputs.tag }}
         run: |
           cd /tmp/marketplace
           git config user.name "hawkdeploy"
           git config user.email "hawkdeploy@stackhawk.com"
-          git add .claude-plugin/marketplace.json
+          git add -A
           if git diff --cached --quiet; then
-            echo "No changes — marketplace already pinned to ${{ needs.release.outputs.tag }}"
+            echo "No changes — marketplace already pinned to ${TAG}"
             exit 0
           fi
-          git commit -m "chore: pin agent-skills to ${{ needs.release.outputs.tag }}"
+          git commit -m "chore: pin agent-skills to ${TAG}"
           git push origin HEAD:main
