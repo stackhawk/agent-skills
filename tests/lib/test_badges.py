@@ -3,7 +3,10 @@ import json
 import pytest
 
 from evals.lib.models import CellReport, EvalResult, Verdict
-from evals.lib.badges import aggregate, cell_ran, color_for, display_model, endpoint_json, write_outputs
+from evals.lib.badges import (
+    BLOCK_END, BLOCK_START, aggregate, cell_ran, color_for, display_model,
+    endpoint_json, render_block, replace_block, write_outputs,
+)
 
 
 def _result(run_id: str, verdict: Verdict, note: str = "") -> EvalResult:
@@ -194,3 +197,55 @@ def test_write_outputs_rejects_path_escaping_segments(tmp_path):
     )
     with pytest.raises(SystemExit, match="unsafe path segment"):
         write_outputs(cells, tmp_path, tag="v1", run_url="")
+
+
+_MATRIX = {
+    "schema": 1, "tag": "v1.9.0",
+    "run_url": "https://github.com/stackhawk/agent-skills/actions/runs/1",
+    "combos": [
+        {"tool": "claude-code", "model": "claude-sonnet-4-6",
+         "passed": 15, "total": 16, "rate": 15 / 16, "status": "ok"},
+        {"tool": "claude-code", "model": "claude-opus-4-7",
+         "passed": 16, "total": 16, "rate": 1.0, "status": "ok"},
+        {"tool": "agy", "model": "default",
+         "passed": 0, "total": 0, "rate": None, "status": "no-data"},
+    ],
+}
+
+
+def test_render_block_groups_one_line_per_tool():
+    block = render_block(_MATRIX)
+    lines = block.splitlines()
+    assert lines[0] == BLOCK_START
+    assert lines[-1] == BLOCK_END
+    badge_lines = [line for line in lines if "img.shields.io" in line]
+    assert len(badge_lines) == 2  # claude-code line, agy line
+    assert badge_lines[0].count("img.shields.io") == 2  # both claude-code models
+
+
+def test_render_block_urlencodes_raw_url_and_links_to_workflow():
+    block = render_block(_MATRIX)
+    assert ("img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com"
+            "%2Fstackhawk%2Fagent-skills%2Fbadges%2Fclaude-code%2Fclaude-sonnet-4-6.json") in block
+    assert "https://github.com/stackhawk/agent-skills/actions/workflows/capture-baseline.yml" in block
+
+
+def test_replace_block_swaps_marker_fenced_region():
+    readme = f"# Title\n\n{BLOCK_START}\nold stuff\n{BLOCK_END}\n\nBody text.\n"
+    out = replace_block(readme, render_block(_MATRIX))
+    assert "old stuff" not in out
+    assert "img.shields.io" in out
+    assert out.startswith("# Title\n\n")
+    assert out.endswith("\n\nBody text.\n")
+
+
+def test_replace_block_is_idempotent():
+    readme = f"# Title\n\n{BLOCK_START}\n{BLOCK_END}\n\nBody.\n"
+    once = replace_block(readme, render_block(_MATRIX))
+    twice = replace_block(once, render_block(_MATRIX))
+    assert once == twice
+
+
+def test_replace_block_raises_when_markers_missing():
+    with pytest.raises(SystemExit):
+        replace_block("# Title\n\nno markers here\n", render_block(_MATRIX))
