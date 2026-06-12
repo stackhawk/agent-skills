@@ -23,10 +23,6 @@ name: Marketplace Install Verify
 # catalog job rewrites git SSH->HTTPS first.
 
 on:
-  # TEMPORARY (remove before merge): lets us iterate from the feature branch.
-  # workflow_dispatch only becomes dispatchable once the file is on the default branch.
-  push:
-    branches: [bdub/eng-532-marketplace-install-verification]
   workflow_dispatch:
     inputs:
       source_mode:
@@ -61,7 +57,7 @@ env:
   # Plugin identifiers as published in the catalogs (NOTE: api is "stackhawk-api").
   PLUGIN_1: hawkscan
   PLUGIN_2: stackhawk-api
-  # Inputs -> env once (safe pattern); `|| '...'` supplies defaults on push.
+  # Inputs -> env once (safe pattern); `|| '...'` is a defensive default.
   SOURCE_MODE: ${{ inputs.source_mode || 'local' }}
   MARKETPLACE_REPO: ${{ inputs.marketplace_repo || 'stackhawk/agent-skills-marketplace' }}
   AGY_SOURCE: ${{ inputs.agy_source || 'https://github.com/stackhawk/agent-skills' }}
@@ -70,7 +66,7 @@ jobs:
   # ── Claude Code ────────────────────────────────────────────────────────────
   claude-code:
     name: claude-code
-    if: ${{ github.event_name == 'push' || inputs.tool == 'all' || inputs.tool == 'claude-code' }}
+    if: ${{ inputs.tool == 'all' || inputs.tool == 'claude-code' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -125,7 +121,7 @@ jobs:
   # ── Codex ──────────────────────────────────────────────────────────────────
   codex:
     name: codex
-    if: ${{ github.event_name == 'push' || inputs.tool == 'all' || inputs.tool == 'codex' }}
+    if: ${{ inputs.tool == 'all' || inputs.tool == 'codex' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -188,7 +184,7 @@ jobs:
   # ── GitHub Copilot CLI ───────────────────────────────────────────────────────
   copilot:
     name: copilot
-    if: ${{ github.event_name == 'push' || inputs.tool == 'all' || inputs.tool == 'copilot' }}
+    if: ${{ inputs.tool == 'all' || inputs.tool == 'copilot' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -264,7 +260,7 @@ jobs:
   # actual headless install may not complete here; the --help surface still will.
   agy:
     name: agy
-    if: ${{ github.event_name == 'push' || inputs.tool == 'all' || inputs.tool == 'agy' }}
+    if: ${{ inputs.tool == 'all' || inputs.tool == 'agy' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -329,7 +325,7 @@ jobs:
   # ── Cursor ───────────────────────────────────────────────────────────────────
   cursor:
     name: cursor
-    if: ${{ github.event_name == 'push' || inputs.tool == 'all' || inputs.tool == 'cursor' }}
+    if: ${{ inputs.tool == 'all' || inputs.tool == 'cursor' }}
     runs-on: ubuntu-latest
     steps:
       - name: Install Cursor CLI
