@@ -40,8 +40,8 @@ on:
         required: true
         default: "stackhawk/agent-skills-marketplace"
         type: string
-      gemini_source:
-        description: "Gemini installs direct from agent-skills (no catalog) — repo URL"
+      agy_source:
+        description: "Antigravity (agy) direct-install source — agent-skills repo URL"
         required: true
         default: "https://github.com/stackhawk/agent-skills"
         type: string
@@ -50,7 +50,7 @@ on:
         required: true
         default: "all"
         type: choice
-        options: [all, claude-code, codex, copilot, gemini, cursor]
+        options: [all, claude-code, codex, copilot, agy, cursor]
 
 permissions:
   contents: read
@@ -64,7 +64,7 @@ env:
   # Inputs -> env once (safe pattern); `|| '...'` supplies defaults on push.
   SOURCE_MODE: ${{ inputs.source_mode || 'local' }}
   MARKETPLACE_REPO: ${{ inputs.marketplace_repo || 'stackhawk/agent-skills-marketplace' }}
-  GEMINI_SOURCE: ${{ inputs.gemini_source || 'https://github.com/stackhawk/agent-skills' }}
+  AGY_SOURCE: ${{ inputs.agy_source || 'https://github.com/stackhawk/agent-skills' }}
 
 jobs:
   # ── Claude Code ────────────────────────────────────────────────────────────
@@ -253,52 +253,74 @@ jobs:
           echo "$out" | grep -q "${PLUGIN_2}" || { echo "MISSING: ${PLUGIN_2}"; exit 1; }
           echo "OK: both plugins installed (mode=$SOURCE_MODE src=$MP_SRC)"
 
-  # ── Gemini CLI ───────────────────────────────────────────────────────────────
-  gemini:
-    name: gemini
-    if: ${{ github.event_name == 'push' || inputs.tool == 'all' || inputs.tool == 'gemini' }}
+  # ── Antigravity (agy) ────────────────────────────────────────────────────────
+  # StackHawk's 5th tool is Google Antigravity (`agy`), the successor to the Gemini
+  # CLI — NOT the Gemini CLI itself (the raptor-ui card is labelled "Gemini CLI" but
+  # runs agy). This job is DISCOVERY-ONLY: it maps agy's plugin/marketplace command
+  # surface and tries both install paths, so we can decide (with the user) whether agy
+  # rides the marketplace (it uses the same .agents/ standard as Codex) or stays on
+  # direct `agy plugin install <url>`. NOTE: skill-evals documents that agy ignores
+  # API-key env and forces interactive Google OAuth in CI (antigravity-cli#78) — so an
+  # actual headless install may not complete here; the --help surface still will.
+  agy:
+    name: agy
+    if: ${{ github.event_name == 'push' || inputs.tool == 'all' || inputs.tool == 'agy' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
         with:
-          node-version: "20"
-      - name: Install Gemini CLI
-        run: npm install -g @google/gemini-cli
-      - name: Pre-trust workspace (avoid interactive trust prompt)
-        # gemini blocks `extensions install` on an interactive "trust this workspace?"
-        # prompt. Disable folder-trust in user settings so it proceeds non-interactively.
+          fetch-depth: 0
+      - name: Rewrite git SSH->HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+      - name: Install agy CLI
+        continue-on-error: true
         run: |
-          set -x
-          mkdir -p "$HOME/.gemini"
-          printf '%s\n' '{ "security": { "folderTrust": { "enabled": false } } }' > "$HOME/.gemini/settings.json"
-          cat "$HOME/.gemini/settings.json"
-      - name: Extensions surface (diagnostic)
+          # /cli/install.sh is the real bootstrapper (per skill-evals); installer drops
+          # `agy` into ~/.local/bin.
+          curl -fsSL https://antigravity.google/cli/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Command surface (diagnostic)
         continue-on-error: true
         run: |
           set -x
-          gemini --version || true
-          gemini extensions --help || true
-      - name: Install extension (direct from agent-skills, unpinned)
+          agy --version || true
+          agy --help || true
+          agy plugin --help || true
+          agy plugin marketplace --help 2>/dev/null || true
+          agy plugin add --help 2>/dev/null || true
+          agy plugin install --help 2>/dev/null || true
+      - name: Generate catalogs (for the marketplace path attempt)
         continue-on-error: true
-        # Gemini has no catalog model — installs straight from the repo URL. Product
-        # decision: unpinned (no --ref). </dev/null + timeout guard against any prompt.
+        run: |
+          set -euxo pipefail
+          TAG=$(git describe --tags --abbrev=0)
+          SHA=$(git rev-list -n1 "$TAG")
+          python3 scripts/generate-marketplace-catalogs.py --tag "$TAG" --sha "$SHA" --out-dir /tmp/mp
+      - name: Try marketplace path (agy reads .agents/plugins/ like codex?)
+        continue-on-error: true
+        env:
+          ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}
         run: |
           set -x
-          printf 'y\n' | timeout 240 gemini extensions install "$GEMINI_SOURCE" || \
-            timeout 240 gemini extensions install "$GEMINI_SOURCE" </dev/null
+          agy plugin marketplace add /tmp/mp 2>&1 || echo "[marketplace add unsupported/failed]"
+          echo y | agy plugin add "hawkscan@${MARKETPLACE_NAME}" 2>&1 || echo "[plugin add unsupported/failed]"
+      - name: Try direct path (current raptor-ui command)
+        continue-on-error: true
+        env:
+          ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}
+        run: |
+          set -x
+          echo y | agy plugin install "$AGY_SOURCE" 2>&1 || echo "[direct install failed — likely OAuth-gated in CI]"
       - name: List installed (diagnostic)
         continue-on-error: true
         run: |
           set -x
-          gemini extensions list || true
-          echo "--- ~/.gemini/extensions ---"; ls -laR "$HOME/.gemini/extensions" 2>/dev/null | head -60 || true
-      - name: Verify extension present
+          agy plugin list 2>&1 || true
+          agy plugin marketplace list 2>&1 || true
+      - name: Note
         run: |
-          set -euo pipefail
-          out="$(gemini extensions list 2>&1 || true)"
-          echo "$out"
-          echo "$out" | grep -iqE "stackhawk|hawkscan|agent-skills" || { echo "MISSING: stackhawk extension"; exit 1; }
-          echo "OK: extension installed from $GEMINI_SOURCE"
+          echo "agy is DISCOVERY-ONLY here. Read the surface above to decide direct vs"
+          echo "marketplace. A real install may be OAuth-gated in CI (antigravity-cli#78)."
 
   # ── Cursor ───────────────────────────────────────────────────────────────────
   cursor:
