@@ -6,7 +6,9 @@ adding or removing tools/models in the eval matrix flows through untouched.
 """
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 
 from evals.lib.models import CellReport
 
@@ -88,3 +90,34 @@ def endpoint_json(row: dict) -> dict:
     return {"schemaVersion": 1, "label": label,
             "message": f"{pct}% ({row['passed']}/{row['total']})",
             "color": color_for(row["rate"])}
+
+
+def _safe_segment(value: str) -> str:
+    """Reject path-escaping tool/model values from artifact-supplied cells
+    (a `..` or `a/b` segment would write outside the output tree)."""
+    if not value or Path(value).name != value:
+        raise SystemExit(f"unsafe path segment in badge output: {value!r}")
+    return value
+
+
+def write_outputs(cells: dict[tuple[str, str, str], CellReport], out: Path,
+                  tag: str, run_url: str) -> dict:
+    """Write <tool>/<model>.json endpoint badges plus matrix.json to `out`.
+
+    Refuses to write anything for an empty cell set - the publish workflow
+    must keep the badges branch on its last good state rather than blank it.
+    Does not clean ``out/``; stale files from removed combos are handled by
+    the publish workflow, which fully replaces the badges branch tree.
+    """
+    if not cells:
+        raise SystemExit("no parseable cell.json baselines found - refusing to publish")
+    rows = aggregate(cells)
+    out.mkdir(parents=True, exist_ok=True)
+    for row in rows:
+        tool_dir = out / _safe_segment(row["tool"])
+        tool_dir.mkdir(parents=True, exist_ok=True)
+        (tool_dir / f"{_safe_segment(row['model'])}.json").write_text(
+            json.dumps(endpoint_json(row), indent=2) + "\n")
+    matrix = {"schema": 1, "tag": tag, "run_url": run_url, "combos": rows}
+    (out / "matrix.json").write_text(json.dumps(matrix, indent=2) + "\n")
+    return matrix

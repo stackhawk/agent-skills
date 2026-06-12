@@ -1,5 +1,9 @@
+import json
+
+import pytest
+
 from evals.lib.models import CellReport, EvalResult, Verdict
-from evals.lib.badges import aggregate, cell_ran, color_for, display_model, endpoint_json
+from evals.lib.badges import aggregate, cell_ran, color_for, display_model, endpoint_json, write_outputs
 
 
 def _result(run_id: str, verdict: Verdict, note: str = "") -> EvalResult:
@@ -154,3 +158,39 @@ def test_endpoint_json_no_data_row():
         "message": "no data",
         "color": "lightgrey",
     }
+
+
+def test_write_outputs_creates_per_combo_jsons_and_matrix(tmp_path):
+    cells = _cells(
+        _cell("claude-code", "hawkscan", "claude-sonnet-4-6", [_result("a", Verdict.PASS)]),
+        _cell("agy", "hawkscan", "default", [_result("b", Verdict.FAIL, note="oauth")]),
+    )
+    matrix = write_outputs(cells, tmp_path, tag="v1.9.0",
+                           run_url="https://github.com/stackhawk/agent-skills/actions/runs/1")
+
+    badge = json.loads((tmp_path / "claude-code" / "claude-sonnet-4-6.json").read_text())
+    assert badge["message"] == "100% (1/1)"
+    assert badge["color"] == "brightgreen"
+
+    nodata = json.loads((tmp_path / "agy" / "default.json").read_text())
+    assert nodata["message"] == "no data"
+
+    on_disk = json.loads((tmp_path / "matrix.json").read_text())
+    assert on_disk == matrix
+    assert on_disk["schema"] == 1
+    assert on_disk["tag"] == "v1.9.0"
+    assert on_disk["run_url"].endswith("/runs/1")
+    assert [c["tool"] for c in on_disk["combos"]] == ["claude-code", "agy"]
+
+
+def test_write_outputs_raises_on_empty_cells(tmp_path):
+    with pytest.raises(SystemExit, match="refusing to publish"):
+        write_outputs({}, tmp_path, tag="v1.9.0", run_url="")
+
+
+def test_write_outputs_rejects_path_escaping_segments(tmp_path):
+    cells = _cells(
+        _cell("claude-code", "hawkscan", "../evil", [_result("a", Verdict.PASS)]),
+    )
+    with pytest.raises(SystemExit, match="unsafe path segment"):
+        write_outputs(cells, tmp_path, tag="v1", run_url="")
