@@ -267,6 +267,11 @@ jobs:
     if: ${{ github.event_name == 'push' || inputs.tool == 'all' || inputs.tool == 'agy' }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Rewrite git SSH->HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
       - name: Install agy CLI
         run: |
           # /cli/install.sh is the real bootstrapper (per skill-evals); installer drops
@@ -275,15 +280,41 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Command surface (diagnostic)
         continue-on-error: true
-        # Discovery confirmed: agy has NO `marketplace add` / `plugin add` verbs. It uses
-        # `plugin install <target>` (target may be a repo URL or `name@marketplace`) and
-        # `plugin link <mp> <target>`. Product call: agy installs direct + unpinned, so we
-        # verify the repo-URL form (the literal raptor-ui command).
+        # agy has NO `marketplace add`/`plugin add` verbs, but `plugin install <target>`
+        # docs say it "supports plugin@marketplace", and there is `plugin link <mp>
+        # <target>`. So agy MIGHT ride the marketplace — this job tests that for real.
         run: |
           set -x
           agy --version || true
           agy plugin --help || true
-      - name: Install (direct from agent-skills, unpinned)
+          agy plugin link --help 2>&1 || true
+          agy plugin install --help 2>&1 || true
+      - name: Generate catalog (agy reads .agents/plugins/ like codex)
+        run: |
+          set -euxo pipefail
+          TAG=$(git describe --tags --abbrev=0)
+          SHA=$(git rev-list -n1 "$TAG")
+          python3 scripts/generate-marketplace-catalogs.py --tag "$TAG" --sha "$SHA" --out-dir /tmp/mp
+          echo "--- generated .agents/plugins/marketplace.json ---"; cat /tmp/mp/.agents/plugins/marketplace.json
+      - name: MARKETPLACE PATH — try the real verbs (discovery)
+        continue-on-error: true
+        env:
+          ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}
+        # Probe the plausible marketplace invocations; `agy plugin list` after each shows
+        # the import `source` so we can tell which (if any) registered via marketplace.
+        run: |
+          set -x
+          echo "### A: link local marketplace dir as 'stackhawk', then install name@stackhawk"
+          agy plugin link stackhawk /tmp/mp 2>&1 || echo "[link failed]"
+          echo y | agy plugin install "hawkscan@${MARKETPLACE_NAME}" 2>&1 || echo "[install name@stackhawk failed]"
+          agy plugin list 2>&1 || true
+          echo "### B: install the catalog dir directly"
+          echo y | agy plugin install /tmp/mp 2>&1 || echo "[install dir failed]"
+          agy plugin list 2>&1 || true
+          echo "### C: install plugin@<catalog-path>"
+          echo y | agy plugin install "hawkscan@/tmp/mp" 2>&1 || echo "[install name@path failed]"
+          agy plugin list 2>&1 || true
+      - name: DIRECT PATH — known-good repo-URL install (hard proof)
         env:
           ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}
         run: echo y | agy plugin install "$AGY_SOURCE"
@@ -292,10 +323,8 @@ jobs:
           set -euo pipefail
           out="$(agy plugin list 2>&1 || true)"
           echo "$out"
-          # `agy plugin list` emits JSON with an "imports" array; the StackHawk import
-          # registers as name "stackhawk".
           echo "$out" | grep -iq '"stackhawk"' || { echo "MISSING: stackhawk import"; exit 1; }
-          echo "OK: agy imported stackhawk skills from $AGY_SOURCE"
+          echo "OK: agy imported stackhawk skills"
 
   # ── Cursor ───────────────────────────────────────────────────────────────────
   cursor:
