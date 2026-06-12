@@ -52,3 +52,39 @@ def aggregate(cells: dict[tuple[str, str, str], CellReport]) -> list[dict]:
                      "total": len(results), "rate": passed / len(results),
                      "status": "ok"})
     return rows
+
+
+def color_for(rate: float | None) -> str:
+    """Shields color from pass rate. Extends the digest's 3-tier convention
+    (all-pass / >=80 / below) with a green step at >=90 for README polish."""
+    if rate is None:
+        return "lightgrey"
+    if rate == 1.0:
+        return "brightgreen"
+    if rate >= 0.9:
+        return "green"
+    if rate >= 0.8:
+        return "yellow"
+    return "red"
+
+
+def display_model(model: str) -> str:
+    """Short display form: drop the redundant claude- prefix and any
+    trailing date stamp (matches reporting._short_model's -\\d{6,} rule).
+    Filenames keep the full model id."""
+    out = model.removeprefix("claude-")
+    out = re.sub(r"-\d{6,}$", "", out)
+    return out or model
+
+
+def endpoint_json(row: dict) -> dict:
+    """One shields.io endpoint-badge JSON (schemaVersion 1) for a combo row.
+    Percent is floored so anything short of all-pass never displays 100%."""
+    label = f"{row['tool']} · {display_model(row['model'])}"
+    if row["status"] == "no-data":
+        return {"schemaVersion": 1, "label": label,
+                "message": "no data", "color": "lightgrey"}
+    pct = int(row["rate"] * 100)
+    return {"schemaVersion": 1, "label": label,
+            "message": f"{pct}% ({row['passed']}/{row['total']})",
+            "color": color_for(row["rate"])}

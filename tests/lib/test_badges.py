@@ -1,5 +1,5 @@
 from evals.lib.models import CellReport, EvalResult, Verdict
-from evals.lib.badges import aggregate, cell_ran
+from evals.lib.badges import aggregate, cell_ran, color_for, display_model, endpoint_json
 
 
 def _result(run_id: str, verdict: Verdict, note: str = "") -> EvalResult:
@@ -106,3 +106,51 @@ def test_aggregate_orders_tools_canonically_then_models_alpha():
         ("cursor", "default"),
         ("zz-new-tool", "m"),
     ]
+
+
+def test_color_thresholds_at_boundaries():
+    assert color_for(1.0) == "brightgreen"
+    assert color_for(0.99) == "green"
+    assert color_for(0.90) == "green"
+    assert color_for(0.89) == "yellow"
+    assert color_for(0.80) == "yellow"
+    assert color_for(0.79) == "red"
+    assert color_for(None) == "lightgrey"
+
+
+def test_display_model_strips_claude_prefix_and_date_suffix():
+    assert display_model("claude-sonnet-4-6") == "sonnet-4-6"
+    assert display_model("claude-haiku-4-5-20251001") == "haiku-4-5"
+    assert display_model("gpt-5.5") == "gpt-5.5"
+    assert display_model("o3") == "o3"
+    assert display_model("default") == "default"
+    assert display_model("claude-haiku-4-5-202510") == "haiku-4-5"
+    assert display_model("claude-") == "claude-"
+
+
+def test_endpoint_json_ok_row():
+    row = {"tool": "claude-code", "model": "claude-sonnet-4-6",
+           "passed": 15, "total": 16, "rate": 15 / 16, "status": "ok"}
+    assert endpoint_json(row) == {
+        "schemaVersion": 1,
+        "label": "claude-code · sonnet-4-6",
+        "message": "93% (15/16)",
+        "color": "green",
+    }
+
+
+def test_endpoint_json_floors_percent_so_only_perfect_shows_100():
+    row = {"tool": "codex", "model": "gpt-5.5",
+           "passed": 199, "total": 200, "rate": 199 / 200, "status": "ok"}
+    assert endpoint_json(row)["message"] == "99% (199/200)"
+
+
+def test_endpoint_json_no_data_row():
+    row = {"tool": "agy", "model": "default", "passed": 0, "total": 0,
+           "rate": None, "status": "no-data"}
+    assert endpoint_json(row) == {
+        "schemaVersion": 1,
+        "label": "agy · default",
+        "message": "no data",
+        "color": "lightgrey",
+    }
