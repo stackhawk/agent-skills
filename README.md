@@ -9,7 +9,7 @@ Skill eval pass rates at the latest release, broken down by skill. Each badge is
 
 ### hawkscan
 
-> Configures HawkScan, runs a DAST scan against your running app, fixes the vulnerabilities it finds, and rescans to verify.
+> Configures HawkScan, runs StackHawk against your app, fixes the vulnerabilities it finds, and rescans to verify.
 
 [![hawkscan · claude-code · haiku-4-5](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fstackhawk%2Fagent-skills%2Fbadges%2Fhawkscan%2Fclaude-code%2Fclaude-haiku-4-5-20251001.json)](https://github.com/stackhawk/agent-skills/actions/workflows/capture-baseline.yml) [![hawkscan · claude-code · opus-4-7](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fstackhawk%2Fagent-skills%2Fbadges%2Fhawkscan%2Fclaude-code%2Fclaude-opus-4-7.json)](https://github.com/stackhawk/agent-skills/actions/workflows/capture-baseline.yml) [![hawkscan · claude-code · sonnet-4-6](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fstackhawk%2Fagent-skills%2Fbadges%2Fhawkscan%2Fclaude-code%2Fclaude-sonnet-4-6.json)](https://github.com/stackhawk/agent-skills/actions/workflows/capture-baseline.yml)  
 [![hawkscan · codex · gpt-5.5](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fstackhawk%2Fagent-skills%2Fbadges%2Fhawkscan%2Fcodex%2Fgpt-5.5.json)](https://github.com/stackhawk/agent-skills/actions/workflows/capture-baseline.yml) [![hawkscan · codex · o3](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fstackhawk%2Fagent-skills%2Fbadges%2Fhawkscan%2Fcodex%2Fo3.json)](https://github.com/stackhawk/agent-skills/actions/workflows/capture-baseline.yml)  
