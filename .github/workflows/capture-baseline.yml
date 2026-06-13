@@ -369,3 +369,32 @@ jobs:
           path: evals/harnesses/cursor/results/${{ matrix.skill }}/cell.json
           retention-days: 90
           if-no-files-found: error
+
+  # ── Run summary table (same rollup + per-test pivot as skill-evals.yml) ──────
+  # The README badges link to this workflow's run page, so it carries the same
+  # digest table the live eval job renders. Best-effort: if: always() so the
+  # table appears even when some capture jobs failed.
+  report-summary:
+    name: Baseline run summary
+    needs: [meta, capture-claude-code, capture-codex, capture-agy, capture-cursor]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      # download-artifact@v4 does NOT fail when the pattern matches zero artifacts
+      # (it has no error-on-no-artifacts input) — so a run where every capture job
+      # failed still proceeds to render an (empty) digest. Best-effort by default.
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: baseline-*
+          merge-multiple: false
+          path: results/
+      - name: Build digest
+        env:
+          BASELINE_TAG: ${{ inputs.tag }}
+        run: |
+          uv run report --results-dir results --out digest.md --title "Eval Baseline: ${BASELINE_TAG}"
+      - name: Write digest to run summary
+        if: always()
+        run: cat digest.md >> "$GITHUB_STEP_SUMMARY"

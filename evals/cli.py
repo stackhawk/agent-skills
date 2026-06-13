@@ -149,6 +149,7 @@ def report() -> None:
     ap.add_argument("--baseline-dir", type=Path, default=None)
     ap.add_argument("--lift-dir", type=Path, default=None)
     ap.add_argument("--out", type=Path, default=Path("digest.md"))
+    ap.add_argument("--title", default="Skill Eval Results")
     args = ap.parse_args()
     cells = []
     for cj in sorted(args.results_dir.rglob("cell.json")):
@@ -168,7 +169,7 @@ def report() -> None:
             cell = CellReport.model_validate_json(sib.read_text())
             lift[(cell.platform, cell.skill, cell.model)] = json.loads(lj.read_text())
         lift = lift or None
-    md = render_digest(cells, baselines=baselines, lift=lift)
+    md = render_digest(cells, baselines=baselines, lift=lift, title=args.title)
     args.out.write_text(md)
     print(f"wrote {args.out} ({len(cells)} cells)")
 
