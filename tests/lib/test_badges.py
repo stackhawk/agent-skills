@@ -275,6 +275,16 @@ def test_render_block_alt_text_includes_skill():
     assert "[![api · codex · gpt-5.5]" in block
 
 
+def test_render_block_rejects_path_escaping_segment_from_tampered_matrix():
+    matrix = {
+        "schema": 2, "tag": "v0", "run_url": "",
+        "combos": [{"skill": "../evil", "tool": "claude-code", "model": "m",
+                    "passed": 1, "total": 1, "rate": 1.0, "status": "ok"}],
+    }
+    with pytest.raises(SystemExit, match="unsafe path segment"):
+        render_block(matrix)
+
+
 def test_replace_block_swaps_marker_fenced_region():
     readme = f"# Title\n\n{BLOCK_START}\nold stuff\n{BLOCK_END}\n\nBody text.\n"
     out = replace_block(readme, render_block(_MATRIX))

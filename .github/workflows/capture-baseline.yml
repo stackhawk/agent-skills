@@ -38,6 +38,7 @@ jobs:
         env:
           BASELINE_TAG: ${{ inputs.tag }}
         run: |
+          set -euo pipefail
           mkdir -p meta
           jq -n --arg tag "$BASELINE_TAG" '{tag: $tag}' > meta/meta.json
           cat meta/meta.json
@@ -47,6 +48,7 @@ jobs:
           name: baseline-meta
           path: meta/meta.json
           retention-days: 90
+          if-no-files-found: error
 
   # ── Claude Code — 3 models ─────────────────────────────────────────────────
   capture-claude-code:
