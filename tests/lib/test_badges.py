@@ -4,8 +4,8 @@ import pytest
 
 from evals.lib.models import CellReport, EvalResult, Verdict
 from evals.lib.badges import (
-    BLOCK_END, BLOCK_START, aggregate, cell_ran, color_for, display_model,
-    endpoint_json, render_block, replace_block, write_outputs,
+    BLOCK_END, BLOCK_START, SKILL_DESCRIPTIONS, aggregate, cell_ran, color_for,
+    display_model, endpoint_json, render_block, replace_block, write_outputs,
 )
 
 
@@ -208,6 +208,39 @@ _MATRIX = {
          "passed": 8, "total": 10, "rate": 0.8, "status": "ok"},
     ],
 }
+
+
+def test_render_block_has_eval_results_heading_and_intro():
+    block = render_block(_MATRIX)
+    assert "## Eval Results" in block
+    # intro mentions the per-skill breakdown
+    assert "broken down by skill" in block
+
+
+def test_render_block_skill_section_has_blockquote_description():
+    block = render_block(_MATRIX)
+    lines = block.splitlines()
+    # the description blockquote sits between the skill header and its badges
+    hawk_idx = lines.index("### hawkscan")
+    quote_line = f"> {SKILL_DESCRIPTIONS['hawkscan']}"
+    assert quote_line in lines[hawk_idx:]
+    # and it appears before the first badge line of that section
+    first_badge = next(i for i, line in enumerate(lines)
+                       if i > hawk_idx and "img.shields.io" in line)
+    assert lines.index(quote_line) < first_badge
+
+
+def test_render_block_unknown_skill_renders_without_blockquote():
+    matrix = {
+        "schema": 2, "tag": "v0", "run_url": "",
+        "combos": [{"skill": "mystery-skill", "tool": "claude-code", "model": "m",
+                    "passed": 1, "total": 1, "rate": 1.0, "status": "ok"}],
+    }
+    block = render_block(matrix)
+    assert "### mystery-skill" in block
+    # no blockquote line for a skill with no description, and no crash
+    section = block.split("### mystery-skill", 1)[1]
+    assert not section.lstrip().startswith(">")
 
 
 def test_render_block_emits_one_section_per_skill():
