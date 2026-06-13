@@ -1,0 +1,150 @@
+name: Publish Eval Badges
+# Consumes a Capture Eval Baseline run's cell.json artifacts and publishes
+# shields.io endpoint badge JSONs + matrix.json to the orphan `badges` branch
+# (full tree replacement each publish, history preserved). If the badge SET
+# changed (tool/model added or removed), opens an auto-PR updating the
+# marker-fenced block in README.md. Badge VALUES never need README changes -
+# shields reads them live from the badges branch.
+on:
+  workflow_run:
+    workflows: ["Capture Eval Baseline"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Capture Eval Baseline run ID to publish from (backfill/repair; publishing an older run rolls badges back to that tag)"
+        required: true
+        type: string
+
+permissions:
+  contents: write       # push badges branch + README update branch
+  pull-requests: write  # README auto-PR
+  actions: read         # download artifacts from the baseline run
+
+concurrency:
+  group: publish-eval-badges
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Partial baseline runs (cancelled, or a harness's setup failed before any
+    # cell.json was written) must not shrink the published badge set - absent
+    # combos would be deleted by the full-tree replacement. workflow_dispatch
+    # stays available as the deliberate "publish this run anyway" override.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # tags needed for the meta-artifact fallback below
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Resolve source run
+        id: run
+        env:
+          # workflow_run id is numeric; the dispatch input is operator-typed -
+          # env-indirection keeps both out of shell text-substitution.
+          RAW_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$RAW_RUN_ID" =~ ^[0-9]+$ ]] || { echo "run_id must be numeric, got: $RAW_RUN_ID"; exit 1; }
+          echo "id=${RAW_RUN_ID}" >> "$GITHUB_OUTPUT"
+          echo "url=https://github.com/${{ github.repository }}/actions/runs/${RAW_RUN_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Download baseline artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ steps.run.outputs.id }}
+        run: |
+          set -euo pipefail
+          mkdir -p baseline
+          # Fails (loudly, on purpose) if the run produced no baseline-* artifacts.
+          gh run download "$RUN_ID" -p 'baseline-*' -D baseline
+          find baseline -name cell.json | sort
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          set -euo pipefail
+          if [ -f baseline/baseline-meta/meta.json ]; then
+            TAG=$(jq -r '.tag' baseline/baseline-meta/meta.json)
+          else
+            # Pre-meta baseline runs (manual backfill): recover the tag from the
+            # commit recorded in any cell.json.
+            COMMIT=$(jq -r '.commit' "$(find baseline -name cell.json | head -1)")
+            TAG=$(git tag --points-at "$COMMIT" | head -1)
+          fi
+          [ -n "$TAG" ] && [ "$TAG" != "null" ] || { echo "could not resolve baselined tag"; exit 1; }
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Publishing badges for ${TAG}"
+
+      - name: Generate badge JSONs
+        env:
+          # tag comes from artifact content - env-indirect it out of shell parsing
+          TAG: ${{ steps.tag.outputs.tag }}
+          RUN_URL: ${{ steps.run.outputs.url }}
+        run: |
+          uv run badges --baseline-dir baseline --out badges-out \
+            --tag "$TAG" --run-url "$RUN_URL"
+
+      - name: Push badges branch
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          RUN_ID: ${{ steps.run.outputs.id }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin badges >/dev/null; then
+            git fetch origin badges:badges
+            git worktree add /tmp/badges-wt badges
+          else
+            git worktree add --detach /tmp/badges-wt
+            git -C /tmp/badges-wt checkout --orphan badges
+          fi
+          # Full tree replacement: removed tools/models disappear automatically.
+          find /tmp/badges-wt -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          cp -R badges-out/. /tmp/badges-wt/
+          git -C /tmp/badges-wt add -A
+          if git -C /tmp/badges-wt diff --cached --quiet; then
+            echo "badge contents unchanged - nothing to push"
+          else
+            git -C /tmp/badges-wt commit -m "badges: ${TAG} (run ${RUN_ID})"
+            git -C /tmp/badges-wt push origin badges
+          fi
+
+      - name: Update README badge block (auto-PR on set drift)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          uv run badges --render-readme README.md --matrix badges-out/matrix.json
+          if git diff --quiet README.md; then
+            echo "badge set unchanged - no README PR needed"
+            exit 0
+          fi
+          BRANCH="eval-badges/readme"
+          git checkout -B "$BRANCH"
+          git add README.md
+          git commit -m "docs: update eval badge set for ${TAG}"
+          git push -f origin "$BRANCH"
+          if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            echo "PR already exists for $BRANCH - updated via force-push"
+          else
+            gh pr create --base main --head "$BRANCH" \
+              --title "docs: update eval badge set (${TAG})" \
+              --body "$(cat <<'EOF'
+          Auto-generated by publish-eval-badges.yml: the set of tool x model
+          combos in the eval baseline changed, so the README badge block needs
+          updating. Badge values/colors update live via the badges branch and
+          never require README changes - only set membership does.
+
+          Note: PRs opened with GITHUB_TOKEN don't trigger CI; close and reopen
+          this PR to run checks if they're required.
+          EOF
+          )"
+          fi
+        # README.md is not version-bearing, so this PR intentionally skips the
+        # bump-version.sh convention; version-consistency CI is unaffected.
