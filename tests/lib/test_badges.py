@@ -48,7 +48,7 @@ def test_cell_ran_false_when_no_results():
     assert cell_ran(_cell("agy", "hawkscan", "default", [])) is False
 
 
-def test_aggregate_pass_rate_across_skills():
+def test_aggregate_one_row_per_skill_tool_model():
     cells = _cells(
         _cell("claude-code", "hawkscan", "m1",
               [_result("a", Verdict.PASS), _result("b", Verdict.FAIL)]),
@@ -56,8 +56,12 @@ def test_aggregate_pass_rate_across_skills():
               [_result("c", Verdict.PASS), _result("d", Verdict.PASS_SLOW)]),
     )
     rows = aggregate(cells)
-    assert rows == [{"tool": "claude-code", "model": "m1", "passed": 3, "total": 4,
-                     "rate": 0.75, "status": "ok"}]
+    assert rows == [
+        {"skill": "hawkscan", "tool": "claude-code", "model": "m1",
+         "passed": 1, "total": 2, "rate": 0.5, "status": "ok"},
+        {"skill": "api", "tool": "claude-code", "model": "m1",
+         "passed": 2, "total": 2, "rate": 1.0, "status": "ok"},
+    ]
 
 
 def test_aggregate_pass_slow_counts_as_pass():
@@ -65,53 +69,43 @@ def test_aggregate_pass_slow_counts_as_pass():
     assert aggregate(cells)[0]["passed"] == 1
 
 
-def test_aggregate_all_cells_dead_is_no_data():
-    cells = _cells(
-        _cell("agy", "hawkscan", "default", [_result("a", Verdict.FAIL, note="oauth")]),
-        _cell("agy", "api", "default", []),
-    )
-    rows = aggregate(cells)
-    assert rows == [{"tool": "agy", "model": "default", "passed": 0, "total": 0,
-                     "rate": None, "status": "no-data"}]
+def test_aggregate_dead_cell_is_no_data():
+    cells = _cells(_cell("agy", "hawkscan", "default",
+                         [_result("a", Verdict.FAIL, note="oauth")]))
+    assert aggregate(cells) == [
+        {"skill": "hawkscan", "tool": "agy", "model": "default",
+         "passed": 0, "total": 0, "rate": None, "status": "no-data"}]
 
 
-def test_aggregate_dead_cells_excluded_from_live_combo_totals():
-    cells = _cells(
-        _cell("claude-code", "hawkscan", "m1", [_result("a", Verdict.PASS)]),
-        _cell("claude-code", "api", "m1", [_result("b", Verdict.FAIL, note="launch failed")]),
-    )
-    rows = aggregate(cells)
-    assert rows[0]["passed"] == 1
-    assert rows[0]["total"] == 1
-
-
-def test_aggregate_noted_runs_within_live_cell_excluded_from_rate():
+def test_aggregate_noted_runs_excluded_from_rate():
     cells = _cells(
         _cell("claude-code", "hawkscan", "m1", [
             _result("a", Verdict.PASS),
             _result("b", Verdict.FAIL, note="harness launch flake"),
         ]),
     )
-    rows = aggregate(cells)
-    assert rows == [{"tool": "claude-code", "model": "m1", "passed": 1, "total": 1,
-                     "rate": 1.0, "status": "ok"}]
+    assert aggregate(cells) == [
+        {"skill": "hawkscan", "tool": "claude-code", "model": "m1",
+         "passed": 1, "total": 1, "rate": 1.0, "status": "ok"}]
 
 
-def test_aggregate_orders_tools_canonically_then_models_alpha():
+def test_aggregate_orders_by_skill_then_tool_then_model():
     cells = _cells(
-        _cell("cursor", "hawkscan", "default", [_result("a", Verdict.PASS)]),
-        _cell("zz-new-tool", "hawkscan", "m", [_result("b", Verdict.PASS)]),
+        _cell("cursor", "api", "default", [_result("a", Verdict.PASS)]),
+        _cell("claude-code", "hawkscan-ci", "z", [_result("b", Verdict.PASS)]),
         _cell("claude-code", "hawkscan", "claude-sonnet-4-6", [_result("c", Verdict.PASS)]),
         _cell("claude-code", "hawkscan", "claude-haiku-4-5-20251001", [_result("d", Verdict.PASS)]),
         _cell("codex", "hawkscan", "o3", [_result("e", Verdict.PASS)]),
+        _cell("zz-tool", "hawkscan", "m", [_result("f", Verdict.PASS)]),
     )
-    combos = [(r["tool"], r["model"]) for r in aggregate(cells)]
+    combos = [(r["skill"], r["tool"], r["model"]) for r in aggregate(cells)]
     assert combos == [
-        ("claude-code", "claude-haiku-4-5-20251001"),
-        ("claude-code", "claude-sonnet-4-6"),
-        ("codex", "o3"),
-        ("cursor", "default"),
-        ("zz-new-tool", "m"),
+        ("hawkscan", "claude-code", "claude-haiku-4-5-20251001"),
+        ("hawkscan", "claude-code", "claude-sonnet-4-6"),
+        ("hawkscan", "codex", "o3"),
+        ("hawkscan", "zz-tool", "m"),
+        ("api", "cursor", "default"),
+        ("hawkscan-ci", "claude-code", "z"),
     ]
 
 
@@ -163,27 +157,28 @@ def test_endpoint_json_no_data_row():
     }
 
 
-def test_write_outputs_creates_per_combo_jsons_and_matrix(tmp_path):
+def test_write_outputs_creates_per_skill_tool_model_jsons_and_matrix(tmp_path):
     cells = _cells(
         _cell("claude-code", "hawkscan", "claude-sonnet-4-6", [_result("a", Verdict.PASS)]),
-        _cell("agy", "hawkscan", "default", [_result("b", Verdict.FAIL, note="oauth")]),
+        _cell("agy", "api", "default", [_result("b", Verdict.FAIL, note="oauth")]),
     )
     matrix = write_outputs(cells, tmp_path, tag="v1.9.0",
                            run_url="https://github.com/stackhawk/agent-skills/actions/runs/1")
 
-    badge = json.loads((tmp_path / "claude-code" / "claude-sonnet-4-6.json").read_text())
+    badge = json.loads((tmp_path / "hawkscan" / "claude-code" / "claude-sonnet-4-6.json").read_text())
     assert badge["message"] == "100% (1/1)"
     assert badge["color"] == "brightgreen"
 
-    nodata = json.loads((tmp_path / "agy" / "default.json").read_text())
+    nodata = json.loads((tmp_path / "api" / "agy" / "default.json").read_text())
     assert nodata["message"] == "no data"
 
     on_disk = json.loads((tmp_path / "matrix.json").read_text())
     assert on_disk == matrix
-    assert on_disk["schema"] == 1
+    assert on_disk["schema"] == 2
     assert on_disk["tag"] == "v1.9.0"
     assert on_disk["run_url"].endswith("/runs/1")
-    assert [c["tool"] for c in on_disk["combos"]] == ["claude-code", "agy"]
+    assert [(c["skill"], c["tool"]) for c in on_disk["combos"]] == [
+        ("hawkscan", "claude-code"), ("api", "agy")]
 
 
 def test_write_outputs_raises_on_empty_cells(tmp_path):
@@ -193,41 +188,58 @@ def test_write_outputs_raises_on_empty_cells(tmp_path):
 
 def test_write_outputs_rejects_path_escaping_segments(tmp_path):
     cells = _cells(
-        _cell("claude-code", "hawkscan", "../evil", [_result("a", Verdict.PASS)]),
+        _cell("claude-code", "../evil", "m", [_result("a", Verdict.PASS)]),
     )
     with pytest.raises(SystemExit, match="unsafe path segment"):
         write_outputs(cells, tmp_path, tag="v1", run_url="")
 
 
 _MATRIX = {
-    "schema": 1, "tag": "v1.9.0",
+    "schema": 2, "tag": "v1.9.0",
     "run_url": "https://github.com/stackhawk/agent-skills/actions/runs/1",
     "combos": [
-        {"tool": "claude-code", "model": "claude-sonnet-4-6",
+        {"skill": "hawkscan", "tool": "claude-code", "model": "claude-sonnet-4-6",
          "passed": 15, "total": 16, "rate": 15 / 16, "status": "ok"},
-        {"tool": "claude-code", "model": "claude-opus-4-7",
+        {"skill": "hawkscan", "tool": "claude-code", "model": "claude-opus-4-7",
          "passed": 16, "total": 16, "rate": 1.0, "status": "ok"},
-        {"tool": "agy", "model": "default",
+        {"skill": "hawkscan", "tool": "agy", "model": "default",
          "passed": 0, "total": 0, "rate": None, "status": "no-data"},
+        {"skill": "api", "tool": "codex", "model": "gpt-5.5",
+         "passed": 8, "total": 10, "rate": 0.8, "status": "ok"},
     ],
 }
 
 
-def test_render_block_groups_one_line_per_tool():
+def test_render_block_emits_one_section_per_skill():
     block = render_block(_MATRIX)
     lines = block.splitlines()
     assert lines[0] == BLOCK_START
     assert lines[-1] == BLOCK_END
-    badge_lines = [line for line in lines if "img.shields.io" in line]
-    assert len(badge_lines) == 2  # claude-code line, agy line
-    assert badge_lines[0].count("img.shields.io") == 2  # both claude-code models
+    assert block.count("### hawkscan") == 1
+    assert block.count("### api") == 1
 
 
-def test_render_block_urlencodes_raw_url_and_links_to_workflow():
+def test_render_block_section_has_per_tool_lines():
+    block = render_block(_MATRIX)
+    lines = block.splitlines()
+    hawk_idx = lines.index("### hawkscan")
+    api_idx = lines.index("### api")
+    hawk_badge_lines = [line for line in lines[hawk_idx:api_idx] if "img.shields.io" in line]
+    assert len(hawk_badge_lines) == 2          # claude-code line, agy line
+    assert hawk_badge_lines[0].count("img.shields.io") == 2  # two claude-code models
+
+
+def test_render_block_urlencodes_skill_scoped_raw_url():
     block = render_block(_MATRIX)
     assert ("img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com"
-            "%2Fstackhawk%2Fagent-skills%2Fbadges%2Fclaude-code%2Fclaude-sonnet-4-6.json") in block
+            "%2Fstackhawk%2Fagent-skills%2Fbadges%2Fhawkscan%2Fclaude-code"
+            "%2Fclaude-sonnet-4-6.json") in block
     assert "https://github.com/stackhawk/agent-skills/actions/workflows/capture-baseline.yml" in block
+
+
+def test_render_block_alt_text_includes_skill():
+    block = render_block(_MATRIX)
+    assert "[![api · codex · gpt-5.5]" in block
 
 
 def test_replace_block_swaps_marker_fenced_region():
