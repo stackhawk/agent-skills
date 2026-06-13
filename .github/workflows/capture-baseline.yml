@@ -27,6 +27,27 @@ permissions:
 
 jobs:
 
+  # ── Run metadata for the publisher ─────────────────────────────────────────
+  # workflow_run events don't expose this run's dispatch inputs, so the
+  # publish-eval-badges workflow reads the tag from this artifact instead.
+  meta:
+    name: baseline metadata
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write baseline metadata
+        env:
+          BASELINE_TAG: ${{ inputs.tag }}
+        run: |
+          mkdir -p meta
+          printf '{"tag":"%s"}\n' "$BASELINE_TAG" > meta/meta.json
+          cat meta/meta.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: baseline-meta
+          path: meta/meta.json
+          retention-days: 90
+
   # ── Claude Code — 3 models ─────────────────────────────────────────────────
   capture-claude-code:
     name: baseline / claude-code / ${{ matrix.skill }} / ${{ matrix.model }}
