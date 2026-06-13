@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "tag": "v1.13.1",
+  "run_url": "https://github.com/stackhawk/agent-skills/actions/runs/27438011784",
+  "combos": [
+    {
+      "tool": "claude-code",
+      "model": "claude-haiku-4-5-20251001",
+      "passed": 63,
+      "total": 74,
+      "rate": 0.8513513513513513,
+      "status": "ok"
+    },
+    {
+      "tool": "claude-code",
+      "model": "claude-opus-4-7",
+      "passed": 39,
+      "total": 42,
+      "rate": 0.9285714285714286,
+      "status": "ok"
+    },
+    {
+      "tool": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "passed": 66,
+      "total": 73,
+      "rate": 0.9041095890410958,
+      "status": "ok"
+    },
+    {
+      "tool": "codex",
+      "model": "gpt-5.5",
+      "passed": 73,
+      "total": 74,
+      "rate": 0.9864864864864865,
+      "status": "ok"
+    },
+    {
+      "tool": "codex",
+      "model": "o3",
+      "passed": 63,
+      "total": 74,
+      "rate": 0.8513513513513513,
+      "status": "ok"
+    },
+    {
+      "tool": "agy",
+      "model": "default",
+      "passed": 0,
+      "total": 0,
+      "rate": null,
+      "status": "no-data"
+    },
+    {
+      "tool": "cursor",
+      "model": "default",
+      "passed": 65,
+      "total": 74,
+      "rate": 0.8783783783783784,
+      "status": "ok"
+    }
+  ]
+}
