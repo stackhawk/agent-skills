@@ -138,8 +138,8 @@ EVAL_INTRO = ("Skill eval pass rates at the latest release, broken down by skill
 # One-line blurb per skill, shown as a blockquote under each section header.
 # Sourced from each plugin's SKILL.md. Skills absent here render with no blurb.
 SKILL_DESCRIPTIONS = {
-    "hawkscan": "Configures HawkScan, runs a DAST scan against your running app, "
-                "fixes the vulnerabilities it finds, and rescans to verify.",
+    "hawkscan": "Configures HawkScan, runs StackHawk against your app, fixes the "
+                "vulnerabilities it finds, and rescans to verify.",
     "api": "Queries the StackHawk platform API for findings, scan history, and "
            "security posture across your apps.",
     "stackhawk-data-seed": "Sets up checked-in seed data so authenticated scans "
