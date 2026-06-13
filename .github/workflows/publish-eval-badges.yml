@@ -28,6 +28,7 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # Partial baseline runs (cancelled, or a harness's setup failed before any
     # cell.json was written) must not shrink the published badge set - absent
     # combos would be deleted by the full-tree replacement. workflow_dispatch
