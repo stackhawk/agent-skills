@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 1.13.2
+version: 1.13.3
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Use when the user
