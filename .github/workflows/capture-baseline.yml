@@ -27,6 +27,29 @@ permissions:
 
 jobs:
 
+  # ── Run metadata for the publisher ─────────────────────────────────────────
+  # workflow_run events don't expose this run's dispatch inputs, so the
+  # publish-eval-badges workflow reads the tag from this artifact instead.
+  meta:
+    name: baseline metadata
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write baseline metadata
+        env:
+          BASELINE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p meta
+          jq -n --arg tag "$BASELINE_TAG" '{tag: $tag}' > meta/meta.json
+          cat meta/meta.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: baseline-meta
+          path: meta/meta.json
+          retention-days: 90
+          if-no-files-found: error
+
   # ── Claude Code — 3 models ─────────────────────────────────────────────────
   capture-claude-code:
     name: baseline / claude-code / ${{ matrix.skill }} / ${{ matrix.model }}
@@ -101,6 +124,7 @@ jobs:
           name: baseline-claude-code-${{ matrix.skill }}-${{ matrix.model }}
           path: evals/harnesses/claude-code/results/${{ matrix.skill }}/cell.json
           retention-days: 90
+          if-no-files-found: error
 
   # ── Codex — 2 models ──────────────────────────────────────────────────────
   capture-codex:
@@ -186,6 +210,7 @@ jobs:
           name: baseline-codex-${{ matrix.skill }}-${{ matrix.model }}
           path: evals/harnesses/codex/results/${{ matrix.skill }}/cell.json
           retention-days: 90
+          if-no-files-found: error
 
   # ── Antigravity (agy) — default model ─────────────────────────────────────
   capture-agy:
@@ -271,6 +296,7 @@ jobs:
           name: baseline-agy-${{ matrix.skill }}-${{ matrix.model }}
           path: evals/harnesses/agy/results/${{ matrix.skill }}/cell.json
           retention-days: 90
+          if-no-files-found: error
 
   # ── Cursor — default model ─────────────────────────────────────────────────
   capture-cursor:
@@ -344,3 +370,33 @@ jobs:
           name: baseline-cursor-${{ matrix.skill }}-${{ matrix.model }}
           path: evals/harnesses/cursor/results/${{ matrix.skill }}/cell.json
           retention-days: 90
+          if-no-files-found: error
+
+  # ── Run summary table (same rollup + per-test pivot as skill-evals.yml) ──────
+  # The README badges link to this workflow's run page, so it carries the same
+  # digest table the live eval job renders. Best-effort: if: always() so the
+  # table appears even when some capture jobs failed.
+  report-summary:
+    name: Baseline run summary
+    needs: [meta, capture-claude-code, capture-codex, capture-agy, capture-cursor]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      # download-artifact@v4 does NOT fail when the pattern matches zero artifacts
+      # (it has no error-on-no-artifacts input) — so a run where every capture job
+      # failed still proceeds to render an (empty) digest. Best-effort by default.
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: baseline-*
+          merge-multiple: false
+          path: results/
+      - name: Build digest
+        env:
+          BASELINE_TAG: ${{ inputs.tag }}
+        run: |
+          uv run report --results-dir results --out digest.md --title "Eval Baseline: ${BASELINE_TAG}"
+      - name: Write digest to run summary
+        if: always()
+        run: cat digest.md >> "$GITHUB_STEP_SUMMARY"

@@ -149,6 +149,7 @@ def report() -> None:
     ap.add_argument("--baseline-dir", type=Path, default=None)
     ap.add_argument("--lift-dir", type=Path, default=None)
     ap.add_argument("--out", type=Path, default=Path("digest.md"))
+    ap.add_argument("--title", default="Skill Eval Results")
     args = ap.parse_args()
     cells = []
     for cj in sorted(args.results_dir.rglob("cell.json")):
@@ -168,7 +169,7 @@ def report() -> None:
             cell = CellReport.model_validate_json(sib.read_text())
             lift[(cell.platform, cell.skill, cell.model)] = json.loads(lj.read_text())
         lift = lift or None
-    md = render_digest(cells, baselines=baselines, lift=lift)
+    md = render_digest(cells, baselines=baselines, lift=lift, title=args.title)
     args.out.write_text(md)
     print(f"wrote {args.out} ({len(cells)} cells)")
 
@@ -182,3 +183,49 @@ def validate() -> None:
         cfg = load_skill(skill)   # raises on any validation error
         console.print(f"[green]✓[/] {skill}: {len(cfg.prompts)} prompts, "
                       f"{len(cfg.checks)} checks valid")
+
+
+def badges() -> None:
+    """Generate shields endpoint badge JSONs from baseline cell.json files,
+    and/or rewrite the README badge block from a matrix.json."""
+    import argparse
+    import json as _json
+    from pathlib import Path
+    from evals.lib.badges import render_block, replace_block, write_outputs
+
+    ap = argparse.ArgumentParser(prog="badges")
+    ap.add_argument("--baseline-dir", type=Path,
+                    help="dir tree containing baseline cell.json files")
+    ap.add_argument("--out", type=Path,
+                    help="output dir for endpoint JSONs + matrix.json")
+    ap.add_argument("--tag", default="", help="release tag being baselined")
+    ap.add_argument("--run-url", default="", help="capture-baseline run URL")
+    ap.add_argument("--render-readme", type=Path,
+                    help="README path: rewrite its badge block from --matrix")
+    ap.add_argument("--matrix", type=Path,
+                    help="path to matrix.json (defaults to <out>/matrix.json when --out is also passed)")
+    args = ap.parse_args()
+
+    if not args.baseline_dir and not args.render_readme:
+        ap.error("nothing to do: pass --baseline-dir and/or --render-readme")
+
+    if args.baseline_dir:
+        if not args.out:
+            ap.error("--out is required with --baseline-dir")
+        from evals.lib.baseline import load_baseline_dir
+        cells = load_baseline_dir(args.baseline_dir)
+        if not cells:
+            raise SystemExit(f"no parseable cell.json files found under {args.baseline_dir}")
+        matrix = write_outputs(cells, args.out, tag=args.tag, run_url=args.run_url)
+        print(f"wrote {len(matrix['combos'])} badge(s) + matrix.json to {args.out}")
+
+    if args.render_readme:
+        matrix_path = args.matrix or (args.out / "matrix.json" if args.out else None)
+        if not matrix_path or not matrix_path.exists():
+            ap.error("--render-readme requires --matrix or --out (so matrix.json can be resolved)")
+        matrix = _json.loads(matrix_path.read_text())
+        if "combos" not in matrix:
+            raise SystemExit(f"matrix.json at {matrix_path} is missing 'combos' key")
+        readme = args.render_readme.read_text()
+        args.render_readme.write_text(replace_block(readme, render_block(matrix)))
+        print(f"updated badge block in {args.render_readme}")

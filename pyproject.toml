@@ -18,6 +18,7 @@ compare = "evals.cli:compare"
 regrade = "evals.cli:regrade"
 validate = "evals.cli:validate"
 report = "evals.cli:report"
+badges = "evals.cli:badges"
 
 [build-system]
 requires = ["hatchling"]

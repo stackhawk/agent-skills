@@ -166,14 +166,14 @@ def _rollup_cell(cr) -> str:
     return f"{emoji} {passed}/{total}"
 
 
-def render_digest(cells, baselines=None, lift=None) -> str:
+def render_digest(cells, baselines=None, lift=None, title="Skill Eval Results") -> str:
     """One aggregated pivot table for the whole matrix.
 
     Rows are tests (skill/id); columns are platform-model combos; each cell is a
     verdict emoji followed by a short reason on failures. Replaces the previous
     per-cell tables so the Actions run summary holds a single table.
     """
-    out = ["<!-- skill-eval-comment -->", "## Skill Eval Results\n"]
+    out = ["<!-- skill-eval-comment -->", f"## {title}\n"]
     if not cells:
         out.append("_No results._\n")
         return "\n".join(out) + "\n"
