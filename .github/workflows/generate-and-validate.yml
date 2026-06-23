@@ -161,7 +161,10 @@ jobs:
                   print(f"ERROR [{path}]: description uses first-person ('I can/will/am')")
                   errors += 1
           body_lines = body.count('\n')
-          if body_lines > 500:
+          if body_lines > 600:
+              print(f"ERROR [{path}]: body is {body_lines} lines (hard limit: <=600; must split content into reference files)")
+              errors += 1
+          elif body_lines > 500:
               print(f"WARN  [{path}]: body is {body_lines} lines (best practice: <=500; split long content into reference files)")
               warnings += 1
           if re.search(r'[A-Za-z0-9_\-]\\[A-Za-z0-9_\-]{2,}', body):

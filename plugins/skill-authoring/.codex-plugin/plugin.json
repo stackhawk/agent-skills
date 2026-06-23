@@ -1,6 +1,6 @@
 {
   "name": "skill-authoring",
-  "version": "1.14.0",
+  "version": "1.14.1",
   "description": "Guides authoring and maintaining agent skills in the stackhawk/agent-skills repository \u2014 enforcing Anthropic best practices, bumping versions, regenerating Cursor rules, and keeping the plugin structure consistent.",
   "author": {
     "name": "StackHawk",
