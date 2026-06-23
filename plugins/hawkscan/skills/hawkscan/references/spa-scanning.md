@@ -1,7 +1,13 @@
 # SPA Scanning Strategy
 
-Reference for scanning JavaScript-heavy apps with HawkScan. Use this when sub-step 1 of
-Step 1 detects a SPA framework. Read the scenario that matches your detection results.
+Reference for scanning JavaScript-heavy apps with HawkScan. Use this when Step 1b detects a SPA framework. Read the scenario that matches your detection results.
+
+## Contents
+- [Detection Heuristic](#detection-heuristic)
+- [Scenario A — Frontend SPA + separate backend API](#scenario-a--frontend-spa--separate-backend-api-most-common)
+- [Scenario B — Fullstack app (Next.js, Nuxt, SvelteKit)](#scenario-b--fullstack-app-nextjs-api-routes-nuxt-server-routes-sveltekit-endpoints)
+- [Scenario C — Pure frontend, backend out of scope](#scenario-c--pure-frontend-backend-is-third-party-or-out-of-scope)
+- [Ajax Spider Config Reference](#ajax-spider-config-reference)
 
 ---
 

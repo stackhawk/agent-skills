@@ -1,5 +1,15 @@
 # False Positives and Accepted Risk
 
+## Contents
+- [Identifying False Positives](#identifying-false-positives)
+- [How to Decide: Fix or Suppress?](#how-to-decide-fix-or-suppress)
+- [Suppression via Config](#suppression-via-config)
+- [Triaging via the API](#triaging-via-the-api)
+- [Reporting Accepted Risk](#reporting-accepted-risk)
+- [When in Doubt](#when-in-doubt)
+
+---
+
 ## Identifying False Positives
 
 Not every finding from a DAST scan is a real vulnerability. Some common false positive

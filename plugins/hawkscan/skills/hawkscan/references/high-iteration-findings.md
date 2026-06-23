@@ -3,6 +3,14 @@
 Findings that commonly cause agents to loop. For each, "done" is defined — use the
 verify command before rescanning, and escalate at the threshold instead of continuing.
 
+## Contents
+- [Content Security Policy (CSP)](#content-security-policy-csp)
+- [CORS (Cross-Origin Resource Sharing)](#cors-cross-origin-resource-sharing)
+- [Authentication / Broken Auth (Unprotected Endpoint)](#authentication--broken-auth-unprotected-endpoint)
+- [Missing Security Headers](#missing-security-headers-hsts-x-frame-options-x-content-type-options-referrer-policy)
+
+---
+
 **Escalation thresholds:**
 - **2 rescans** for complex policy/config findings: CSP, CORS, Auth
 - **1 rescan** for simple additive fixes: Missing Security Headers

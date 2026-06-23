@@ -14,7 +14,7 @@
       "category": "security",
       "source": "./plugins/hawkscan",
       "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/hawkscan",
-      "version": "1.13.7"
+      "version": "1.14.0"
     },
     {
       "name": "stackhawk-api",
@@ -22,7 +22,7 @@
       "category": "security",
       "source": "./plugins/api",
       "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/api",
-      "version": "1.13.7"
+      "version": "1.14.0"
     },
     {
       "name": "hawkscan-ci",
@@ -30,7 +30,7 @@
       "category": "security",
       "source": "./plugins/hawkscan-ci",
       "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/hawkscan-ci",
-      "version": "1.13.7"
+      "version": "1.14.0"
     },
     {
       "name": "stackhawk-data-seed",
@@ -38,7 +38,7 @@
       "category": "security",
       "source": "./plugins/stackhawk-data-seed",
       "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/stackhawk-data-seed",
-      "version": "1.13.7"
+      "version": "1.14.0"
     }
   ]
 }

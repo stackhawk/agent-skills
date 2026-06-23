@@ -164,11 +164,10 @@ It must explain the reasoning clearly enough for a human to review and reverse i
 because the org's `LIMITED_MEMBER_ROLE` setting turned off member finding-triage —
 fall back to `hawkop finding note`, which records a note through an ungated route. A
 comment transfers cleanly; an intended `FALSE_POSITIVE` is recorded as a note and the
-status change is escalated to a `WRITE_TRIAGE` holder. See
-[`false-positives.md`](false-positives.md#when-triage-is-denied-no-write_triage).
+status change is escalated to a `WRITE_TRIAGE` holder. See `references/false-positives.md`
+(linked from SKILL.md Step 5) for the full fallback procedure.
 
-→ Bulk triage file format and false-positive heuristics:
-  [`references/false-positives.md`](false-positives.md)
+→ Bulk triage file format and false-positive heuristics: see `references/false-positives.md` via SKILL.md Step 5.
 
 ### Exact JSON serialization
 
@@ -261,8 +260,7 @@ hawkop app tech-flags set --app <APP_NAME> Language.Java=true Language.Java.Spri
 
 Phase 0 runs once at app onboarding, not on every scan.
 
-→ Full detection heuristics, matching algorithm, and edge cases:
-  [`references/tech-flags.md`](tech-flags.md)
+→ Full detection heuristics, matching algorithm, and edge cases: see `references/tech-flags.md` via SKILL.md Phase 0c.
 
 ### Detecting the right flags for a codebase
 
@@ -399,10 +397,10 @@ Symptoms that *feel* like "I need a new App" but usually aren't:
 This skill uses the `api` skill's `hawkop` wrappers for read-only platform
 lookups. Relevant commands and their documentation:
 
-| Purpose                       | Command                                                    | Reference                                                                                             |
-|-------------------------------|------------------------------------------------------------|-------------------------------------------------------------------------------------------------------|
-| List apps                     | `hawkop app list --format json`                            | [`api` skill `hawkop-shortcuts.md` §3](../../../../api/skills/api/references/hawkop-shortcuts.md)        |
-| List envs for an app          | `hawkop env list --app <APP_ID> --format json`             | [same, §3](../../../../api/skills/api/references/hawkop-shortcuts.md)                                    |
-| Get scan findings with triage | `hawkop scan get --app <NAME> --detail full --format json` | [same, §2](../../../../api/skills/api/references/hawkop-shortcuts.md)                                    |
+| Purpose                       | Command                                                    |
+|-------------------------------|------------------------------------------------------------|
+| List apps                     | `hawkop app list --format json`                            |
+| List envs for an app          | `hawkop env list --app <APP_ID> --format json`             |
+| Get scan findings with triage | `hawkop scan get --app <NAME> --detail full --format json` |
 
 If `hawkop` is not installed, the api skill documents raw REST fallbacks.

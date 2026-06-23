@@ -9,6 +9,19 @@ hawk config --help
 
 If `hawk config` is unrecognized, upgrade hawk before running this skill.
 
+## Contents
+- [CLI Installation](#cli-installation)
+  - [Homebrew (macOS)](#homebrew-macos--recommended)
+  - [Package Installers (All Platforms)](#package-installers-all-platforms)
+  - [Prerequisites](#prerequisites)
+  - [Verify Installation](#verify-installation)
+- [Post-Install Setup](#post-install-setup)
+  - [Authenticate with hawk init](#authenticate-with-hawk-init)
+  - [CI/CD: Set HAWK_API_KEY as a Secret](#cicd-set-hawk_api_key-as-a-secret)
+- [Docker (Alternative to CLI)](#docker-alternative-to-cli)
+
+---
+
 ## CLI Installation
 
 ### Homebrew (macOS — Recommended)

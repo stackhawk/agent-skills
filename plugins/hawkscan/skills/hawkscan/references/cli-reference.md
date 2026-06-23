@@ -5,6 +5,19 @@ faster iteration on config, and better localhost networking.
 
 **Option resolution order:** CLI flag → `API_KEY` environment variable → `~/.hawk/hawk.properties`. For local/agentic use, `hawk init` writes credentials to `~/.hawk/hawk.properties` — no env var needed. For CI/CD pipelines, prefix invocations with `API_KEY=$HAWK_API_KEY hawk ...`.
 
+## Contents
+- [Top-Level Options](#top-level-options)
+- [Setup](#setup)
+- [Core Scan Commands](#core-scan-commands)
+- [Scan Flags for Agentic Loops](#scan-flags-for-agentic-loops)
+- [Validation Commands](#validation-commands)
+- [hawk config](#hawk-config)
+- [Diagnostic Commands](#diagnostic-commands)
+- [Perch (Daemon Mode)](#perch-daemon-mode)
+- [Subcommand Options](#subcommand-options)
+- [Exit Codes](#exit-codes)
+- [Config File Path Rules](#config-file-path-rules)
+
 ---
 
 ## Top-Level Options
@@ -224,3 +237,31 @@ hawk scan --git-rev=<rev>                # checkout specific revision/branch (wi
 | `0`  | Scan complete, no findings at or above `failureThreshold` |
 | `1`  | Scan failed (config error, app unreachable, auth failure) |
 | `42` | Scan complete, findings met or exceeded `failureThreshold` |
+
+---
+
+## Config File Path Rules
+
+The validate and scan commands accept config files as **positional arguments only** — there is
+NO `-c` or `--config` flag. Do NOT invent one.
+
+```bash
+# CORRECT — positional args, just the filename
+hawk validate config stackhawk.yml
+hawk validate config stackhawk.yml stackhawk-override.yml
+hawk validate auth stackhawk.yml
+hawk scan stackhawk.yml
+
+# WRONG — there is no -c flag
+hawk validate config -c stackhawk.yml        # ← WILL FAIL
+hawk validate auth --config stackhawk.yml    # ← WILL FAIL
+```
+
+The CLI automatically prepends the working directory to config file paths:
+- **Use bare filenames** (e.g., `stackhawk.yml`) when the file is in the current directory
+- **Do NOT pass absolute paths** like `/Users/me/project/stackhawk.yml` — the CLI prepends
+  `projectRepoDir/` to it, producing a broken double-path
+- To scan from a different directory, use `--repo-dir=<path>` to set the base directory,
+  then pass just the filename
+
+This applies to `hawk scan`, `hawk validate config`, `hawk validate api`, and `hawk validate auth`.

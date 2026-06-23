@@ -1,5 +1,12 @@
 # Findings Parsing and Fix Task Reference
 
+## Contents
+- [JSON Output Schema](#json-output-schema----json-output)
+- [Agentic Fix Task Format](#agentic-fix-task-format)
+- [Common Findings Quick Reference](#common-findings-quick-reference)
+
+---
+
 ## JSON Output Schema (`--json-output`)
 
 When running with `--json-output`, HawkScan produces a single pretty-printed JSON

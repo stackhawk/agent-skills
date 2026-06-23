@@ -2,6 +2,24 @@
 
 When Phase 1c's static auth detection can't produce a working `authentication:` block, this reference describes the fallback flow that drives the auth analyzer through the **`hawk perch onboard`** wizard. Onboard is the single command that owns daemon startup, Chrome capture, the iterative validate-auth loop, and structured progress events for skill consumption.
 
+## Contents
+- [When to invoke this fallback](#when-to-invoke-this-fallback)
+- [Prerequisite checks](#prerequisite-checks)
+- [Announcement templates](#announcement-templates)
+- [Start hawk perch onboard](#start-hawk-perch-onboard)
+- [Event handler matrix](#event-handler-matrix)
+- [Writing the auth YAML](#writing-the-auth-yaml)
+- [Iterating on validation failures](#iterating-on-validation-failures)
+- [Cleanup on success](#cleanup-on-success)
+- [Placeholder applicationId guard](#placeholder-applicationid-guard)
+- [Cleanup on failure](#cleanup-on-failure)
+- [Error handling](#error-handling)
+- [Re-run behavior](#re-run-behavior)
+- [Cleanup on agent disconnect](#cleanup-on-agent-disconnect)
+- [Why a single command instead of orchestrating pieces](#why-a-single-command-instead-of-orchestrating-pieces)
+
+---
+
 ## When to invoke this fallback
 
 Phase 1c.5 fires when **any** of these are true:
