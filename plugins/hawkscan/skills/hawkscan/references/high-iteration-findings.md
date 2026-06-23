@@ -23,7 +23,7 @@ than restarting the full loop.
 - HTML-serving routes: Add a CSP header eliminating wildcards and `unsafe-*` directives.
   Starter policy: `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'`
 - JSON/API endpoints that never serve HTML: Mark as false positive — CSP is inapplicable
-  to non-HTML responses. Use the `hawkop scan triage` command from Step 4.5.
+  to non-HTML responses. Use the `hawkop scan triage` command from Step 5.
 
 **Verify before rescanning:**
 ```bash

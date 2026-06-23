@@ -134,7 +134,7 @@ changes it).
 
 ### What the agent can write via `hawkop scan triage`
 
-The `hawkop` CLI exposes triage writes. Use these in Step 4.5 of the scan
+The `hawkop` CLI exposes triage writes. Use these in Step 5 of the scan
 loop when the agent identifies clear false positives.
 
 ```bash
@@ -331,7 +331,7 @@ hawk rescan --scan-id "${INITIAL_SCAN_ID}" --json-output > /tmp/rescan.json
 - **Triage state inherits from the parent scan.** A finding that was
   `FALSE_POSITIVE` / `RISK_ACCEPTED` / `ASSIGNED` on the parent remains
   in that state on the rescan (unless a human changed triage between
-  scans). Step 4.5's filter applies to rescan results the same way.
+  scans). Step 5's filter applies to rescan results the same way.
 - **Tags do not inherit automatically.** Re-set `_STACKHAWK_GIT_COMMIT_SHA`
   and `_STACKHAWK_GIT_BRANCH` env vars before rescan if the commit
   changed due to fixes — otherwise the rescan will carry the parent's

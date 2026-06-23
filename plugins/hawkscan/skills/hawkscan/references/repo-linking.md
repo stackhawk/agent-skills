@@ -139,5 +139,5 @@ automap repos to apps using the `git_origin` tag values.
 ```
 
 `frameworkNames` is a bonus signal — if the repo is already known to StackHawk's
-ASM scan, it can inform tech flag detection (Sub-step 0c) even before inspecting
+ASM scan, it can inform tech flag detection (Phase 0c) even before inspecting
 the local codebase.

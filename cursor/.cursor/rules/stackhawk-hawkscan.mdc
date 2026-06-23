@@ -60,7 +60,7 @@ Prefer `hawkop`; fall back only if unavailable.
 The `stackhawk-data-seed` skill (install: `/plugin install stackhawk-data-seed@stackhawk`) sets up
 checked-in backend seed data via `hawk perch seed`. Hand off to it when authentication fails because
 the backend has no valid credential (**Phase 1c.6**), or after a scan when auth succeeded but
-endpoints returned empty data (**Step 5**). This skill then consumes its
+endpoints returned empty data (**Step 6**). This skill then consumes its
 `.data-seed-credentials.env` handoff.
 
 ---
@@ -82,14 +82,14 @@ Before running a scan, the agent must understand four layered objects:
 
 - **Apps are reused, not created per scan.** Run `hawkop app list` before
   generating config; match by name/host; only `hawk create app` on miss. See
-  Step 1 substep 5.
+  Step 1c check 5.
 - **Envs group history.** Pick a name deliberately; reuse canonical names
   (Development, CI, Staging, Production); `hawkop env list --app <APP_ID>`
-  before committing. See Step 1 substep 6.
+  before committing. See Step 1c check 6.
 - **Findings have a lifecycle.** Each affected path of a finding carries a
   triage status (JSON field `findings[].paths[].status`) — `NEW`,
   `FALSE_POSITIVE`, `RISK_ACCEPTED`, or `ASSIGNED`. Respect it. See
-  Step 4.5.
+  Step 5.
 
 → Deep reference: [`references/platform-model.md`](references/platform-model.md)
 
@@ -176,7 +176,12 @@ defaults all flags to `true`; Phase 0c starts clean and enables only detected te
 
 Before configuring or running a scan, gather:
 
-**Sub-step 0: Profile the application**
+> **Env Name Algorithm** — used wherever an environment name must be resolved. First match wins:
+> 1. `STACKHAWK_ENV` env var set → use it exactly
+> 2. `CI=true` or `GITHUB_ACTIONS=true` → `CI`
+> 3. Git branch `main`/`master`/`production` → `Production`; `staging` → `Staging`; otherwise → `Development`
+
+### Step 1a: Profile the Application
 
 Before all other checks, build a minimal app profile so config generation is correct
 on the first attempt. Collect three things:
@@ -237,7 +242,7 @@ commands return no useful output): ask the user directly before proceeding:
 Do not generate `stackhawk.yml` based on assumptions when context is absent.
 Once the three profile facts are established (from files or the user), proceed autonomously through the rest of Step 1.
 
-**Sub-step 0b: SPA Framework Detection**
+### Step 1b: SPA Framework Detection
 
 Check for JavaScript SPA frameworks before generating config — do not wait for a low path
 count to discover this.
@@ -282,6 +287,8 @@ count to add the Ajax Spider after the fact.
 
 → Deep reference: [`references/spa-scanning.md`](references/spa-scanning.md)
 
+### Step 1c: Environment Checks (run in order)
+
 1. **Is the app/api running?** HawkScan requires a live target. If not running, instruct
    the agent to start it first and confirm the host/port.
 2. **Do we have a `stackhawk.yml`?** Check the project root. If missing, go to Step 2a (generate).
@@ -310,7 +317,7 @@ count to add the Ajax Spider after the fact.
      `_` and `-` treated as equivalent). Exactly one match → use its
      `applicationId`.
    - **Multiple name matches:** pick the one whose envs include a host
-     matching the URL confirmed in substep 1 (if host was established).
+     matching the URL confirmed in check 1 (if host was established).
      Still ambiguous → surface candidates to the user briefly.
    - **No name match:** do NOT fall back to host-only matching — different
      apps can share hosts in CI. Proceed to create.
@@ -318,10 +325,7 @@ count to add the Ajax Spider after the fact.
      ```bash
      hawk create app --name "<repo-name>" --env <env-name>
      ```
-     Resolve `<env-name>` using this order (first match wins):
-     1. `STACKHAWK_ENV` env var if set → use it exactly
-     2. CI environment: `CI=true` or `GITHUB_ACTIONS=true` → `CI`
-     3. Git branch: `main`/`master`/`production` → `Production`; `staging` → `Staging`; otherwise → `Development`
+     Resolve `<env-name>` using the **Env Name Algorithm** above.
      The bare `hawk create app` form is interactive and will hang an agent.
      Announce: "Created application <name> (ID: <applicationId>) — verify
      at https://app.stackhawk.com/applications/<applicationId>/details/settings".
@@ -331,12 +335,7 @@ count to add the Ajax Spider after the fact.
    `references/hawkop-shortcuts.md` and `references/api-endpoints.md` for
    raw REST fallbacks.
 
-6. **Does the target Env exist?** Determine the env name from context;
-   stop at the first match:
-   1. `STACKHAWK_ENV` env var if set — use it exactly as written.
-   2. CI detection: `CI=true` or `GITHUB_ACTIONS=true` → `CI`.
-   3. Git branch: `main` / `master` / `production` → `Production`;
-      `staging` → `Staging`; otherwise → `Development`.
+6. **Does the target Env exist?** Determine the env name using the **Env Name Algorithm** above.
 
    Then run `hawkop env list --app <APP_ID> --format json`. If an env with
    the target name exists, reuse it. If not, run
@@ -350,7 +349,7 @@ count to add the Ajax Spider after the fact.
 
 ## Step 2a: Generate `stackhawk.yml` from Scratch
 
-Use the `applicationId` and `env` resolved in Step 1 (substeps 5–6). Gather
+Use the `applicationId` and `env` resolved in Step 1c (checks 5–6). Gather
 the rest from context (or ask if unclear), then generate the config:
 
 - `host` — base URL of the running app (e.g., `http://localhost:8080`)
@@ -452,7 +451,7 @@ If `validate config` fails, fix the structural error and re-run. If `validate au
 
 **You MUST invoke Phase 1c.5 when any of these are true** — do NOT defer auth setup to "after a baseline scan", do NOT silently ship without auth, do NOT force-fit a recipe pattern:
 
-1. Phase 1c sub-step 0 found auth signals but the pattern doesn't match any row in the Phase 1c recipe table — bespoke challenge-response, custom multi-stage flow, client-side computed proof, undocumented scheme, or any case where you'd be guessing which row to pick
+1. Step 1a found auth signals but the pattern doesn't match any row in the Phase 1c recipe table — bespoke challenge-response, custom multi-stage flow, client-side computed proof, undocumented scheme, or any case where you'd be guessing which row to pick
 2. `hawk validate auth stackhawk.yml` returned non-zero after Phase 1c wrote a config **because the recipe or its fields are wrong** — if instead it failed because the credential/user doesn't exist in an empty backend datastore, that is **Phase 1c.6**, not the analyzer
 3. The user explicitly asked to "set up auth interactively", "use the live analyzer", or equivalent
 
@@ -724,9 +723,9 @@ at scan end can be used to fetch the full report via the StackHawk API if needed
 
 ---
 
-## Step 4.5: Filter Findings by Triage State
+## Step 5: Filter Findings by Triage State
 
-Before handing findings to the coding agent (Step 5) or the autonomous loop,
+Before handing findings to the coding agent (Step 6) or the autonomous loop,
 filter by the per-path triage status (JSON field `findings[].paths[].status`
 — one status per affected path within each finding):
 
@@ -781,17 +780,17 @@ hawkop scan triage --scan <SCAN_UUID> --from-file triage.yaml
 
 **When uncertain:** route to the fix loop. A false negative is worse than a false positive.
 
-After Step 4.5 triage completes, report before the fix loop:
+After Step 5 triage completes, report before the fix loop:
 > "Marked [N] findings as false positive. Routing [M] remaining NEW findings to fix loop."
 > "Platform: https://app.stackhawk.com/scans/<scanId>"
 
 → See `references/false-positives.md` for config-based suppression patterns
   (`excludePaths`, `excludePlugins`) — use those for structural noise that should
-  never enter the triage pipeline. Step 4.5 handles per-finding triage decisions.
+  never enter the triage pipeline. Step 5 handles per-finding triage decisions.
 
 ---
 
-## Step 5: Determine Loop Behavior
+## Step 6: Determine Loop Behavior
 
 **Note:** If you are running the Autonomous Security Loop (see below), you handle
 this automatically — scan, fix all findings, rescan, report. The manual guidance
@@ -865,48 +864,16 @@ After completing a code change, announce and execute:
      - name: _STACKHAWK_GIT_BRANCH
        value: ${BRANCH_NAME}
    ```
-3. **Set env vars and validate:**
+3. **Set env vars and validate:** Run the `COMMIT_SHA`, `BRANCH_NAME`, and
+   `HAWK_AGENT` export block from **Step 3** ("Validate and Run" → "Pre-flight"),
+   then validate:
    ```bash
-   export COMMIT_SHA=$(git rev-parse HEAD)
-   export BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
-
-   # Detect agent platform and model independently — they can be from different vendors.
-   # Skip detection if HAWK_AGENT is already set (allows CI/CD override).
-   if [ -z "${HAWK_AGENT}" ]; then
-     if [ -n "${CLAUDE_CODE}" ] || [ -d ".claude" ]; then
-       _HAWK_PLATFORM=claude-code
-     elif [ -n "${CURSOR_TRACE_ID}" ] || [ -d ".cursor" ]; then
-       _HAWK_PLATFORM=cursor
-     elif [ -f "GEMINI.md" ] || [ -n "${GEMINI_API_KEY}" ]; then
-       _HAWK_PLATFORM=gemini
-     elif [ -d ".codex" ]; then
-       _HAWK_PLATFORM=codex
-     elif [ -f ".github/copilot-instructions.md" ]; then
-       _HAWK_PLATFORM=copilot
-     else
-       _HAWK_PLATFORM=unknown
-     fi
-     if [ -n "${ANTHROPIC_MODEL:-}" ]; then
-       _HAWK_MODEL=${ANTHROPIC_MODEL}
-     elif [ -n "${OPENAI_MODEL:-}" ]; then
-       _HAWK_MODEL=${OPENAI_MODEL}
-     elif [ -n "${GEMINI_MODEL:-}" ]; then
-       _HAWK_MODEL=${GEMINI_MODEL}
-     elif [ -n "${AZURE_OPENAI_DEPLOYMENT:-}" ]; then
-       _HAWK_MODEL=${AZURE_OPENAI_DEPLOYMENT}
-     else
-       _HAWK_MODEL=
-     fi
-     export HAWK_AGENT="${_HAWK_PLATFORM}${_HAWK_MODEL:+:${_HAWK_MODEL}}"
-     unset _HAWK_PLATFORM _HAWK_MODEL
-   fi
-
    timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
    ```
 4. **Scan:** Run `hawk scan --json-output` and parse the structured findings. The scan
    results will be tagged with the commit SHA and branch from the env vars above.
 5. **If findings exist:**
-   - **Run the Step 4.5 triage filter first** (per-path `status` field).
+   - **Run the Step 5 triage filter first** (per-path `status` field).
      Skip `FALSE_POSITIVE` / `RISK_ACCEPTED`; prioritize `ASSIGNED`; fix
      `NEW` in severity order.
    - Announce: "Found [N] actionable vulnerabilities (+ [M] skipped due to
@@ -948,10 +915,10 @@ After completing a code change, announce and execute:
 7. **Report:**
    - If clean: "Rescan complete. Zero new findings. All security issues have been resolved."
    - If findings remain: "Rescan found [N] remaining issues that require manual review:" and list them.
-   - If any findings were filtered by Step 4.5 triage state, append a
+   - If any findings were filtered by Step 5 triage state, append a
      one-line summary: "Skipped [X] findings already triaged as
      RISK_ACCEPTED / FALSE_POSITIVE."
-   - If any findings were marked `FALSE_POSITIVE` in Step 4.5, summarize:
+   - If any findings were marked `FALSE_POSITIVE` in Step 5, summarize:
      "Marked [N] findings as false positive — review at
      https://app.stackhawk.com/scans/<scanId>".
 

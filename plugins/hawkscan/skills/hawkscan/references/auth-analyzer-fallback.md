@@ -6,7 +6,7 @@ When Phase 1c's static auth detection can't produce a working `authentication:` 
 
 Phase 1c.5 fires when **any** of these are true:
 
-1. **Ambiguous classification.** Phase 1c sub-step 0 found auth signals in the codebase (a single `AddAuthentication(` call, conflicting framework imports, two independent but unrelated signals) but the agent can't confidently map the pattern to one of the recipe-table entries in Phase 1c.
+1. **Ambiguous classification.** Step 1a found auth signals in the codebase (a single `AddAuthentication(` call, conflicting framework imports, two independent but unrelated signals) but the agent can't confidently map the pattern to one of the recipe-table entries in Phase 1c.
 2. **Validation failure after static config.** Phase 1c wrote an `authentication:` block based on grep signals, but `API_KEY=$HAWK_API_KEY hawk validate auth stackhawk.yml` returned non-zero — wrong login path, wrong token extractor, etc.
 3. **Explicit user request.** The user asks to use the live analyzer. Common phrasings:
    - "Set up auth interactively"
