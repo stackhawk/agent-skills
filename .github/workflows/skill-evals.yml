@@ -160,7 +160,7 @@ jobs:
 
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eval-claude-code-${{ matrix.skill }}-${{ matrix.model }}
           path: evals/harnesses/claude-code/results/${{ matrix.skill }}/
@@ -263,7 +263,7 @@ jobs:
 
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eval-codex-${{ matrix.skill }}-${{ matrix.model }}
           path: evals/harnesses/codex/results/${{ matrix.skill }}/
@@ -375,7 +375,7 @@ jobs:
 
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eval-agy-${{ matrix.skill }}-${{ matrix.model }}
           path: evals/harnesses/agy/results/${{ matrix.skill }}/
@@ -470,7 +470,7 @@ jobs:
 
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eval-cursor-${{ matrix.skill }}-${{ matrix.model }}
           path: evals/harnesses/cursor/results/${{ matrix.skill }}/
