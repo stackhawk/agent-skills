@@ -42,7 +42,7 @@ jobs:
           mkdir -p meta
           jq -n --arg tag "$BASELINE_TAG" '{tag: $tag}' > meta/meta.json
           cat meta/meta.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: baseline-meta
@@ -119,7 +119,7 @@ jobs:
             --model ${{ matrix.model }} --max-budget 0.15 || true
       - name: Upload baseline artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: baseline-claude-code-${{ matrix.skill }}-${{ matrix.model }}
           path: evals/harnesses/claude-code/results/${{ matrix.skill }}/cell.json
@@ -205,7 +205,7 @@ jobs:
           uv run evals --harness codex --skill ${{ matrix.skill }} --model ${{ matrix.model }} || true
       - name: Upload baseline artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: baseline-codex-${{ matrix.skill }}-${{ matrix.model }}
           path: evals/harnesses/codex/results/${{ matrix.skill }}/cell.json
@@ -291,7 +291,7 @@ jobs:
           uv run evals --harness agy --skill ${{ matrix.skill }} "${MODEL_ARGS[@]}" || true
       - name: Upload baseline artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: baseline-agy-${{ matrix.skill }}-${{ matrix.model }}
           path: evals/harnesses/agy/results/${{ matrix.skill }}/cell.json
@@ -365,7 +365,7 @@ jobs:
           uv run evals --harness cursor --skill ${{ matrix.skill }} "${MODEL_ARGS[@]}" || true
       - name: Upload baseline artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: baseline-cursor-${{ matrix.skill }}-${{ matrix.model }}
           path: evals/harnesses/cursor/results/${{ matrix.skill }}/cell.json
