@@ -52,7 +52,7 @@ find . -not -path "*/node_modules/*" \( \
 **Frontend-only config (if the user wants header/CSP coverage for this repo):**
 ```yaml
 app:
-  applicationId: ${APP_ID}
+  applicationId: ${APP_ID:none}
   env: ${APP_ENV:Development}
   host: ${APP_HOST:http://localhost:3000}
 hawk:
@@ -77,7 +77,7 @@ hawk:
 
 ```yaml
 app:
-  applicationId: ${FRONTEND_APP_ID}
+  applicationId: ${FRONTEND_APP_ID:none}
   env: ${APP_ENV:Development}
   host: ${APP_HOST:http://localhost:3000}
 hawk:
@@ -95,7 +95,7 @@ hawk:
 
 ```yaml
 app:
-  applicationId: ${API_APP_ID}
+  applicationId: ${API_APP_ID:none}
   env: ${APP_ENV:Development}
   host: ${APP_HOST:http://localhost:3000}
   openApiConf:
@@ -127,7 +127,7 @@ These live in the backend, which is out of scope.
 
 ```yaml
 app:
-  applicationId: ${APP_ID}
+  applicationId: ${APP_ID:none}
   env: ${APP_ENV:Development}
   host: ${APP_HOST:http://localhost:3000}
 hawk:

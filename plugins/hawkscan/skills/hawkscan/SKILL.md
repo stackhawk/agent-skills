@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 1.14.2
+version: 1.14.3
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Use when the user
@@ -193,7 +193,7 @@ find . -not -path "*/node_modules/*" \( -path "*/pages/api/*" -o -path "*/app/ap
 Use the `applicationId` and `env` from Step 1c. **Minimum viable config:**
 ```yaml
 app:
-  applicationId: ${APP_ID}
+  applicationId: ${APP_ID:none}
   env: ${APP_ENV:Development}
   host: ${APP_HOST:http://localhost:8080}
 ```
@@ -287,9 +287,9 @@ Review the config against the current app state:
   ```yaml
   tags:
     - name: _STACKHAWK_GIT_COMMIT_SHA
-      value: ${COMMIT_SHA}
+      value: ${COMMIT_SHA:none}
     - name: _STACKHAWK_GIT_BRANCH
-      value: ${BRANCH_NAME}
+      value: ${BRANCH_NAME:none}
   ```
 
 **Validate after any modification:**

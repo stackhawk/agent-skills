@@ -196,9 +196,9 @@ under `app:`.
 ```yaml
 tags:
   - name: _STACKHAWK_GIT_COMMIT_SHA
-    value: ${COMMIT_SHA}
+    value: ${COMMIT_SHA:none}
   - name: _STACKHAWK_GIT_BRANCH
-    value: ${BRANCH_NAME}
+    value: ${BRANCH_NAME:none}
 ```
 
 These show up in the scan detail view as "Commit" and "Branch" fields.
@@ -218,7 +218,7 @@ Or set them in your CI system's env block.
 
 Anything with a non-underscore prefix is a custom tag. Useful for:
 
-- CI run IDs (`ci_run: ${GITHUB_RUN_ID}`)
+- CI run IDs (`ci_run: ${GITHUB_RUN_ID:none}`)
 - Release markers (`release: v2.4.0`)
 - Feature flag state (`variant: dark-mode-on`)
 

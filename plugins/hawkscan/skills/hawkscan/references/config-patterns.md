@@ -45,7 +45,7 @@ Use `${VAR:default}` interpolation for host-only differences. **Never** create a
 ```yaml
 # stackhawk.yml — one file, works everywhere
 app:
-  applicationId: ${APP_ID}
+  applicationId: ${APP_ID:none}
   env: ${APP_ENV:Development}
   host: ${APP_HOST:https://your-default-host.com}
 ```
@@ -66,7 +66,7 @@ Use file layering only when environments need meaningfully different settings �
 **`stackhawk.yml`** (base — shared settings):
 ```yaml
 app:
-  applicationId: ${APP_ID}
+  applicationId: ${APP_ID:none}
   openApiConf:
     filePath: openapi.yaml
 ```
@@ -78,9 +78,9 @@ app:
   host: http://localhost:8080
 tags:
   - name: _STACKHAWK_GIT_COMMIT_SHA
-    value: ${COMMIT_SHA}
+    value: ${COMMIT_SHA:none}
   - name: _STACKHAWK_GIT_BRANCH
-    value: ${BRANCH_NAME}
+    value: ${BRANCH_NAME:none}
 hawk:
   failureThreshold: high
 ```
@@ -110,10 +110,10 @@ hawk config show <field-path> --text
 - **Tags live at the top level**, not under `app:`:
   ```yaml
   app:
-    applicationId: ${APP_ID}
+    applicationId: ${APP_ID:none}
   tags:                                # ← top-level, NOT under app:
     - name: _STACKHAWK_GIT_COMMIT_SHA
-      value: ${COMMIT_SHA}
+      value: ${COMMIT_SHA:none}
   ```
 
 - **Try `https://` first — HawkScan accepts self-signed certificates.** If an app runs on HTTPS, set `host: https://localhost:<port>` and let the scanner attempt the connection. Only fall back to `http://` or investigate TLS configuration if the scan actually fails to connect with an SSL/TLS error.
