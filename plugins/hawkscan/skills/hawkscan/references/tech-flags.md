@@ -2,6 +2,20 @@
 
 Auto-detect your application's technology stack and configure StackHawk tech flags accordingly.
 
+## Contents
+- [Overview](#overview)
+- [Command Reference](#command-reference)
+- [Flag Name Rules](#flag-name-rules)
+- [Phase 0c Detection Algorithm](#phase-0c-detection-algorithm)
+- [Detection Heuristics](#detection-heuristics)
+- [Matching Detected Techs to Canonical Flag Keys](#matching-detected-techs-to-canonical-flag-keys)
+- [Example: Detect and Configure a Node.js + React + PostgreSQL App](#example-detect-and-configure-a-nodejs--react--postgresql-app)
+- [No Match Policy](#no-match-policy)
+- [Manual Override](#manual-override)
+- [Troubleshooting](#troubleshooting)
+
+---
+
 ## Overview
 
 The StackHawk platform defaults **all tech flags to `true`**, which enables scanning for all rule families regardless of relevance. This creates unnecessary noise and slower scans.

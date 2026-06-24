@@ -1,0 +1,19 @@
+{
+  "name": "skill-authoring",
+  "version": "1.14.5",
+  "description": "Guides authoring and maintaining agent skills in the stackhawk/agent-skills repository \u2014 enforcing Anthropic best practices, bumping versions, regenerating Cursor rules, and keeping the plugin structure consistent.",
+  "author": {
+    "name": "StackHawk",
+    "email": "support@stackhawk.com",
+    "url": "https://www.stackhawk.com"
+  },
+  "homepage": "https://docs.stackhawk.com",
+  "repository": "https://github.com/stackhawk/agent-skills",
+  "license": "MIT",
+  "keywords": [
+    "skill-authoring",
+    "agent-skills",
+    "best-practices",
+    "stackhawk"
+  ]
+}

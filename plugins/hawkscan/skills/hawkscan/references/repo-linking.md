@@ -3,6 +3,16 @@
 Linking a StackHawk application to its source repository enables API Discovery
 tracking and SCM-driven automapping. Do this once during app onboarding (Phase 0).
 
+## Contents
+- [When to Run](#when-to-run)
+- [Commands](#commands)
+- [How to Identify the Repo](#how-to-identify-the-repo)
+- [No Match Fallback: git_origin Tag](#no-match-fallback-git_origin-tag)
+- [Full Phase 0a Algorithm](#full-phase-0a-algorithm)
+- [hawkop repo list Output Shape](#hawkop-repo-list-output-shape)
+
+---
+
 ## When to Run
 
 - `stackhawk.yml` was just created (new application onboarding)
@@ -139,5 +149,5 @@ automap repos to apps using the `git_origin` tag values.
 ```
 
 `frameworkNames` is a bonus signal — if the repo is already known to StackHawk's
-ASM scan, it can inform tech flag detection (Sub-step 0c) even before inspecting
+ASM scan, it can inform tech flag detection (Phase 0c) even before inspecting
 the local codebase.

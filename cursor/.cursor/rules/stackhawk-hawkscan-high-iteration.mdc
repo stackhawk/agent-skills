@@ -9,6 +9,14 @@ alwaysApply: false
 Findings that commonly cause agents to loop. For each, "done" is defined — use the
 verify command before rescanning, and escalate at the threshold instead of continuing.
 
+## Contents
+- [Content Security Policy (CSP)](#content-security-policy-csp)
+- [CORS (Cross-Origin Resource Sharing)](#cors-cross-origin-resource-sharing)
+- [Authentication / Broken Auth (Unprotected Endpoint)](#authentication--broken-auth-unprotected-endpoint)
+- [Missing Security Headers](#missing-security-headers-hsts-x-frame-options-x-content-type-options-referrer-policy)
+
+---
+
 **Escalation thresholds:**
 - **2 rescans** for complex policy/config findings: CSP, CORS, Auth
 - **1 rescan** for simple additive fixes: Missing Security Headers
@@ -29,7 +37,7 @@ than restarting the full loop.
 - HTML-serving routes: Add a CSP header eliminating wildcards and `unsafe-*` directives.
   Starter policy: `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'`
 - JSON/API endpoints that never serve HTML: Mark as false positive — CSP is inapplicable
-  to non-HTML responses. Use the `hawkop scan triage` command from Step 4.5.
+  to non-HTML responses. Use the `hawkop scan triage` command from Step 5.
 
 **Verify before rescanning:**
 ```bash
