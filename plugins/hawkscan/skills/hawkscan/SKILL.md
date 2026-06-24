@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 1.14.3
+version: 1.14.4
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Use when the user
@@ -193,7 +193,7 @@ find . -not -path "*/node_modules/*" \( -path "*/pages/api/*" -o -path "*/app/ap
 Use the `applicationId` and `env` from Step 1c. **Minimum viable config:**
 ```yaml
 app:
-  applicationId: ${APP_ID:none}
+  applicationId: ${APP_ID}
   env: ${APP_ENV:Development}
   host: ${APP_HOST:http://localhost:8080}
 ```

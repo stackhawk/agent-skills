@@ -24,7 +24,7 @@ Exit code 42 is the *intended success path of failure* — the scan worked, and 
 
 ```yaml
 app:
-  applicationId: ${APP_ID:none}
+  applicationId: ${APP_ID}
   failureThreshold: High   # one of: High, Medium, Low, All
 ```
 

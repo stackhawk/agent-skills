@@ -184,7 +184,7 @@ find . -not -path "*/node_modules/*" \( -path "*/pages/api/*" -o -path "*/app/ap
 Use the `applicationId` and `env` from Step 1c. **Minimum viable config:**
 ```yaml
 app:
-  applicationId: ${APP_ID:none}
+  applicationId: ${APP_ID}
   env: ${APP_ENV:Development}
   host: ${APP_HOST:http://localhost:8080}
 ```
