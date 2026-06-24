@@ -140,7 +140,7 @@ jobs:
         with:
           ref: ${{ inputs.tag }}
       - uses: astral-sh/setup-uv@v5
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "20"
 
