@@ -519,7 +519,7 @@ jobs:
       # into a PR comment (workflow_dispatch carries no PR context on its own).
       - name: Post digest comment
         if: inputs.pr_number != ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
