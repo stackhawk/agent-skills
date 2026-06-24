@@ -1,6 +1,6 @@
 ---
 name: skill-authoring
-version: 1.14.1
+version: 1.14.2
 description: >
   Guides authoring and maintaining agent skills in this repository — enforcing
   Anthropic best practices, bumping versions, regenerating Cursor rules, and
@@ -224,5 +224,5 @@ The PR will be blocked if any check fails. Fix by running:
 ```bash
 bash scripts/bump-version.sh --patch    # or --minor/--major
 bash scripts/generate-cursor-rules.sh
-git add -A && git commit --amend --no-edit
+git add plugins/ cursor/ scripts/ && git commit --amend --no-edit
 ```

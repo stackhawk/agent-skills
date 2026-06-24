@@ -27,14 +27,14 @@ tags:
   - name: _STACKHAWK_AGENT
     value: ${HAWK_AGENT:none}
   - name: _STACKHAWK_GIT_COMMIT_SHA
-    value: ${COMMIT_SHA}
+    value: ${COMMIT_SHA:none}
   - name: _STACKHAWK_GIT_BRANCH
-    value: ${BRANCH_NAME}
+    value: ${BRANCH_NAME:none}
 ```
 
 **3. Set env vars and validate**
 
-Export `HAWK_AGENT` using the detection block from Step 3 of SKILL.md, then validate:
+Export `HAWK_AGENT` using the detection block from Step 3 of SKILL.md *(see Step 3 → `references/agent-detection.md`)*, then validate:
 
 ```bash
 timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"

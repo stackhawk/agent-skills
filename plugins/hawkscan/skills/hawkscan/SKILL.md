@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 1.14.1
+version: 1.14.2
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Use when the user
@@ -228,14 +228,7 @@ hawk config show app.authentication --text
 
 **Step 2 — Pick one by observed app behavior:**
 
-| Observed pattern                                          | Sections to fetch                                                                                       |
-|-----------------------------------------------------------|---------------------------------------------------------------------------------------------------------|
-| Form POST → Set-Cookie with session                       | `app.authentication.usernamePassword`<br>`app.authentication.cookieAuthorization`                       |
-| OAuth client-credentials / password / authorization-code  | `app.authentication.oauth`<br>`app.authentication.tokenAuthorization`                                   |
-| JSON POST returning a JWT                                 | `app.authentication.usernamePassword`<br>`app.authentication.tokenExtraction`<br>`app.authentication.tokenAuthorization` |
-| Pre-issued token from env var                             | `app.authentication.external`<br>`app.authentication.tokenAuthorization`                                |
-| Multi-step flow not expressible in config                 | `app.authentication.script`                                                                             |
-| Bash + curl last resort                                   | `app.authentication.externalCommand`                                                                    |
+→ Auth pattern decision table: [`references/auth-config.md`](references/auth-config.md)
 
 If no row matches → jump to **Phase 1c.5**. Do not force-fit a recipe or proceed without auth.
 
