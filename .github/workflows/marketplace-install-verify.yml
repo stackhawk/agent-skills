@@ -69,7 +69,7 @@ jobs:
     if: ${{ inputs.tool == 'all' || inputs.tool == 'claude-code' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # need tags for `git describe` in local mode
       - name: Rewrite git SSH->HTTPS
@@ -124,7 +124,7 @@ jobs:
     if: ${{ inputs.tool == 'all' || inputs.tool == 'codex' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Rewrite git SSH->HTTPS
@@ -187,7 +187,7 @@ jobs:
     if: ${{ inputs.tool == 'all' || inputs.tool == 'copilot' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Rewrite git SSH->HTTPS
@@ -263,7 +263,7 @@ jobs:
     if: ${{ inputs.tool == 'all' || inputs.tool == 'agy' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Rewrite git SSH->HTTPS

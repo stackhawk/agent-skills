@@ -34,7 +34,7 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "Running release for tag: ${tag}"
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           ref: ${{ steps.version.outputs.tag }}
 
@@ -135,7 +135,7 @@ jobs:
     permissions:
       actions: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Dispatch capture-baseline
         # GITHUB_TOKEN can dispatch workflows in the same repo for most orgs.
         # If org policy blocks it, swap to the TF_GITHUB_TOKEN PAT that
@@ -162,7 +162,7 @@ jobs:
       - name: Pull secrets
         run: biodome ci save-secrets
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           ref: ${{ needs.release.outputs.tag }}
 
