@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 1.14.4
+version: 1.14.5
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Use when the user
@@ -354,7 +354,7 @@ hawk rescan --scan-id <SCAN_ID> --json-output      # fast fix verification — r
 ## Step 4: Parse Findings and Generate Fix Tasks
 
 Use `--json-output` for structured results (requires Dev Release v5.3.41+). Suppresses all
-other stdout — do not combine with `--trace`. Fix all findings the scan reports — not just
+other stdout — do not combine with `--trace`. **Fix ALL findings** the scan reports — not just
 findings related to recent changes. DAST scans the running application as a whole; a
 pre-existing SQL injection is just as exploitable as one introduced today.
 
