@@ -387,7 +387,7 @@ jobs:
       # download-artifact@v4 does NOT fail when the pattern matches zero artifacts
       # (it has no error-on-no-artifacts input) — so a run where every capture job
       # failed still proceeds to render an (empty) digest. Best-effort by default.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: baseline-*
           merge-multiple: false
