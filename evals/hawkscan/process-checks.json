@@ -35,7 +35,7 @@
       "description": "Agent queries existing apps before creating one, to avoid duplicate application records.",
       "type": "command_executed",
       "signals": [
-        "hawkop app list"
+        "hawk op app list"
       ],
       "severity": "warning",
       "failure_guidance": "Skipping this check and blindly creating a new app pollutes the org with duplicates and splits scan history."
@@ -46,7 +46,7 @@
       "description": "Agent queries existing environments before creating one.",
       "type": "command_executed",
       "signals": [
-        "hawkop env list"
+        "hawk op env list"
       ],
       "severity": "warning",
       "failure_guidance": "Duplicate environments split finding history and break scan-to-scan comparison."

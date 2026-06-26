@@ -3,9 +3,9 @@
   "grader_prompt": "You are evaluating whether an api skill run produced correct, high-quality output. Review the agent's output text and the commands it executed. For each check below, determine pass/fail and write a one-sentence explanation. Return a JSON object conforming to rubric-schema.json.",
   "checks": [
     {
-      "id": "hawkop_used_when_available",
-      "description": "When hawkop was installed and configured, the agent used hawkop commands (hawkop scan get, hawkop app list, etc.) for the operations hawkop supports, rather than falling back to raw curl.",
-      "focus": "Commands executed — presence of hawkop vs curl calls"
+      "id": "hawk_op_used",
+      "description": "The agent used hawk op commands (hawk op scan get, hawk op app list, hawk op scan list, etc.) for all platform queries. There is no raw-REST/curl fallback path.",
+      "focus": "Commands executed — presence of hawk op calls; absence of raw curl calls to StackHawk endpoints"
     },
     {
       "id": "posture_table_formatted_correctly",
