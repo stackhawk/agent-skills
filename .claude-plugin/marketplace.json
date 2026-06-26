@@ -39,6 +39,14 @@
       "source": "./plugins/stackhawk-data-seed",
       "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/stackhawk-data-seed",
       "version": "1.15.0"
+    },
+    {
+      "name": "hawk",
+      "description": "StackHawk umbrella — one-command install of the default skill set (hawkscan, api, data-seed).",
+      "category": "security",
+      "source": "./plugins/hawk",
+      "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/hawk",
+      "version": "1.15.0"
     }
   ]
 }

@@ -28,6 +28,12 @@
       "source": { "source": "local", "path": "./plugins/stackhawk-data-seed" },
       "policy": { "installation": "AVAILABLE" },
       "category": "Security"
+    },
+    {
+      "name": "hawk",
+      "source": { "source": "local", "path": "./plugins/hawk" },
+      "policy": { "installation": "AVAILABLE" },
+      "category": "Security"
     }
   ]
 }
