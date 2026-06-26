@@ -1,0 +1,24 @@
+{
+  "name": "stackhawk-optimize",
+  "version": "1.15.0",
+  "description": "Analyze a codebase and produce an optimal HawkScan setup (tech flags, scan-policy plugin selection, stackhawk.yml corrections), apply it as a non-destructive trial, run one trial scan, and promote or discard.",
+  "author": {
+    "name": "StackHawk",
+    "email": "support@stackhawk.com",
+    "url": "https://www.stackhawk.com"
+  },
+  "homepage": "https://docs.stackhawk.com",
+  "repository": "https://github.com/stackhawk/agent-skills",
+  "license": "MIT",
+  "keywords": [
+    "security",
+    "appsec",
+    "stackhawk",
+    "hawkscan",
+    "optimize",
+    "scan-policy",
+    "tech-flags",
+    "dast"
+  ],
+  "skills": "./skills/"
+}

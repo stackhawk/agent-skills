@@ -47,6 +47,14 @@
       "source": "./plugins/wingman",
       "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/wingman",
       "version": "2.0.0"
+    },
+    {
+      "name": "stackhawk-optimize",
+      "description": "Analyze a codebase and produce an optimal HawkScan setup (tech flags, scan policy, stackhawk.yml), apply it as a non-destructive trial, run one trial scan, and promote or discard.",
+      "category": "security",
+      "source": "./plugins/optimize",
+      "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/optimize",
+      "version": "2.0.0"
     }
   ]
 }

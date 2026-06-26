@@ -1,0 +1,27 @@
+---
+description: >
+  Optimize hawkop CLI contract: policy list/get/create/delete/assign and scan metrics commands the skill orchestrates, with flags and JSON output notes. The skill consumes these; it does not recompute metrics.
+globs:
+alwaysApply: false
+---
+# hawkop CLI Contract (commands this skill calls)
+
+| Purpose | Command |
+|---------|---------|
+| List policies (find base preset names) | `hawkop policy list --format json` |
+| Fetch a base policy as JSON | `hawkop policy get --name <PRESET>` |
+| Create/upsert a trial or permanent policy | `hawkop policy create --file <json> --name <NAME> [--display-name <DN>] [--dry-run]` |
+| Delete a policy | `hawkop policy delete --name <NAME> --yes [--dry-run]` |
+| (Optional) set app default | `hawkop policy assign --app <APP>|--app-id <ID> --name <NAME> [--dry-run]` |
+| Read canonical tech flags | `hawkop app tech-flags get --app <APP> --format json` |
+| Get per-path scan metrics + signal flags | `hawkop scan metrics <SCAN_ID\|latest> [--sort heaviest\|slowest\|erroring\|most-requested] [--top N] [--method <VERB>] [--operations] --format json` |
+
+Notes:
+- `policy get` prints a full `ScanPolicy` JSON (tech flags + plugins) suitable for editing
+  and re-submitting via `policy create --file`.
+- Policy names must match `^[A-Z0-9_]+$`, ≤256 chars.
+- All write commands support `--dry-run`; use it in preflight to detect missing
+  permissions/feature flags without making changes.
+- `scan metrics --format json` returns `MetricsJson` (paths[] with metrics + flags,
+  operations[], request_health, scan_flags). The skill consumes this in the post-scan
+  refine loop (see `metrics-and-refine.md`); it does not recompute metrics.
