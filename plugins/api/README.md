@@ -7,18 +7,18 @@ Security posture reporting and findings analysis powered by the [StackHawk platf
 This plugin teaches Claude how to query the StackHawk platform for security reporting. It authenticates, retrieves findings data across your applications and environments, and presents actionable security posture summaries — helping you understand where your risks are, what changed between scans, and which apps need attention.
 
 ```
-Question → Authenticate → Query API → Present Results → Suggest Next Actions
+Question → Authenticate → Query API via hawk op → Present Results → Suggest Next Actions
 ```
 
-The skill prefers the [**`hawkop` CLI**](https://docs.stackhawk.com/hawkop/) when it's installed — most operations collapse from a three-call drill-down pipeline into a single `hawkop` command with built-in auth, pagination, and JSON output. When `hawkop` is not available, the skill falls back to raw REST calls using the bundled helper scripts.
+The skill uses the combined `hawk` CLI (`hawk op …`) — most operations collapse from a three-call drill-down pipeline into a single `hawk op` command with built-in auth, pagination, and JSON output.
 
 ## Prerequisites
 
 - A [StackHawk account](https://app.stackhawk.com) (free tier available)
 - A StackHawk API key — generate one at **Settings → API Keys**
-- **Recommended:** [`hawkop`](https://docs.stackhawk.com/hawkop/) installed and initialized via `hawkop init` (stores credentials locally — no env var needed for local/agentic use)
-- For the raw API path (curl): `HAWK_API_KEY` set as an environment variable
-- `jq` installed (used for JSON processing in the raw API path)
+- The `hawk` CLI installed and initialized via `hawk init` (stores credentials in `~/.hawk/hawk.properties`)
+- For CI/CD pipelines: `HAWK_API_KEY` set as an environment variable
+- `jq` installed (used for JSON processing in recipes)
 
 ## Installation
 
@@ -52,11 +52,11 @@ Once installed, Claude will use the StackHawk API skill when you ask questions l
 
 ## Security Note
 
-Never hardcode your API key. For local/agentic use, `hawkop init` stores credentials locally. For CI/CD, set `HAWKOP_API_KEY` (or `HAWK_API_KEY` for raw API calls) as a pipeline secret — never inline key values in scripts or configs.
+Never hardcode your API key. For local/agentic use, `hawk init` stores credentials locally. For CI/CD, set `HAWK_API_KEY` as a pipeline secret — never inline key values in scripts or configs.
 
 ## Resources
 
-- [HawkOp CLI docs](https://docs.stackhawk.com/hawkop/)
+- [hawk CLI docs](https://docs.stackhawk.com)
 - [StackHawk API Docs](https://apidocs.stackhawk.com)
 - [StackHawk Platform](https://app.stackhawk.com)
 - [StackHawk Support](https://support.stackhawk.com)

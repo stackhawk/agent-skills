@@ -1,7 +1,7 @@
 {
   "name": "stackhawk-api",
-  "version": "1.15.0",
-  "description": "Query the StackHawk platform API for security posture reporting, findings analysis, and app management. Guides agents through authentication, data retrieval, and result presentation.",
+  "version": "2.0.0",
+  "description": "Query the StackHawk platform API for security posture reporting, findings analysis, and app management. Uses the combined hawk CLI (hawk op …) for all platform queries.",
   "author": {
     "name": "StackHawk",
     "email": "support@stackhawk.com",
