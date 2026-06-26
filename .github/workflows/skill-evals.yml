@@ -11,7 +11,7 @@ on:
         required: true
         default: "all"
         type: choice
-        options: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, all]
+        options: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize, all]
       platform:
         description: "Platform to run"
         required: true
@@ -79,7 +79,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize]
         model: [claude-sonnet-4-6, claude-opus-4-7, claude-haiku-4-5-20251001]
 
     steps:
@@ -177,7 +177,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize]
         model: [gpt-5.5, o3]
 
     steps:
@@ -214,6 +214,7 @@ jobs:
           echo y | codex plugin add stackhawk-api@stackhawk
           echo y | codex plugin add stackhawk-data-seed@stackhawk
           echo y | codex plugin add hawkscan-ci@stackhawk
+          echo y | codex plugin add stackhawk-optimize@stackhawk
 
       # hawk CLI (Java app) — the hawkscan skill needs it on PATH; install-only, no scan.
       - uses: actions/setup-java@v4
@@ -280,7 +281,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize]
         model: [default]
 
     steps:
@@ -315,6 +316,7 @@ jobs:
           echo y | agy plugin install plugins/api
           echo y | agy plugin install plugins/stackhawk-data-seed
           echo y | agy plugin install plugins/hawkscan-ci
+          echo y | agy plugin install plugins/optimize
         continue-on-error: true  # depends on agy CLI; best-effort so evals still runs
 
       # hawk CLI (Java app) — the hawkscan skill needs it on PATH; install-only, no scan.
@@ -392,7 +394,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize]
         model: [default]
 
     steps:
