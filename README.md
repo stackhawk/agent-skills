@@ -76,10 +76,16 @@ export HAWK_API_KEY=hawk.xxxxxxxxxxxx.xxxxxxxxxxxx
 
 ```
 /plugin marketplace add stackhawk/agent-skills
-/plugin install hawkscan@stackhawk
-/plugin install stackhawk-api@stackhawk
-/plugin install hawkscan-ci@stackhawk
-/plugin install stackhawk-data-seed@stackhawk
+/plugin install hawk@stackhawk      # installs hawkscan + api + data-seed
+```
+
+Advanced — install individually instead:
+
+```
+# /plugin install hawkscan@stackhawk
+# /plugin install stackhawk-api@stackhawk
+# /plugin install hawkscan-ci@stackhawk
+# /plugin install stackhawk-data-seed@stackhawk
 ```
 
 #### Codex
@@ -91,6 +97,8 @@ export HAWK_API_KEY=hawk.xxxxxxxxxxxx.xxxxxxxxxxxx
 /plugin install hawkscan-ci@stackhawk
 /plugin install stackhawk-data-seed@stackhawk
 ```
+
+If your Codex version supports umbrella dependency auto-install, you may use `/plugin install hawk@stackhawk` instead.
 
 #### Gemini CLI
 

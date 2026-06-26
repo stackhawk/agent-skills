@@ -1,7 +1,7 @@
 {
   "name": "hawk",
-  "version": "1.14.5",
-  "description": "StackHawk umbrella plugin — installs the default StackHawk skill set (hawkscan, api, data-seed) in one command for the combined hawk CLI.",
+  "version": "2.0.0",
+  "description": "StackHawk umbrella plugin \u2014 installs the default StackHawk skill set (hawkscan, api, data-seed) in one command for the combined hawk CLI.",
   "author": {
     "name": "StackHawk",
     "email": "support@stackhawk.com",
@@ -10,6 +10,17 @@
   "homepage": "https://docs.stackhawk.com",
   "repository": "https://github.com/stackhawk/agent-skills",
   "license": "MIT",
-  "keywords": ["security", "appsec", "stackhawk", "hawk", "dast", "umbrella"],
-  "dependencies": ["hawkscan", "stackhawk-api", "stackhawk-data-seed"]
+  "keywords": [
+    "security",
+    "appsec",
+    "stackhawk",
+    "hawk",
+    "dast",
+    "umbrella"
+  ],
+  "dependencies": [
+    "hawkscan",
+    "stackhawk-api",
+    "stackhawk-data-seed"
+  ]
 }

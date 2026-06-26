@@ -35,23 +35,23 @@ See `references/installation.md` for upgrade and install instructions.
 
 ## Companion Skills
 
-The `api` skill wraps read-only StackHawk platform lookups via the `hawkop` CLI:
+The `api` skill wraps read-only StackHawk platform lookups via the combined `hawk` CLI (`hawk op …`):
 
 | Purpose                       | Command                                                                          |
 |-------------------------------|----------------------------------------------------------------------------------|
-| Check if App exists           | `hawkop app list --format json`                                                  |
-| Check if Env exists           | `hawkop env list --app <APP_ID> --format json`                                   |
-| Get findings with triage      | `hawkop scan get --app <NAME> --detail full --format json`                       |
-| List ASM repos                | `hawkop repo list --format json`                                                 |
-| Link app to ASM repo          | `hawkop repo link --repo-id <ID> --app-id <ID>`                                  |
-| Get tech flags                | `hawkop app tech-flags get --app <NAME> --format json`                           |
-| Disable all tech flags        | `hawkop app tech-flags disable-all --app <NAME> --yes`                           |
-| Set specific tech flags       | `hawkop app tech-flags set --app <NAME> Key=true`                                |
-| Triage a finding              | `hawkop scan triage --scan <ID> --hash <HASH> --status false-positive --note ""` |
-| Bulk triage from file         | `hawkop scan triage --scan <ID> --from-file triage.yaml`                         |
-| Annotate w/o triage perm      | `hawkop finding note --scan <ID> --hash <HASH> --note "..."`                     |
+| Check if App exists           | `hawk op app list --format json`                                                  |
+| Check if Env exists           | `hawk op env list --app <APP_ID> --format json`                                   |
+| Get findings with triage      | `hawk op scan get --app <NAME> --detail full --format json`                       |
+| List ASM repos                | `hawk op repo list --format json`                                                 |
+| Link app to ASM repo          | `hawk op repo link --repo-id <ID> --app-id <ID>`                                  |
+| Get tech flags                | `hawk op app tech-flags get --app <NAME> --format json`                           |
+| Disable all tech flags        | `hawk op app tech-flags disable-all --app <NAME> --yes`                           |
+| Set specific tech flags       | `hawk op app tech-flags set --app <NAME> Key=true`                                |
+| Triage a finding              | `hawk op scan triage --scan <ID> --hash <HASH> --status false-positive --note ""` |
+| Bulk triage from file         | `hawk op scan triage --scan <ID> --from-file triage.yaml`                         |
+| Annotate w/o triage perm      | `hawk op finding note --scan <ID> --hash <HASH> --note "..."`                     |
 
-If `hawkop` is not installed, the api skill documents raw REST fallbacks.
+These reads require the combined `hawk` CLI; the `api` skill covers setup (`hawk init` or the `HAWK_API_KEY` env var).
 
 The `stackhawk-data-seed` skill sets up checked-in backend seed data via `hawk perch seed`.
 Hand off to it when authentication fails because the backend has no valid credential
@@ -83,8 +83,8 @@ the first time). Do NOT run on every scan.
 
 **Phase 0a — Repo Linking:** Associate the app with its source repo in Attack Surface
 Management. Get the git remote URL, normalize it (lowercase, strip `.git`, strip host prefix
-to `owner/repo`), match against `hawkop repo list --format json` output, and run
-`hawkop repo link --repo-id <UUID> --app-id <UUID>`. If no match, inject a `git_origin` tag
+to `owner/repo`), match against `hawk op repo list --format json` output, and run
+`hawk op repo link --repo-id <UUID> --app-id <UUID>`. If no match, inject a `git_origin` tag
 into `stackhawk.yml`.
 → Full normalization rules and SSH/HTTPS edge cases: [`references/repo-linking.md`](references/repo-linking.md)
 
@@ -166,7 +166,7 @@ find . -not -path "*/node_modules/*" \( -path "*/pages/api/*" -o -path "*/app/ap
    `API_KEY=$HAWK_API_KEY hawk <cmd>`. If a later command returns 401/403, re-run `hawk init`.
 4. **Runtime?** Check `which hawk`. If found: use CLI. If not: check `docker --version`.
    If both absent: see `references/installation.md`.
-5. **App exists?** Run `hawkop app list --format json`. Match by name (normalized: lowercased,
+5. **App exists?** Run `hawk op app list --format json`. Match by name (normalized: lowercased,
    `_` and `-` equivalent). Exactly one match → use its `applicationId`. Multiple matches →
    pick by host if established, else surface to user. No match → create:
    ```bash
@@ -174,8 +174,8 @@ find . -not -path "*/node_modules/*" \( -path "*/pages/api/*" -o -path "*/app/ap
    ```
    Resolve `<env-name>` with the Env Name Algorithm above. Announce the created app ID and URL.
 6. **Env exists?** Determine env name via Env Name Algorithm. Run
-   `hawkop env list --app <APP_ID> --format json`. Reuse if exists; otherwise run
-   `hawkop env create --app <APP_ID> --env <name> --host <url>`.
+   `hawk op env list --app <APP_ID> --format json`. Reuse if exists; otherwise run
+   `hawk op env create --app <APP_ID> --env <name> --host <url>`.
 
 ---
 
@@ -368,7 +368,7 @@ Filter by the per-path `status` field (`findings[].paths[].status`) before fixin
 
 **Marking false positives** — mark `NEW` findings that are clearly false positives before routing the rest to the fix loop:
 ```bash
-hawkop scan triage --scan <SCAN_UUID> --hash <FINDING_HASH> --status false-positive \
+hawk op scan triage --scan <SCAN_UUID> --hash <FINDING_HASH> --status false-positive \
   --note "<reason> [triaged by ${HAWK_AGENT:-agent}]"
 ```
 Always append `[triaged by ${HAWK_AGENT:-agent}]` to every note for platform audit trail attribution.
@@ -377,7 +377,7 @@ Always append `[triaged by ${HAWK_AGENT:-agent}]` to every note for platform aud
 - ✅ Mark `FALSE_POSITIVE` autonomously with a clear reason note
 - ❌ **Never mark `RISK_ACCEPTED` or `ASSIGNED`** — human decisions only
 - ❌ Do NOT suppress findings in the codebase to hide scanner results
-- ⚠️ If `scan triage` is denied (no `WRITE_TRIAGE`): fall back to `hawkop finding note`; tell the user a `WRITE_TRIAGE` holder must apply the status
+- ⚠️ If `scan triage` is denied (no `WRITE_TRIAGE`): fall back to `hawk op finding note`; tell the user a `WRITE_TRIAGE` holder must apply the status
 
 After triage: "Marked [N] findings as false positive. Routing [M] remaining NEW findings to fix loop. Platform: https://app.stackhawk.com/scans/<scanId>"
 

@@ -1,24 +1,19 @@
 ---
 description: >
-  StackHawk API reporting recipes: org security posture summary, app deep dive (scan -> alerts -> findings), stale apps detection, scan diff (what changed since last scan). Pre-built jq compositions using hawk_api helpers. Prefer hawkop shortcuts (stackhawk-api-hawkop) for the deep-dive chain; use these recipes for the per-env untriaged posture view.
+  StackHawk API reporting recipes: org security posture summary, app deep dive (scan -> alerts -> findings), stale apps detection, scan diff (what changed since last scan). Pre-built compositions using hawk op commands. Prefer hawk op shortcuts (stackhawk-api-hawk-op) for the deep-dive chain; use these recipes for the per-env untriaged posture view.
 globs:
 alwaysApply: false
 ---
 # StackHawk API Reporting Recipes
 
-Pre-built compositions for common security reporting questions. Each recipe uses
-the `hawk_api` and `hawk_api_all_pages` helpers from `api-auth.md`. Source that
-helper library before running any recipe.
+Pre-built compositions for common security reporting questions using `hawk op`.
+Run `hawk op status` first to confirm authentication; set `HAWK_API_KEY` for
+CI/CD pipelines.
 
-**Setup (run once per shell session):**
+**Setup (run once per shell session for CI/CD):**
 
 ```bash
-# Source the helper library (copy the block from api-auth.md first)
-source "${_hawk_lib}"
-
-# Required environment variables
 export HAWK_API_KEY="hawk.xxxxxxxxxxxx"   # from app.stackhawk.com → Settings → API Keys
-export ORG_ID="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"  # from platform URL or auth response
 ```
 
 ---
@@ -27,85 +22,63 @@ export ORG_ID="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"  # from platform URL or aut
 
 **Question:** Across all my apps, what is the current security situation?
 
-**What it produces:** One row per environment showing untriaged finding counts by
-severity, sorted by High findings descending. Environments with no recent scan are
-flagged.
+**What it produces:** One row per app showing latest-scan finding counts by
+severity, sorted by High findings descending.
 
-### Step 1 — Fetch all environments
+### Step 1 — Fetch all apps and recent scans
 
 ```bash
-all_envs=$(hawk_api_all_pages "/api/v2/org/${ORG_ID}/envs" "environments" 200)
+apps=$(hawk op app list --format json)
+scans=$(hawk op scan list --limit 500 --format json)
 ```
 
 ### Step 2 — Build the posture table
 
 ```bash
-printf '%s' "${all_envs}" | jq -r '
-  # Compute seconds-since-scan for each env
-  def age_days(ts):
-    if ts == null then "NEVER"
-    else
-      (now - (ts | sub("\\.[0-9]+Z$"; "Z") | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime))
-      / 86400 | floor | tostring
-    end;
+# Join latest scan per app to get severity counts
+printf '%s\n%s' "${apps}" "${scans}" | jq -rs '
+  .[0] as $apps | .[1] as $scans |
 
-  # Flag envs with no scan or scan older than 30 days
-  def stale(ts):
-    if ts == null then "STALE (never scanned)"
-    else
-      (now - (ts | sub("\\.[0-9]+Z$"; "Z") | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime))
-      / 86400 | floor as $d
-      | if $d > 30 then "STALE (\($d)d ago)" else "" end
-    end;
+  # Build app name lookup: applicationId -> name
+  ($apps.data | map({(.id): .name}) | add // {}) as $names |
 
-  # Sort by High desc, then Medium desc
-  sort_by([(.lastScanHighUntriaged // 0) * -1, (.lastScanMediumUntriaged // 0) * -1])
-  | ["APP_ID", "ENVIRONMENT", "HIGH", "MEDIUM", "LOW", "LAST_SCAN", "FLAG"],
+  # Find latest completed scan per app
+  ($scans.data
+    | group_by(.applicationId)
+    | map(
+        sort_by(.startedTimestamp) | reverse |
+        map(select(.status == "COMPLETED")) | .[0]
+      )
+    | map(select(. != null))
+  ) as $latest |
+
+  # Output sorted by High desc
+  ($latest | sort_by(.highAlertCount // 0 | . * -1))
+  | ["APP", "ENVIRONMENT", "HIGH", "MEDIUM", "LOW", "LAST_SCAN"],
     (.[] | [
-      .applicationId,
-      .environmentName,
-      (.lastScanHighUntriaged   // 0 | tostring),
-      (.lastScanMediumUntriaged // 0 | tostring),
-      (.lastScanLowUntriaged    // 0 | tostring),
-      (.lastScanTimestamp // "never"),
-      stale(.lastScanTimestamp)
+      ($names[.applicationId] // .applicationId),
+      (.environmentName // "—"),
+      (.highAlertCount   // 0 | tostring),
+      (.mediumAlertCount // 0 | tostring),
+      (.lowAlertCount    // 0 | tostring),
+      (.startedTimestamp // "never")
     ])
   | @tsv
 ' | column -t -s $'\t'
 ```
 
-### Step 3 — Summary totals
-
-```bash
-printf '%s' "${all_envs}" | jq '
-  {
-    total_envs:   length,
-    total_high:   (map(.lastScanHighUntriaged   // 0) | add // 0),
-    total_medium: (map(.lastScanMediumUntriaged // 0) | add // 0),
-    total_low:    (map(.lastScanLowUntriaged    // 0) | add // 0),
-    never_scanned:   [.[] | select(.lastScanTimestamp == null)]               | length,
-    stale_over_30d:  [.[] | select(
-        .lastScanTimestamp != null and
-        ((now - (.lastScanTimestamp | sub("\\.[0-9]+Z$"; "Z")
-          | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime)) / 86400) > 30
-      )] | length
-  }
-'
-```
-
 ### Output format
 
 ```
-APP_ID                               ENVIRONMENT   HIGH  MEDIUM  LOW  LAST_SCAN             FLAG
-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx Production    5     12      8    2024-01-15T10:30:00Z
-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx Staging       3     4       1    2024-01-10T09:00:00Z
-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx Development   0     0       0    2023-11-01T08:00:00Z  STALE (75d ago)
-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx QA            0     0       0    never                 STALE (never scanned)
+APP            ENVIRONMENT   HIGH  MEDIUM  LOW  LAST_SCAN
+payment-api    Production    5     12      8    2024-01-15T10:30:00Z
+auth-service   Staging       3     4       1    2024-01-10T09:00:00Z
+admin-portal   Development   0     0       0    2023-11-01T08:00:00Z
 ```
 
-> **Note:** `APP_ID` is the `applicationId` UUID. To show human-readable app names,
-> fetch all apps with `hawk_api_all_pages "/api/v2/org/${ORG_ID}/apps" "applications"`
-> and join on `applicationId` before printing.
+> **Note:** `hawk op scan list` returns per-scan alert totals. For live untriaged
+> counts, use `hawk op scan get <SCAN_ID> --detail full --format json` and filter
+> on `triageStatus`.
 
 ---
 
@@ -116,101 +89,59 @@ xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx QA            0     0       0    never     
 **What it produces:** All alerts from the most recent scan, grouped by severity,
 with affected URIs expanded for High and Medium findings.
 
-### Prerequisites
-
-```bash
-APP_ID="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"   # application UUID
-```
-
 ### Step 1 — Get the latest scan for the app
 
 ```bash
-# Fetch the most recent scan result for this application
-latest_scan=$(hawk_api GET "/api/v1/scan/${ORG_ID}?pageSize=200" \
-  | jq --arg app "${APP_ID}" '
-      .applicationScanResults
-      | map(select(.applicationId == $app and .status == "COMPLETED"))
-      | sort_by(.startedTimestamp)
-      | reverse
-      | .[0]
-    ')
+APP_NAME="<your-app-name>"
 
-SCAN_ID=$(printf '%s' "${latest_scan}" | jq -r '.scanId')
-SCAN_TS=$(printf '%s' "${latest_scan}" | jq -r '.startedTimestamp')
+# Full findings in one command
+hawk op scan get --app "${APP_NAME}" --detail full --format json > /tmp/scan.json
 
-echo "Latest completed scan: ${SCAN_ID} (started ${SCAN_TS})"
+SCAN_ID=$(jq -r '.scanId' /tmp/scan.json)
+SCAN_TS=$(jq -r '.startedTimestamp' /tmp/scan.json)
+
+echo "Latest scan: ${SCAN_ID} (started ${SCAN_TS})"
 echo "Platform URL: https://app.stackhawk.com/scans/${SCAN_ID}"
 ```
 
-If the app has more scans than one page returns, paginate to find the most recent:
+### Step 2 — Print alert summary
 
 ```bash
-all_scans=$(hawk_api_all_pages "/api/v1/scan/${ORG_ID}" "applicationScanResults")
-
-latest_scan=$(printf '%s' "${all_scans}" | jq --arg app "${APP_ID}" '
-  map(select(.applicationId == $app and .status == "COMPLETED"))
-  | sort_by(.startedTimestamp)
-  | reverse
-  | .[0]
-')
-
-SCAN_ID=$(printf '%s' "${latest_scan}" | jq -r '.scanId')
-```
-
-### Step 2 — List all alerts for the scan
-
-```bash
-all_alerts=$(hawk_api_all_pages "/api/v1/scan/${SCAN_ID}/alerts" "applicationAlert")
-
-# Print alert summary sorted by severity (High → Medium → Low)
-printf '%s' "${all_alerts}" | jq -r '
+jq -r '
   def sev_rank: if . == "High" then 0 elif . == "Medium" then 1 else 2 end;
 
-  sort_by(.severity | sev_rank)
+  .alerts
+  | sort_by(.severity | sev_rank)
   | ["SEVERITY", "PLUGIN_ID", "ALERT_NAME", "CWE", "AFFECTED_URIS"],
     (.[] | [
       .severity,
-      .pluginId,
+      (.pluginId | tostring),
       .alertName,
       (.cweId // "—"),
       (.affectedUriCount | tostring)
     ])
   | @tsv
-' | column -t -s $'\t'
+' /tmp/scan.json | column -t -s $'\t'
 ```
 
 ### Step 3 — Expand affected paths for High and Medium alerts
 
 ```bash
-# Collect High and Medium plugin IDs
-high_med_ids=$(printf '%s' "${all_alerts}" | jq -r '
-  .[] | select(.severity == "High" or .severity == "Medium") | .pluginId
-')
-
-# For each High/Medium alert, fetch the affected URIs
-while IFS= read -r plugin_id; do
-  [[ -z "${plugin_id}" ]] && continue
-
-  alert_name=$(printf '%s' "${all_alerts}" \
-    | jq -r --arg pid "${plugin_id}" '.[] | select(.pluginId == $pid) | .alertName')
-  severity=$(printf '%s' "${all_alerts}" \
-    | jq -r --arg pid "${plugin_id}" '.[] | select(.pluginId == $pid) | .severity')
-
-  echo ""
-  echo "=== [${severity}] ${alert_name} (plugin ${plugin_id}) ==="
-
-  hawk_api GET "/api/v1/scan/${SCAN_ID}/alert/${plugin_id}?pageSize=100" \
-    | jq -r '
-        ["METHOD", "URI", "PARAMETER", "TRIAGE_STATUS"],
-        (.applicationScanAlertUris[] | [
-          .method,
-          .uri,
-          (.parameter // "—"),
-          (.triageStatus // "New")
-        ])
-        | @tsv
-      ' | column -t -s $'\t'
-done <<< "${high_med_ids}"
+jq -r '
+  .findings[]
+  | select(.severity == "High" or .severity == "Medium")
+  | "=== [\(.severity)] \(.alertName) (plugin \(.pluginId)) ===",
+    (
+      ["METHOD", "URI", "PARAMETER", "TRIAGE_STATUS"],
+      (.uris[] | [
+        .method,
+        .uri,
+        (.parameter // "—"),
+        (.triageStatus // "New")
+      ])
+      | @tsv
+    )
+' /tmp/scan.json | column -t -s $'\t'
 ```
 
 ### Output format
@@ -241,88 +172,80 @@ https://app.stackhawk.com/scans/${SCAN_ID}
 
 **Question:** Which apps have not been scanned recently?
 
-**What it produces:** All environments where the last scan is either missing or
+**What it produces:** All apps where the last completed scan is either missing or
 older than 30 days, sorted by staleness (longest gap first).
 
-### Step 1 — Fetch all environments
+### Step 1 — Fetch apps and recent scans
 
 ```bash
-all_envs=$(hawk_api_all_pages "/api/v2/org/${ORG_ID}/envs" "environments" 200)
+apps=$(hawk op app list --format json)
+scans=$(hawk op scan list --limit 500 --format json)
 ```
 
-### Step 2 — Filter and sort stale environments
+### Step 2 — Find stale apps
 
 ```bash
-STALE_DAYS=30  # adjust threshold as needed
+STALE_DAYS=30
 
-printf '%s' "${all_envs}" | jq -r --argjson threshold "${STALE_DAYS}" '
-  def days_since(ts):
-    if ts == null then 999999   # never scanned — sort to top
-    else
-      (now - (ts | sub("\\.[0-9]+Z$"; "Z") | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime))
-      / 86400 | floor
-    end;
+printf '%s\n%s' "${apps}" "${scans}" | jq -rs --argjson threshold "${STALE_DAYS}" '
+  .[0] as $apps | .[1] as $scans |
 
-  def display_last_scan(ts):
-    if ts == null then "never" else ts end;
+  ($apps.data | map({(.id): .name}) | add // {}) as $names |
 
-  def display_days(ts):
-    if ts == null then "never scanned"
-    else (days_since(ts) | tostring) + " days"
-    end;
+  ($scans.data
+    | group_by(.applicationId)
+    | map(
+        sort_by(.startedTimestamp) | reverse |
+        map(select(.status == "COMPLETED")) | .[0]
+      )
+    | map(select(. != null))
+    | map({
+        appId: .applicationId,
+        env:   .environmentName,
+        ts:    .startedTimestamp
+      })
+  ) as $latest_scans |
 
-  # Keep only stale envs
-  [.[] | select(days_since(.lastScanTimestamp) > $threshold)]
+  [
+    ($latest_scans[] |
+      . as $s |
+      (if $s.ts == null then 999999
+       else (now - ($s.ts | sub("\\.[0-9]+Z$"; "Z") | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime)) / 86400 | floor
+       end) as $days |
+      select($days > $threshold) |
+      {
+        app:  ($names[$s.appId] // $s.appId),
+        env:  ($s.env // "—"),
+        last: ($s.ts // "never"),
+        days: (if $s.ts == null then "never scanned" else ($days | tostring) + " days ago" end)
+      }
+    )
+  ]
+  | sort_by(.days | if . == "never scanned" then "zzz" else . end) | reverse
 
-  # Sort: never-scanned first, then longest gap first
-  | sort_by(days_since(.lastScanTimestamp) * -1)
-
-  | ["APP_ID", "ENVIRONMENT", "LAST_SCAN", "DAYS_SINCE_SCAN"],
-    (.[] | [
-      .applicationId,
-      .environmentName,
-      display_last_scan(.lastScanTimestamp),
-      display_days(.lastScanTimestamp)
-    ])
+  | ["APP", "ENVIRONMENT", "LAST_SCAN", "STALENESS"],
+    (.[] | [.app, .env, .last, .days])
   | @tsv
 ' | column -t -s $'\t'
-```
-
-### Step 3 — Count summary
-
-```bash
-printf '%s' "${all_envs}" | jq --argjson threshold "${STALE_DAYS}" '
-  def days_since(ts):
-    if ts == null then 999999
-    else (now - (ts | sub("\\.[0-9]+Z$"; "Z") | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime)) / 86400 | floor
-    end;
-
-  {
-    total_environments: length,
-    stale_count: [.[] | select(days_since(.lastScanTimestamp) > $threshold)] | length,
-    never_scanned: [.[] | select(.lastScanTimestamp == null)] | length,
-    threshold_days: $threshold
-  }
-'
 ```
 
 ### Output format
 
 ```
-APP_ID                               ENVIRONMENT   LAST_SCAN             DAYS_SINCE_SCAN
-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx QA            never                 never scanned
-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx Development   2023-09-01T08:00:00Z  116 days
-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx Staging       2023-11-20T14:00:00Z  55 days
+APP            ENVIRONMENT   LAST_SCAN             STALENESS
+admin-portal   QA            never                 never scanned
+auth-service   Development   2023-09-01T08:00:00Z  116 days ago
+payment-api    Staging       2023-11-20T14:00:00Z  55 days ago
 ```
 
 ### Recommendation
 
 For each stale environment, present the following action:
 
-> **Action required:** Environment `<environmentName>` (app `<applicationId>`) has not
-> been scanned in `<N>` days. Run a HawkScan against this environment to refresh the
-> security posture data. See the `hawkscan` plugin for scan configuration and
-> invocation instructions.
+> **Action required:** App `<name>` (`<environmentName>`) has not been scanned in
+> `<N>` days. Run a HawkScan against this environment to refresh the security
+> posture data. See the `hawkscan` plugin for scan configuration and invocation
+> instructions.
 
 ---
 
@@ -334,86 +257,71 @@ For each stale environment, present the following action:
 not in the previous) and "Resolved findings" (alerts in the previous scan but not in
 the latest), diffed by `pluginId`.
 
-### Prerequisites
+### Step 1 — Get the two most recent scans and their alerts
 
 ```bash
-APP_ID="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"   # application UUID
-```
+APP_NAME="<your-app-name>"
 
-### Step 1 — Get the two most recent completed scans for the app
+# List last 2 scans
+hawk op scan list --app "${APP_NAME}" --limit 2 --format json > /tmp/last2.json
 
-```bash
-all_scans=$(hawk_api_all_pages "/api/v1/scan/${ORG_ID}" "applicationScanResults")
+SCAN_A=$(jq -r '.data[0].scanId' /tmp/last2.json)
+SCAN_B=$(jq -r '.data[1].scanId' /tmp/last2.json)
+TS_A=$(jq -r '.data[0].startedTimestamp' /tmp/last2.json)
+TS_B=$(jq -r '.data[1].startedTimestamp' /tmp/last2.json)
 
-# Extract the two most recent COMPLETED scans for the target app
-two_scans=$(printf '%s' "${all_scans}" | jq --arg app "${APP_ID}" '
-  [.[] | select(.applicationId == $app and .status == "COMPLETED")]
-  | sort_by(.startedTimestamp)
-  | reverse
-  | .[0:2]
-')
+echo "Latest scan : ${SCAN_A} (${TS_A})"
+echo "Previous scan: ${SCAN_B} (${TS_B})"
 
-LATEST_SCAN_ID=$(printf '%s' "${two_scans}" | jq -r '.[0].scanId')
-PREV_SCAN_ID=$(printf '%s'   "${two_scans}" | jq -r '.[1].scanId')
-LATEST_TS=$(printf '%s' "${two_scans}" | jq -r '.[0].startedTimestamp')
-PREV_TS=$(printf '%s'   "${two_scans}" | jq -r '.[1].startedTimestamp')
-
-echo "Latest scan : ${LATEST_SCAN_ID} (${LATEST_TS})"
-echo "Previous scan: ${PREV_SCAN_ID} (${PREV_TS})"
-
-# Guard: need at least 2 scans to diff
-if [[ "${LATEST_SCAN_ID}" == "null" || "${PREV_SCAN_ID}" == "null" ]]; then
-  echo "ERROR: Need at least 2 completed scans for this app to compute a diff." >&2
+# Guard: need at least 2 scans
+if [[ "${SCAN_A}" == "null" || "${SCAN_B}" == "null" ]]; then
+  echo "ERROR: Need at least 2 completed scans to compute a diff." >&2
   exit 1
 fi
+
+# Fetch alerts for each
+hawk op scan get "${SCAN_A}" --format json | jq '.alerts' > /tmp/alerts_a.json
+hawk op scan get "${SCAN_B}" --format json | jq '.alerts' > /tmp/alerts_b.json
 ```
 
-### Step 2 — Fetch alerts for both scans
+### Step 2 — Diff the alert sets by pluginId
 
 ```bash
-latest_alerts=$(hawk_api_all_pages "/api/v1/scan/${LATEST_SCAN_ID}/alerts" "applicationAlert")
-prev_alerts=$(hawk_api_all_pages "/api/v1/scan/${PREV_SCAN_ID}/alerts"   "applicationAlert")
-```
-
-### Step 3 — Diff the alert sets by pluginId
-
-```bash
-# Build lookup sets and compute new vs. resolved
 diff_result=$(jq -n \
-  --argjson latest "${latest_alerts}" \
-  --argjson prev   "${prev_alerts}" '
+  --slurpfile latest /tmp/alerts_a.json \
+  --slurpfile prev   /tmp/alerts_b.json '
+  ($latest[0]) as $l | ($prev[0]) as $p |
   {
-    latest_ids: ($latest | map(.pluginId) | unique),
-    prev_ids:   ($prev   | map(.pluginId) | unique),
-    latest_map: ($latest | map({(.pluginId): .}) | add // {}),
-    prev_map:   ($prev   | map({(.pluginId): .}) | add // {})
-  } as $data
-  | {
-      new_findings: (
-        $data.latest_ids - $data.prev_ids
-        | map($data.latest_map[.])
-        | sort_by(.severity | if . == "High" then 0 elif . == "Medium" then 1 else 2 end)
-      ),
-      resolved_findings: (
-        $data.prev_ids - $data.latest_ids
-        | map($data.prev_map[.])
-        | sort_by(.severity | if . == "High" then 0 elif . == "Medium" then 1 else 2 end)
-      ),
-      unchanged_count: (
-        [$data.latest_ids[], $data.prev_ids[]] | group_by(.) | map(select(length == 2)) | length
-      )
-    }
+    latest_ids: ($l | map(.pluginId | tostring) | unique),
+    prev_ids:   ($p | map(.pluginId | tostring) | unique),
+    latest_map: ($l | map({((.pluginId | tostring)): .}) | add // {}),
+    prev_map:   ($p | map({((.pluginId | tostring)): .}) | add // {})
+  } as $data |
+  {
+    new_findings: (
+      $data.latest_ids - $data.prev_ids
+      | map($data.latest_map[.])
+      | sort_by(.severity | if . == "High" then 0 elif . == "Medium" then 1 else 2 end)
+    ),
+    resolved_findings: (
+      $data.prev_ids - $data.latest_ids
+      | map($data.prev_map[.])
+      | sort_by(.severity | if . == "High" then 0 elif . == "Medium" then 1 else 2 end)
+    ),
+    unchanged_count: (
+      [$data.latest_ids[], $data.prev_ids[]] | group_by(.) | map(select(length == 2)) | length
+    )
+  }
 ')
 ```
 
-### Step 4 — Present the diff
+### Step 3 — Present the diff
 
 ```bash
-echo ""
 echo "======================================================================"
-echo "SCAN DIFF: ${APP_ID}"
-echo "  Latest:   ${LATEST_SCAN_ID}  (${LATEST_TS})"
-echo "  Previous: ${PREV_SCAN_ID}  (${PREV_TS})"
+echo "SCAN DIFF: ${APP_NAME}"
+echo "  Latest:   ${SCAN_A}  (${TS_A})"
+echo "  Previous: ${SCAN_B}  (${TS_B})"
 echo "======================================================================"
 
 echo ""
@@ -424,7 +332,7 @@ printf '%s' "${diff_result}" | jq -r '
     ["SEVERITY", "PLUGIN_ID", "ALERT_NAME", "CWE", "AFFECTED_URIS"],
     (.new_findings[] | [
       .severity,
-      .pluginId,
+      (.pluginId | tostring),
       .alertName,
       (.cweId // "—"),
       (.affectedUriCount | tostring)
@@ -441,7 +349,7 @@ printf '%s' "${diff_result}" | jq -r '
     ["SEVERITY", "PLUGIN_ID", "ALERT_NAME", "CWE", "AFFECTED_URIS_PREV"],
     (.resolved_findings[] | [
       .severity,
-      .pluginId,
+      (.pluginId | tostring),
       .alertName,
       (.cweId // "—"),
       (.affectedUriCount | tostring)
@@ -451,21 +359,20 @@ printf '%s' "${diff_result}" | jq -r '
 ' | column -t -s $'\t'
 
 echo ""
-printf '%s' "${diff_result}" | jq -r '
-  "Summary: \(.new_findings | length) new, \(.resolved_findings | length) resolved, \(.unchanged_count) unchanged"
-'
+printf '%s' "${diff_result}" | jq -r \
+  '"Summary: \(.new_findings | length) new, \(.resolved_findings | length) resolved, \(.unchanged_count) unchanged"'
 
 echo ""
 echo "Platform links:"
-echo "  Latest scan:   https://app.stackhawk.com/scans/${LATEST_SCAN_ID}"
-echo "  Previous scan: https://app.stackhawk.com/scans/${PREV_SCAN_ID}"
+echo "  Latest scan:   https://app.stackhawk.com/scans/${SCAN_A}"
+echo "  Previous scan: https://app.stackhawk.com/scans/${SCAN_B}"
 ```
 
 ### Output format
 
 ```
 ======================================================================
-SCAN DIFF: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+SCAN DIFF: payment-api
   Latest:   aaa-bbb-ccc  (2024-01-15T10:00:00Z)
   Previous: ddd-eee-fff  (2024-01-10T09:00:00Z)
 ======================================================================

@@ -1,6 +1,6 @@
 ---
 name: skill-authoring
-version: 1.15.0
+version: 2.0.0
 description: >
   Guides authoring and maintaining agent skills in this repository — enforcing
   Anthropic best practices, bumping versions, regenerating Cursor rules, and
@@ -226,41 +226,3 @@ bash scripts/bump-version.sh --patch    # or --minor/--major
 bash scripts/generate-cursor-rules.sh
 git add plugins/ cursor/ scripts/ && git commit --amend --no-edit
 ```
-
----
-
-## Updating the Changelog
-
-`CHANGELOG.md` at the repo root follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and must be updated in the **same commit** as any substantive change.
-
-### When to update
-
-| Change | Required? |
-|--------|-----------|
-| New skill or plugin | Yes — `### Added` entry |
-| New reference file added to a skill | Yes — `### Added` entry |
-| Content update to existing skill | Yes — `### Changed` entry |
-| Bug fix / correction in skill content | Yes — `### Fixed` entry |
-| Structural repo change (new dir, script change) | Yes — `### Changed` entry |
-| Version bump only (no content change) | No |
-| Typo fix | No |
-
-### Format
-
-Add the entry under `## [Unreleased]` at the top of the changelog (create the section if it doesn't exist):
-
-```markdown
-## [Unreleased]
-
-### Added
-- `hawkscan` skill: added OAuth 2.0 authentication support
-
-### Changed
-- `skill-authoring` moved from `plugins/` to `.claude/skills/` (maintainer skill, not marketplace)
-```
-
-`release.sh` converts `[Unreleased]` to the version + date when cutting a release. Never add a version header manually for in-progress work.
-
-### Rule
-
-Every PR that adds or modifies skill content must include a CHANGELOG entry. PRs without entries should be rejected in review.

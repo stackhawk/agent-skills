@@ -10,6 +10,7 @@ Multi-platform agent skills repo serving Claude, Codex, Gemini, Copilot, Cursor,
 
 - `plugins/hawkscan/` — HawkScan DAST scanning skill (SKILL.md + references + hooks)
 - `plugins/api/` — StackHawk API reporting skill (SKILL.md + references)
+- `plugins/hawk/` — Umbrella plugin; `/plugin install hawk@stackhawk` installs hawkscan + api + data-seed
 - `.claude/skills/skill-authoring/` — Maintainer skill: authoring rules and best practices for contributors to this repo (NOT distributed via marketplace; tracked in git via `.gitignore` negation)
 - `skills/` — Symlinks for Gemini/Copilot discovery (points into plugins/)
 - `.opencode/skills/` — Symlinks for OpenCode discovery (points into plugins/)
@@ -65,6 +66,8 @@ See `RELEASING.md` for the full release process including how to update the mark
 
 `VERSION` is the single source of truth. All platform manifests must match it.
 
+Skills assume the combined `hawk` binary (`hawk op …`) is installed — no raw-REST fallback.
+
 | Platform | Manifest |
 |----------|----------|
 | Claude | `.claude-plugin/marketplace.json` + `plugins/*/.claude-plugin/plugin.json` |
@@ -72,6 +75,7 @@ See `RELEASING.md` for the full release process including how to update the mark
 | Gemini | `gemini-extension.json` |
 | Copilot | No manifest — discovers via `skills/` symlinks |
 | Cursor | Rules: generated into `cursor/.cursor/rules/`; Skills: symlinks in `.cursor/skills/`; Hooks: `plugins/hawkscan/hooks/cursor/` |
+| Claude (umbrella) | `plugins/hawk/.claude-plugin/plugin.json` — `/plugin install hawk@stackhawk` installs hawkscan + api + data-seed |
 
 `.version-bump.json` lists every version-bearing file. `bump-version.sh` reads it to update all files atomically. When adding a new plugin, add its manifests and SKILL.md to `.version-bump.json`.
 
