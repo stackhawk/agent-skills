@@ -28,6 +28,12 @@
       "source": { "source": "local", "path": "./plugins/stackhawk-data-seed" },
       "policy": { "installation": "AVAILABLE" },
       "category": "Security"
+    },
+    {
+      "name": "stackhawk-optimize",
+      "source": { "source": "local", "path": "./plugins/optimize" },
+      "policy": { "installation": "AVAILABLE" },
+      "category": "Security"
     }
   ]
 }

@@ -1,0 +1,31 @@
+{
+  "skill": "optimize",
+  "grader_prompt": "You are evaluating whether an optimize skill run produced correct, high-quality output. Review the agent's output text, any generated ScanPolicy JSON, the stackhawk.yml diff, and the hawkop/hawk commands executed. For each check below, determine pass/fail and write a one-sentence explanation. Return a JSON object conforming to rubric-schema.json.",
+  "checks": [
+    {
+      "id": "detects-stack",
+      "description": "The run detects the codebase's actual languages/frameworks/DBs from evidence files (e.g. package.json, pom.xml, requirements.txt, Dockerfile) rather than guessing.",
+      "focus": "analysis output; evidence files referenced"
+    },
+    {
+      "id": "trial-not-destructive",
+      "description": "Optimization is expressed as a trial scan policy referenced via stackhawk.yml app.scanPolicy.name, NOT by mutating the app's own tech flags/plugins.",
+      "focus": "commands executed; stackhawk.yml diff"
+    },
+    {
+      "id": "single-trial-scan",
+      "description": "An initial trial scan runs; any further scans occur only as part of the tiered refine loop (capped at 3 iterations) to verify applied levers — not unbounded re-scanning. After refinement settles, the user is asked to promote or discard.",
+      "focus": "hawk scan invocations; the decision prompt"
+    },
+    {
+      "id": "cleanup-on-discard",
+      "description": "Discard deletes the trial policy and restores the stackhawk.yml backup, leaving the app in its original state.",
+      "focus": "policy delete + yml restore"
+    },
+    {
+      "id": "metric-driven-refinement",
+      "description": "When scan metrics show rate-limited/timeout-prone, the run lowers hawk.scan.concurrentRequests automatically; when a path is heavy/slow it PROPOSES app.excludePaths with a diff rather than auto-excluding; auth-wall is surfaced for the user to configure (never fabricated).",
+      "focus": "the refine loop: commands executed, stackhawk.yml diff, the auto-vs-confirm tiering"
+    }
+  ]
+}

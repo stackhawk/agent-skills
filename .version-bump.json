@@ -18,7 +18,10 @@
     { "path": "plugins/stackhawk-data-seed/skills/stackhawk-data-seed/SKILL.md", "field": "version", "type": "yaml-frontmatter" },
     { "path": "plugins/skill-authoring/.claude-plugin/plugin.json", "field": "version", "type": "json" },
     { "path": "plugins/skill-authoring/.codex-plugin/plugin.json", "field": "version", "type": "json" },
-    { "path": "plugins/skill-authoring/skills/skill-authoring/SKILL.md", "field": "version", "type": "yaml-frontmatter" }
+    { "path": "plugins/skill-authoring/skills/skill-authoring/SKILL.md", "field": "version", "type": "yaml-frontmatter" },
+    { "path": "plugins/optimize/.claude-plugin/plugin.json", "field": "version", "type": "json" },
+    { "path": "plugins/optimize/.codex-plugin/plugin.json", "field": "version", "type": "json" },
+    { "path": "plugins/optimize/skills/optimize/SKILL.md", "field": "version", "type": "yaml-frontmatter" }
   ],
   "marketplace_manifests": [
     { "path": ".claude-plugin/marketplace.json", "field": "version", "type": "json-plugins-array" }
