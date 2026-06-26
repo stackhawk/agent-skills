@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `skill-authoring` skill: changelog update guidance — documents when and how to add CHANGELOG entries for every substantive skill change
-- `hawk` umbrella plugin: `/plugin install hawk@stackhawk` installs the default skill set.
+- `wingman` umbrella plugin: `/plugin install wingman@stackhawk` installs the default skill set.
 
 ### Changed
 - Skills now drive the combined `hawk` binary (`hawk op …`); the `api` skill's raw-REST fallback was removed.

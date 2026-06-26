@@ -30,8 +30,8 @@
       "category": "Security"
     },
     {
-      "name": "hawk",
-      "source": { "source": "local", "path": "./plugins/hawk" },
+      "name": "wingman",
+      "source": { "source": "local", "path": "./plugins/wingman" },
       "policy": { "installation": "AVAILABLE" },
       "category": "Security"
     }

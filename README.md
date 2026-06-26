@@ -76,7 +76,7 @@ export HAWK_API_KEY=hawk.xxxxxxxxxxxx.xxxxxxxxxxxx
 
 ```
 /plugin marketplace add stackhawk/agent-skills
-/plugin install hawk@stackhawk      # installs hawkscan + api + data-seed
+/plugin install wingman@stackhawk      # installs hawkscan + api + data-seed
 ```
 
 Advanced — install individually instead:
@@ -98,7 +98,7 @@ Advanced — install individually instead:
 /plugin install stackhawk-data-seed@stackhawk
 ```
 
-If your Codex version supports umbrella dependency auto-install, you may use `/plugin install hawk@stackhawk` instead.
+If your Codex version supports umbrella dependency auto-install, you may use `/plugin install wingman@stackhawk` instead.
 
 #### Gemini CLI
 
