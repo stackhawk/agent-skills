@@ -8,7 +8,7 @@ Your agent writes the code. Nothing checks if it's exploitable.
 StackHawk agent skills fix that. Install once and your coding agent can configure security scans, run them against your live app, parse the findings, and fix what it found — all in the same session.
 
 ## Try It Free
-30 days free, no card required. [auth.stackhawk.com/wingman](https://auth.stackhawk.com/wingman)
+14 days free, no card required. [auth.stackhawk.com/wingman](https://auth.stackhawk.com/wingman)
 
 
 **Your AI coding agent is also your security team.**
