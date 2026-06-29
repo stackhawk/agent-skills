@@ -103,24 +103,13 @@ gemini extensions install https://github.com/stackhawk/agent-skills
 
 #### GitHub Copilot
 
-Copilot discovers skills from `.agents/skills/`. Use the installer to copy them in:
-
-```bash
-# macOS / Linux — install for the current project
-git clone https://github.com/stackhawk/agent-skills.git
-bash agent-skills/scripts/install.sh --platform copilot --target .
-
-# macOS / Linux — install globally (all projects)
-bash agent-skills/scripts/install.sh --platform copilot --target ~
+```
+copilot plugin marketplace add stackhawk/agent-skills-marketplace
+copilot plugin install hawkscan@stackhawk
+copilot plugin install stackhawk-api@stackhawk
 ```
 
-```powershell
-# Windows — installs globally to ~\.agents\skills\
-git clone https://github.com/stackhawk/agent-skills.git
-.\agent-skills\scripts\install.ps1 -Platform copilot
-```
-
-Installs `hawkscan` and `stackhawk-api` into `.agents/skills/`.
+Installs `hawkscan` and `stackhawk-api` into `~/.agents/skills/`. Confirm both appear under **GitHub Copilot → Configure Skills** in VS Code.
 
 #### OpenCode
 
@@ -241,7 +230,7 @@ scripts/install.ps1              Installer for Cursor and Copilot (Windows)
 | Claude Code | `/plugin install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed |
 | Codex | `/plugin install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed |
 | Gemini CLI | `gemini extensions install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed |
-| GitHub Copilot | `install.sh --platform copilot` | hawkscan, stackhawk-api |
+| GitHub Copilot | `copilot plugin install` | hawkscan, stackhawk-api |
 | OpenCode | Copy to `.opencode/skills/` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed |
 | Cursor | `install.sh --platform cursor` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed |
 
