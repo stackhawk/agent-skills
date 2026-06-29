@@ -76,7 +76,7 @@ export HAWK_API_KEY=hawk.xxxxxxxxxxxx.xxxxxxxxxxxx
 
 ```
 /plugin marketplace add stackhawk/agent-skills
-/plugin install wingman@stackhawk      # installs hawkscan + api + data-seed
+/plugin install wingman@stackhawk      # installs hawkscan + api + data-seed + optimize
 ```
 
 Advanced — install individually instead:

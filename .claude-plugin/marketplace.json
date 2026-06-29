@@ -42,7 +42,7 @@
     },
     {
       "name": "wingman",
-      "description": "StackHawk umbrella \u2014 one-command install of the default skill set (hawkscan, api, data-seed).",
+      "description": "StackHawk umbrella — one-command install of the default skill set (hawkscan, api, data-seed, optimize).",
       "category": "security",
       "source": "./plugins/wingman",
       "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/wingman",
