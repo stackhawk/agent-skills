@@ -1,14 +1,14 @@
-# hawkop CLI Contract (commands this skill calls)
+# hawk op CLI Contract (commands this skill calls)
 
 | Purpose | Command |
 |---------|---------|
-| List policies (find base preset names) | `hawkop policy list --format json` |
-| Fetch a base policy as JSON | `hawkop policy get --name <PRESET>` |
-| Create/upsert a trial or permanent policy | `hawkop policy create --file <json> --name <NAME> [--display-name <DN>] [--dry-run]` |
-| Delete a policy | `hawkop policy delete --name <NAME> --yes [--dry-run]` |
-| (Optional) set app default | `hawkop policy assign --app <APP>|--app-id <ID> --name <NAME> [--dry-run]` |
-| Read canonical tech flags | `hawkop app tech-flags get --app <APP> --format json` |
-| Get per-path scan metrics + signal flags | `hawkop scan metrics <SCAN_ID\|latest> [--sort heaviest\|slowest\|erroring\|most-requested] [--top N] [--method <VERB>] [--operations] --format json` |
+| List policies (find base preset names) | `hawk op policy list --format json` |
+| Fetch a base policy as JSON | `hawk op policy get --name <PRESET>` |
+| Create/upsert a trial or permanent policy | `hawk op policy create --file <json> --name <NAME> [--display-name <DN>] [--dry-run]` |
+| Delete a policy | `hawk op policy delete --name <NAME> --yes [--dry-run]` |
+| (Optional) set app default | `hawk op policy assign --app <APP>|--app-id <ID> --name <NAME> [--dry-run]` |
+| Read canonical tech flags | `hawk op app tech-flags get --app <APP> --format json` |
+| Get per-path scan metrics + signal flags | `hawk op scan metrics <SCAN_ID\|latest> [--sort heaviest\|slowest\|erroring\|most-requested] [--top N] [--method <VERB>] [--operations] --format json` |
 
 Notes:
 - `policy get` prints a full `ScanPolicy` JSON (tech flags + plugins) suitable for editing

@@ -1,6 +1,6 @@
 {
   "skill": "optimize",
-  "grader_prompt": "You are evaluating whether an optimize skill run produced correct, high-quality output. Review the agent's output text, any generated ScanPolicy JSON, the stackhawk.yml diff, and the hawkop/hawk commands executed. For each check below, determine pass/fail and write a one-sentence explanation. Return a JSON object conforming to rubric-schema.json.",
+  "grader_prompt": "You are evaluating whether an optimize skill run produced correct, high-quality output. Review the agent's output text, any generated ScanPolicy JSON, the stackhawk.yml diff, and the hawk op/hawk commands executed. For each check below, determine pass/fail and write a one-sentence explanation. Return a JSON object conforming to rubric-schema.json.",
   "checks": [
     {
       "id": "detects-stack",

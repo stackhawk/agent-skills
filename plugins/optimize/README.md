@@ -7,5 +7,5 @@ non-destructive **trial** (an isolated org scan policy), runs one trial scan, an
 
 See `skills/optimize/SKILL.md` and its `references/` for the full workflow.
 
-Requires an onboarded StackHawk app + env and a `hawkop` build that includes the
+Requires an onboarded StackHawk app + env and a `hawk` build whose `hawk op` includes the
 `policy create/get/delete` commands.

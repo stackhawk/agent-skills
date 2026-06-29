@@ -1,6 +1,6 @@
 ---
 name: optimize
-version: 1.15.0
+version: 2.0.0
 description: >
   Analyze a codebase and produce an optimal HawkScan setup — tech flags, scan-policy
   plugin selection, and stackhawk.yml corrections — then apply it as a non-destructive
@@ -9,7 +9,7 @@ description: >
   "pick the right plugins/policy for my app", or invokes /optimize. Do NOT use for: a
   normal security scan or fixing vulnerabilities (use the hawkscan skill); querying
   existing findings or posture (use the api skill); or editing stackhawk.yml without
-  optimizing/scanning. Requires an onboarded StackHawk app + env and hawkop with the
+  optimizing/scanning. Requires an onboarded StackHawk app + env and a `hawk` build whose `hawk op` has the
   `policy` write commands.
 ---
 
@@ -31,12 +31,12 @@ property.
 ## Preflight (run before anything else)
 
 1. **CLI versions / auth** — reuse the hawkscan skill's preflight (`hawk version`,
-   `hawk config --help`, `hawkop` auth). Additionally confirm the policy write commands
-   exist: `hawkop policy create --help` must succeed. If it errors with "unrecognized
-   subcommand", STOP and tell the user to upgrade hawkop.
-   Also confirm metrics support: `hawkop scan metrics --help` must succeed. If it errors
+   `hawk config --help`, `hawk op` auth). Additionally confirm the policy write commands
+   exist: `hawk op policy create --help` must succeed. If it errors with "unrecognized
+   subcommand", STOP and tell the user to upgrade hawk.
+   Also confirm metrics support: `hawk op scan metrics --help` must succeed. If it errors
    with "unrecognized subcommand", the metrics/refine phase is skipped (pre-scan
-   optimization still works); tell the user to upgrade hawkop to enable refinement.
+   optimization still works); tell the user to upgrade hawk to enable refinement.
 2. **App + env** — resolve the target app and env. If the app is not onboarded, defer to
    the hawkscan skill's onboarding, then return here.
 3. **Permissions / feature flag** — the org needs `ORG_POLICY_MANAGEMENT` + `WRITE_POLICY`
@@ -53,7 +53,7 @@ Follow the phases in order. Details for each are in the references.
 2. **Compute optimal config** — tech flags to enable, plugin include/exclude set, and
    `stackhawk.yml` corrections. Default to a **balanced** profile; honor an explicit
    speed↔coverage lean if the user gives one. See `references/mapping.md`.
-3. **Build the trial policy** — fetch a base preset (`hawkop policy get --name DEFAULT`
+3. **Build the trial policy** — fetch a base preset (`hawk op policy get --name DEFAULT`
    or the API/GraphQL preset matching the app), edit its tech flags + toggle plugin
    families, write the result to a temp JSON file, and create it under a deterministic
    name matching `^[A-Z0-9_]+$` (e.g. `OPTIMIZE_TRIAL_<APP>_<ENV>`, upper-snake, sanitized).
@@ -63,7 +63,7 @@ Follow the phases in order. Details for each are in the references.
    Show the diff; never clobber unrelated keys.
 5. **Trial scan** — run one `hawk scan`. The scanner downloads the trial policy and applies
    its tech flags + plugins. **Capture the trial scan id**, findings, and duration.
-6. **Analyze scan metrics** — run `hawkop scan metrics <SCAN_ID> --format json` and parse
+6. **Analyze scan metrics** — run `hawk op scan metrics <SCAN_ID> --format json` and parse
    the per-path/operation metrics, signal flags, and request health. See
    `references/metrics-and-refine.md`. If no metrics are available, skip to step 8.
 7. **Surface + refine (tiered loop)** — present scan health + top paths + a recommendations
@@ -83,7 +83,7 @@ Follow the phases in order. Details for each are in the references.
 9. **Promote / discard** — see `references/trial-lifecycle.md`. Promote: re-create the
    policy under a permanent name, point `stackhawk.yml` at it (keeping the refined
    scope/concurrency yml edits), delete the trial policy, leave the yml change for the user
-   to commit. Discard: `hawkop policy delete` the trial policy and restore the
+   to commit. Discard: `hawk op policy delete` the trial policy and restore the
    `stackhawk.yml` backup.
 
 ## Safety rules
@@ -103,4 +103,4 @@ Follow the phases in order. Details for each are in the references.
 
 - `hawkscan` — runs the actual scan loop and owns onboarding + tech-flag detection
   heuristics (`references/tech-flags.md`), which this skill reuses.
-- `api` — read-only platform lookups via `hawkop` (app/env/policy listing).
+- `api` — read-only platform lookups via `hawk op` (app/env/policy listing).

@@ -14,9 +14,9 @@ idempotent.
 
 ## Create (trial)
 1. Build the trial `ScanPolicy` JSON (base preset + edited tech flags + toggled plugins).
-2. Clean up any stale orphan first: `hawkop policy delete --name OPTIMIZE_TRIAL_… --yes`
+2. Clean up any stale orphan first: `hawk op policy delete --name OPTIMIZE_TRIAL_… --yes`
    (ignore "not found").
-3. `hawkop policy create --file <tmp.json> --name OPTIMIZE_TRIAL_… --display-name "Optimize trial (<APP>/<ENV>)"`.
+3. `hawk op policy create --file <tmp.json> --name OPTIMIZE_TRIAL_… --display-name "Optimize trial (<APP>/<ENV>)"`.
 4. Back up `stackhawk.yml` — but guard against clobbering a good backup: if
    `stackhawk.yml.optimize-bak` ALREADY exists (a prior crashed run left it), do NOT
    overwrite it — it holds the true original. Warn the user, reuse the existing backup, and
@@ -29,15 +29,15 @@ idempotent.
 2. Ensure the policy JSON is available, then create the permanent policy. The trial policy
    already lives on the platform, so do NOT assume the local `<tmp.json>` survived (a
    resumed/crashed session may have lost it). If `<tmp.json>` is missing, reconstruct it
-   from the live trial policy: `hawkop policy get --name OPTIMIZE_TRIAL_… > <tmp.json>`.
-   Then `hawkop policy create --file <tmp.json> --name <PERMANENT>`.
+   from the live trial policy: `hawk op policy get --name OPTIMIZE_TRIAL_… > <tmp.json>`.
+   Then `hawk op policy create --file <tmp.json> --name <PERMANENT>`.
 3. Update `stackhawk.yml app.scanPolicy.name` → `<PERMANENT>`; remove the backup file.
-4. `hawkop policy delete --name OPTIMIZE_TRIAL_… --yes`.
-5. (Optional) `hawkop policy assign --app <APP> --name <PERMANENT>` to set the platform default.
+4. `hawk op policy delete --name OPTIMIZE_TRIAL_… --yes`.
+5. (Optional) `hawk op policy assign --app <APP> --name <PERMANENT>` to set the platform default.
 6. Leave the `stackhawk.yml` change staged for the user to review/commit (do not commit for them).
 
 ## Discard
-1. `hawkop policy delete --name OPTIMIZE_TRIAL_… --yes`.
+1. `hawk op policy delete --name OPTIMIZE_TRIAL_… --yes`.
 2. Restore `stackhawk.yml` from `stackhawk.yml.optimize-bak`; remove the backup file.
 
 ## Failure handling

@@ -1,12 +1,12 @@
 # Scan Metrics → Refine Loop
 
 After the trial scan, analyze its metrics and refine the config using real scan data.
-This skill does NOT compute metrics — it consumes `hawkop scan metrics`.
+This skill does NOT compute metrics — it consumes `hawk op scan metrics`.
 
 ## Get the metrics
 
 ```
-hawkop scan metrics <SCAN_ID> --format json
+hawk op scan metrics <SCAN_ID> --format json
 ```
 
 `<SCAN_ID>` is the trial scan's id (use the id returned by the trial scan; `latest` also works).
