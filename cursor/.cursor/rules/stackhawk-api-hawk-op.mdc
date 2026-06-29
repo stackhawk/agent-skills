@@ -216,13 +216,17 @@ All of these are one `hawk op <noun> list` command with identical flag surface:
 Common flags on every `list`:
 
 ```
--n, --limit N          Max results
--p, --page N           Page (0-indexed)
+-n, --limit N          Max results (caps AFTER all pages are fetched)
+-p, --page N           Page (0-indexed); omit to auto-fetch ALL pages
+    --page-token TOK   Opaque forward cursor (mutually exclusive with --page)
     --sort-by FIELD
     --sort-dir asc|desc
     --format table|json|pretty
-    --no-cache
 ```
+
+By default (no `--page`/`--page-token`) a `list` **auto-follows every page** and
+returns the full set — you don't paginate manually. Use `--limit` to cap the rows
+(it trims after collection, not a server-side early stop).
 
 ---
 
@@ -310,6 +314,6 @@ call — useful when building a reporting pipeline.
   The default `hawk op scan get` output is the overview — it won't include per-URI
   evidence.
 - **Don't combine `--app` (name) and `--app-id` (UUID) in the same command.**
-  Pick one. `--app` does a name lookup against `hawk op app list`; `--app-id` is exact.
-- **Response cache can return slightly stale data.** For up-to-the-second posture
-  reports, add `--no-cache`. For normal reporting work, leave the cache on.
+  Pick one. `--app` resolves by name (case-insensitive exact match); `--app-id` is exact by UUID.
+  If a name matches **more than one** app, `hawk op` errors and tells you to use `--app-id` —
+  fall back to `--app-id <UUID>` (grab the UUID from `hawk op app list`).
