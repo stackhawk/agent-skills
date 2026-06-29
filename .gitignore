@@ -1,7 +1,10 @@
-.claude/
+!.claude/
+.claude/*
+!.claude/skills/
+!.claude/skills/**
 *.skill
 .DS_Store
-docs/superpowers/
+docs/
 .worktrees/
 .idea/
 *.iml

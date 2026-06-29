@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `skill-authoring` skill: changelog update guidance — documents when and how to add CHANGELOG entries for every substantive skill change
+
+### Changed
+- `skill-authoring` moved from `plugins/skill-authoring/` to `.claude/skills/skill-authoring/` (maintainer skill, not a marketplace plugin)
+- `.gitignore` updated: `.claude/skills/` is now tracked so contributor skills are version-controlled
+- Removed `skill-authoring` from public release paths (`skills/`, `.opencode/skills/`, `.cursor/skills/`) and Cursor rule generation
+
 ## [1.12.0] - 2026-06-11
 
 ### Added
