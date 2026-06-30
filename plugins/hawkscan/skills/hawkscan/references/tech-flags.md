@@ -2,6 +2,12 @@
 
 Auto-detect your application's technology stack and configure StackHawk tech flags accordingly.
 
+> **When this applies:** This direct app-tech-flag detection is the **fallback** for hawkscan
+> Phase 0c — used only when the optimize skill can't create a scan policy (missing
+> `ORG_POLICY_MANAGEMENT` / `WRITE_POLICY` / feature flag). The preferred path is the optimize
+> skill's Setup mode (a non-destructive named scan policy). The heuristics below are unchanged
+> and apply to both.
+
 ## Contents
 - [Overview](#overview)
 - [Command Reference](#command-reference)

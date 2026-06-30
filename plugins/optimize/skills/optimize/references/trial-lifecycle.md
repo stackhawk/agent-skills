@@ -1,5 +1,8 @@
 # Trial Lifecycle
 
+> Setup mode builds + references the policy (steps 1–4, no scan); Refine mode runs the trial
+> scan and promotes/discards (steps 5–9). Setup is re-runnable and is what hawkscan onboarding invokes.
+
 ## How a named policy reaches a scan (why this is non-destructive)
 When `app.scanPolicy.name` is set in `stackhawk.yml`, HawkScan bootstrap detects an
 org-level policy and downloads it directly from S3 at scan start
