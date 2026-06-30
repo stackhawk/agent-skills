@@ -13,3 +13,9 @@ docs/
 __pycache__/
 *.py[cod]
 .venv/
+
+# Local dev files — never belong in this repo (agent-skills is not a scanned app)
+stackhawk.yml
+stackhawk-auth.yml
+.mcp.json
+.codex/
