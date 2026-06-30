@@ -2,6 +2,12 @@
 
 Auto-detect your application's technology stack and configure StackHawk tech flags accordingly.
 
+> **When this applies:** This direct app-tech-flag detection is the **fallback** for hawkscan
+> Phase 0c — used only when the optimize skill can't create a scan policy (missing
+> `ORG_POLICY_MANAGEMENT` / `WRITE_POLICY` / feature flag). The preferred path is the optimize
+> skill's Setup mode (a non-destructive named scan policy). The heuristics below are unchanged
+> and apply to both.
+
 ## Contents
 - [Overview](#overview)
 - [Command Reference](#command-reference)
@@ -34,10 +40,10 @@ Flag names are **dot-namespaced** (e.g., `Language.Java.Spring`), **case-sensiti
 ### Fetch canonical flag list
 
 ```bash
-hawkop app tech-flags get --app <APP_NAME> --format json
+hawk op app tech-flags get --app <APP_NAME> --format json
 ```
 
-`--app <APP_NAME>` accepts the application name. The `hawkop` CLI also accepts `--app-id <UUID>` if you prefer to use the application ID directly.
+`--app <APP_NAME>` accepts the application name. The `hawk op` commands also accept `--app-id <UUID>` if you prefer to use the application ID directly.
 
 Returns a JSON object with all available flags and their current true/false state:
 
@@ -58,7 +64,7 @@ Returns a JSON object with all available flags and their current true/false stat
 ### Disable all flags (reset to baseline)
 
 ```bash
-hawkop app tech-flags disable-all --app <APP_NAME> --yes
+hawk op app tech-flags disable-all --app <APP_NAME> --yes
 ```
 
 Flips all flags to `false` in one operation. The `--yes` flag is **required** in non-interactive contexts (scripts, agents); omit it for interactive use (will prompt for confirmation).
@@ -68,7 +74,7 @@ Flips all flags to `false` in one operation. The `--yes` flag is **required** in
 ### Enable detected flags
 
 ```bash
-hawkop app tech-flags set --app <APP_NAME> \
+hawk op app tech-flags set --app <APP_NAME> \
   Language.Java=true \
   Language.Java.Spring=true \
   Db.PostgreSQL=true
@@ -83,7 +89,7 @@ The `set` command performs a **partial update**: only the provided keys change; 
 ### Preview before committing
 
 ```bash
-hawkop app tech-flags set --app <APP_NAME> \
+hawk op app tech-flags set --app <APP_NAME> \
   Language.Java=true \
   Language.Java.Spring=true \
   --dry-run
@@ -97,7 +103,7 @@ Shows what would change without applying the update.
 
 - **Dot-namespaced:** `Language.Java`, `Language.Java.Spring`, `Db.PostgreSQL`
 - **Case-sensitive:** `Language.Java` ≠ `language.java`
-- **API is source of truth:** Always validate flag names via `hawkop app tech-flags get` before using them in `set` commands
+- **API is source of truth:** Always validate flag names via `hawk op app tech-flags get` before using them in `set` commands
 - **Parent namespace inclusion:** When enabling a child flag (e.g., `Language.Java.Spring`), also enable all parent namespaces that exist in the canonical list (e.g., `Language.Java`). The matching algorithm handles this automatically.
 
 ---
@@ -105,7 +111,7 @@ Shows what would change without applying the update.
 ## Phase 0c Detection Algorithm
 
 ```
-1. hawkop app tech-flags get --app <APP_NAME> --format json → CANONICAL_FLAGS{}
+1. hawk op app tech-flags get --app <APP_NAME> --format json → CANONICAL_FLAGS{}
    If CANONICAL_FLAGS is empty, skip to step 5 with no flags to set.
 2. Scan codebase for evidence files → DETECTED_TECHS[]
    (Check package.json, pom.xml, go.mod, requirements.txt, docker-compose.yml, Gemfile, *.csproj/*.sln)
@@ -115,9 +121,9 @@ Shows what would change without applying the update.
      Do NOT call disable-all or set
      Report: "No technology evidence found; tech flags unchanged."
      DONE
-5. hawkop app tech-flags disable-all --app <APP_NAME> --yes
+5. hawk op app tech-flags disable-all --app <APP_NAME> --yes
    (The --yes flag is required; agents must not use the interactive form without it)
-6. hawkop app tech-flags set --app <APP_NAME> <KEY>=true ... (one entry per flag in ENABLED_FLAGS)
+6. hawk op app tech-flags set --app <APP_NAME> <KEY>=true ... (one entry per flag in ENABLED_FLAGS)
 7. Report: which flags were enabled and what evidence triggered each
 ```
 
@@ -169,7 +175,7 @@ The detection heuristics produce friendly tech names (e.g., "Spring", "PostgreSQ
 
 **Primary rule: use explicit heuristic mappings first.** The detection heuristics table already maps specific evidence directly to expected canonical key names (e.g., "pom.xml or build.gradle → `Language.Java`"). Use those explicit mappings directly before falling back to terminal-segment fuzzy matching.
 
-**Additionally:** If Phase 0a (repo linking) completed and returned `frameworkNames` from `hawkop repo list`, treat those as additional tech evidence — match each framework name against canonical flags using the terminal-segment rule below.
+**Additionally:** If Phase 0a (repo linking) completed and returned `frameworkNames` from `hawk op repo list`, treat those as additional tech evidence — match each framework name against canonical flags using the terminal-segment rule below.
 
 **Terminal-segment matching algorithm:**
 
@@ -201,7 +207,7 @@ Steps:
 
 **Step 1: Fetch canonical flags**
 ```bash
-hawkop app tech-flags get --app myapp --format json
+hawk op app tech-flags get --app myapp --format json
 ```
 
 ```json
@@ -240,11 +246,11 @@ ENABLED_FLAGS = [`Language.JavaScript`, `Language.JavaScript.React`, `Language.J
 
 **Step 4: Disable all, then enable detected flags**
 ```bash
-hawkop app tech-flags disable-all --app myapp --yes
+hawk op app tech-flags disable-all --app myapp --yes
 ```
 
 ```bash
-hawkop app tech-flags set --app myapp \
+hawk op app tech-flags set --app myapp \
   Language.JavaScript=true \
   Language.JavaScript.React=true \
   Language.JavaScript.Node=true \
@@ -279,7 +285,7 @@ This preserves any manual flag configuration the user may have already set.
 Users can always manually enable additional flags after tech-flag auto-configuration:
 
 ```bash
-hawkop app tech-flags set --app myapp Language.Java=true
+hawk op app tech-flags set --app myapp Language.Java=true
 ```
 
 This is safe and encouraged if:
@@ -291,11 +297,11 @@ This is safe and encouraged if:
 
 ## Troubleshooting
 
-### `hawkop app tech-flags get` returns empty
+### `hawk op app tech-flags get` returns empty
 
 No flags have been initialized yet. **Skip `disable-all` and proceed directly to detection.** After detection, call `set` to initialize the flags at the detected state.
 
-### `hawkop app tech-flags disable-all` hangs
+### `hawk op app tech-flags disable-all` hangs
 
 If `disable-all` hangs without the `--yes` flag, it is waiting for interactive confirmation — always use `--yes` in agentic contexts. If the hang persists even with `--yes`, skip the `disable-all` step and manually list all canonical keys in the `set` command instead (e.g., `set Language.JavaScript=false Language.JavaScript.React=false ...`).
 
@@ -309,7 +315,7 @@ Expand heuristics:
 
 ### A detected tech has no matching canonical key
 
-The tech exists in the codebase but the API does not have a flag for it. The detection algorithm silently skips it. Check the canonical list via `hawkop app tech-flags get` and report the gap if it's a widely-used framework.
+The tech exists in the codebase but the API does not have a flag for it. The detection algorithm silently skips it. Check the canonical list via `hawk op app tech-flags get` and report the gap if it's a widely-used framework.
 
 ### Flags were set but some not enabled
 
@@ -319,4 +325,4 @@ Possible causes:
 - Value syntax error (use `true`/`false`, not `True`/`False`)
 - Dry-run was used instead of actual `set` (try again without `--dry-run`)
 
-Use `hawkop app tech-flags get` after `set` to verify the final state.
+Use `hawk op app tech-flags get` after `set` to verify the final state.

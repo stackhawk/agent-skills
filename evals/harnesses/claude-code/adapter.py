@@ -16,8 +16,8 @@ CLI_SIGNALS = {
     # explicit decision line instead.
     "hawkscan": ["hawk scan", "hawk validate", "hawk rescan",
                  "hawk create app", "hawk perch"],
-    "api": ["hawkop scan", "hawkop app", "hawkop org", "hawkop env", "hawkop status",
-            "hawkop init", "/api/v1/scan", "/api/v2/org", "hawk_api GET"],
+    "api": ["hawk op scan", "hawk op app", "hawk op org", "hawk op env", "hawk op status",
+            "hawk init", "/api/v1/scan", "hawk_api GET"],
     # data-seed emits checked-in artifacts rather than running a distinctive CLI;
     # its discovery + emission paths are the executable signals.
     "stackhawk-data-seed": ["data-seed/", "data-seed/manifest", ".data-seed-credentials",

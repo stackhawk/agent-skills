@@ -81,16 +81,19 @@ case "$platform" in
       "${skills_dest}/hawkscan" \
       "${skills_dest}/api" \
       "${skills_dest}/hawkscan-ci" \
-      "${skills_dest}/stackhawk-data-seed"
+      "${skills_dest}/stackhawk-data-seed" \
+      "${skills_dest}/optimize"
     cp -r "${plugins_source}/hawkscan/skills/hawkscan/"* "${skills_dest}/hawkscan/"
     cp -r "${plugins_source}/api/skills/api/"* "${skills_dest}/api/"
     cp -r "${plugins_source}/hawkscan-ci/skills/hawkscan-ci/"* "${skills_dest}/hawkscan-ci/"
     cp -r "${plugins_source}/stackhawk-data-seed/skills/stackhawk-data-seed/"* "${skills_dest}/stackhawk-data-seed/"
-    echo "Installed 4 Cursor skills to ${skills_dest}/"
+    cp -r "${plugins_source}/optimize/skills/optimize/"* "${skills_dest}/optimize/"
+    echo "Installed 5 Cursor skills to ${skills_dest}/"
     echo "  hawkscan/            — DAST scanning skill"
     echo "  api/                 — StackHawk API reporting skill"
     echo "  hawkscan-ci/         — CI/CD pipeline skill"
     echo "  stackhawk-data-seed/ — Data seed skill"
+    echo "  optimize/            — Scan optimization skill"
 
     # Hooks
     mkdir -p "$hooks_dest"

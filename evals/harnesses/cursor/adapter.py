@@ -40,16 +40,15 @@ CLI_SIGNALS = {
         "hawk create app",
         "hawk perch",
     ],
-    # Cursor api: agent runs hawkop status as its first step, then deeper
-    # hawkop commands. Broader hawkop signals included since Cursor doesn't
+    # Cursor api: agent runs hawk op status as its first step, then deeper
+    # hawk op commands. Broader hawk op signals included since Cursor doesn't
     # have false-positive risk of Codex full-auto mode.
     "api": [
-        "hawkop status",
-        "hawkop scan get",
-        "hawkop org get",
-        "hawkop org set",
-        "hawkop app list",
-        "/api/v2/org",
+        "hawk op status",
+        "hawk op scan get",
+        "hawk op org get",
+        "hawk op org set",
+        "hawk op app list",
         "/api/v1/scan",
         "hawk_api GET",
     ],

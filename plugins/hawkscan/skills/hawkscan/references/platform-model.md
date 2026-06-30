@@ -24,11 +24,11 @@ new App / Env.
 
 The tenant. A UUID tied to your StackHawk account. Set implicitly by your
 `HAWK_API_KEY` (each key is scoped to one org); you rarely reason about it
-directly. `hawkop org get` shows the active org.
+directly. `hawk op org get` shows the active org.
 
 Most customers have a single org. Multi-org setups exist (consultancies,
-MSSPs) — when present, every `hawkop` command accepts `--org <ID>` or uses
-named profiles (`hawkop -P <profile> app list`).
+MSSPs) — when present, every `hawk op` command accepts `--org <ID>` or uses
+named profiles (`hawk op -P <profile> app list`).
 
 **Not in `stackhawk.yml`.** Implicit via auth.
 
@@ -37,7 +37,7 @@ named profiles (`hawkop -P <profile> app list`).
 The long-lived object representing "the thing you're scanning." Each App:
 
 - Has a stable UUID (shown as `applicationId` in configs, APIs, everywhere)
-- Has a name (human-readable — used for `hawkop app list` lookups)
+- Has a name (human-readable — used for `hawk op app list` lookups)
 - Has a team ownership assignment
 - Has **technology flags** that shape scan rule selection (see §5)
 - Is scanned across one or more Environments
@@ -104,7 +104,7 @@ concern in its proper layer.
 ## The Finding Lifecycle (Triage States)
 
 Every affected path in the JSON output (`hawk scan --json-output` or
-`hawkop scan get --detail full --format json`) carries a triage `status`
+`hawk op scan get --detail full --format json`) carries a triage `status`
 field (`findings[].paths[].status`). The canonical values:
 
 - `NEW`
@@ -126,28 +126,28 @@ on a later scan, the platform continues to report its current triage
 value (`FALSE_POSITIVE` / `RISK_ACCEPTED` stays sticky unless a human
 changes it).
 
-### What the agent can write via `hawkop scan triage`
+### What the agent can write via `hawk op scan triage`
 
-The `hawkop` CLI exposes triage writes. Use these in Step 5 of the scan
+The `hawk op` commands expose triage writes. Use these in Step 5 of the scan
 loop when the agent identifies clear false positives.
 
 ```bash
 # Mark a single finding path as a false positive (--note required)
-hawkop scan triage \
+hawk op scan triage \
   --scan <SCAN_UUID> \
   --hash <FINDING_HASH> \
   --status false-positive \
   --note "CSP finding on JSON endpoint /api/health; never serves HTML"
 
 # Add a comment without changing status
-hawkop scan triage \
+hawk op scan triage \
   --scan <SCAN_UUID> \
   --hash <FINDING_HASH> \
   --status add-comment \
   --note "Reviewed; confirmed false positive pattern"
 
 # Bulk triage from file (up to 100 actions per call)
-hawkop scan triage --scan <SCAN_UUID> --from-file triage.yaml
+hawk op scan triage --scan <SCAN_UUID> --from-file triage.yaml
 ```
 
 **Agent constraints:**
@@ -160,9 +160,9 @@ hawkop scan triage --scan <SCAN_UUID> --from-file triage.yaml
 The `--note` is required for `FALSE_POSITIVE` and `ADD_COMMENT`.
 It must explain the reasoning clearly enough for a human to review and reverse if wrong.
 
-**If `hawkop scan triage` is denied** — the account lacks `WRITE_TRIAGE`, by role or
+**If `hawk op scan triage` is denied** — the account lacks `WRITE_TRIAGE`, by role or
 because the org's `LIMITED_MEMBER_ROLE` setting turned off member finding-triage —
-fall back to `hawkop finding note`, which records a note through an ungated route. A
+fall back to `hawk op finding note`, which records a note through an ungated route. A
 comment transfers cleanly; an intended `FALSE_POSITIVE` is recorded as a note and the
 status change is escalated to a `WRITE_TRIAGE` holder. See `references/false-positives.md`
 (linked from SKILL.md Step 5) for the full fallback procedure.
@@ -241,21 +241,21 @@ https://app.stackhawk.com/applications/<applicationId>/details/settings
 (config); tech flags tell HawkScan *which rules are relevant*. Different
 concerns.
 
-### Setting tech flags via `hawkop`
+### Setting tech flags via `hawk op`
 
-Tech flags are set via the `hawkop` CLI during Phase 0 of the scan workflow
+Tech flags are set via the `hawk op` commands during Phase 0 of the scan workflow
 (app onboarding). The process is: disable-all first (to clear the platform's
 all-true default), then enable only what codebase evidence supports.
 
 ```bash
 # 1. Fetch canonical flag list — API is source of truth for valid names
-hawkop app tech-flags get --app <APP_NAME> --format json
+hawk op app tech-flags get --app <APP_NAME> --format json
 
 # 2. Disable all (--yes required for non-interactive/agent use)
-hawkop app tech-flags disable-all --app <APP_NAME> --yes
+hawk op app tech-flags disable-all --app <APP_NAME> --yes
 
 # 3. Enable only detected flags
-hawkop app tech-flags set --app <APP_NAME> Language.Java=true Language.Java.Spring=true
+hawk op app tech-flags set --app <APP_NAME> Language.Java=true Language.Java.Spring=true
 ```
 
 Phase 0 runs once at app onboarding, not on every scan.
@@ -346,7 +346,7 @@ full scan, anything rescan missed will surface.
 ```
 Is there an existing App for this codebase?
 │
-├── Run `hawkop app list --format json`
+├── Run `hawk op app list --format json`
 │   │
 │   ├── Name match (lowercased, _/- equivalent)?
 │   │   │
@@ -370,10 +370,10 @@ Is there an existing Env for this scan context?
 ├── Determine target name:
 │     STACKHAWK_ENV  →  CI detection  →  branch-based default
 │
-├── Run `hawkop env list --app <APP_ID> --format json`
+├── Run `hawk op env list --app <APP_ID> --format json`
 │   │
 │   ├── Target name exists  ──► REUSE
-│   └── Target name missing ──► CREATE (`hawkop env create ...`)
+│   └── Target name missing ──► CREATE (`hawk op env create ...`)
 ```
 
 ### Changing `applicationId` mid-project
@@ -394,13 +394,13 @@ Symptoms that *feel* like "I need a new App" but usually aren't:
 
 ## Cross-Reference to the api Skill
 
-This skill uses the `api` skill's `hawkop` wrappers for read-only platform
+This skill uses the `api` skill's `hawk op` wrappers for read-only platform
 lookups. Relevant commands and their documentation:
 
 | Purpose                       | Command                                                    |
 |-------------------------------|------------------------------------------------------------|
-| List apps                     | `hawkop app list --format json`                            |
-| List envs for an app          | `hawkop env list --app <APP_ID> --format json`             |
-| Get scan findings with triage | `hawkop scan get --app <NAME> --detail full --format json` |
+| List apps                     | `hawk op app list --format json`                            |
+| List envs for an app          | `hawk op env list --app <APP_ID> --format json`             |
+| Get scan findings with triage | `hawk op scan get --app <NAME> --detail full --format json` |
 
-If `hawkop` is not installed, the api skill documents raw REST fallbacks.
+These reads require the combined `hawk` CLI; the `api` skill covers setup (`hawk init --browser` or the `HAWK_API_KEY` env var).

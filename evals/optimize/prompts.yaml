@@ -1,0 +1,30 @@
+- id: opt-01
+  should_trigger: true
+  invocation_type: explicit
+  prompt: Use $optimize to tune my HawkScan scan for this repo
+  notes: Direct skill reference; baseline trigger
+- id: opt-02
+  should_trigger: true
+  invocation_type: implicit
+  prompt: My HawkScan scan is way too slow and noisy — can you pick the right policy and tech flags for this codebase?
+  notes: Natural-language optimize intent (speed + precision)
+- id: opt-03
+  should_trigger: true
+  invocation_type: contextual
+  prompt: We're getting tons of irrelevant findings. Figure out which scan plugins actually apply to this app and trim the rest.
+  notes: Plugin/policy selection framed as optimization
+- id: opt-04
+  should_trigger: false
+  invocation_type: negative
+  prompt: Run a security scan on my API at localhost:8080 and fix what you find
+  notes: This is a normal scan — must route to hawkscan, NOT optimize
+- id: opt-05
+  should_trigger: false
+  invocation_type: negative
+  prompt: Show me my untriaged findings from the last scan
+  notes: Reporting query — must route to api, NOT optimize
+- id: opt-06
+  should_trigger: true
+  invocation_type: contextual
+  prompt: My /optimize trial scan finished — it's getting rate-limited and one endpoint is eating all the scan time. Make it faster and more reliable.
+  notes: Exercises the post-scan metrics phase + tiered refine (auto concurrency, confirm exclusion)

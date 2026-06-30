@@ -2,7 +2,7 @@ name: Capture Eval Baseline
 # Captures a per-harness × skill × model snapshot (cell.json) at a release tag so
 # the skill-evals report job can show "vs baseline" deltas. To stay apples-to-apples
 # with the live matrix, every job MUST mirror skill-evals.yml's harness setup
-# (same CLIs, same hawk/hawkop tooling, full plugin mode — NOT --bare). Two
+# (same CLIs, same combined hawk binary (hawk + hawk op), full plugin mode — NOT --bare). Two
 # deliberate differences: (1) eval runs end in `|| true` because baseline capture is
 # best-effort, not a ship gate — we want artifacts even if a harness can't run;
 # (2) no --rubric (baselines are the deterministic process-check snapshot).
@@ -22,7 +22,7 @@ permissions:
 #   OPENAI_API_KEY     — Codex evals
 #   AGY_API_KEY        — Antigravity (agy) evals
 #   CURSOR_API_KEY     — Cursor agent evals
-#   HAWK_API_KEY       — hawk + hawkop CLIs (hawkscan / api skills)
+#   HAWK_API_KEY       — combined hawk binary (hawkscan + api skills)
 # ---------------------------------------------------------------------------
 
 jobs:
@@ -57,7 +57,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize]
         model: [claude-sonnet-4-6, claude-opus-4-7, claude-haiku-4-5-20251001]
     steps:
       - uses: actions/checkout@v7
@@ -72,35 +72,27 @@ jobs:
       - name: Verify claude CLI
         run: claude --version
 
-      # hawk CLI (Java app) — the hawkscan skill needs it on PATH; install-only, no scan.
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - name: Install latest hawk CLI
-        uses: stackhawk/hawkscan-action@v2.5.0
-        with:
-          apiKey: ${{ secrets.HAWK_API_KEY }}
-          version: latest
-          installCLIOnly: true
-        continue-on-error: true  # install-only shouldn't need apiKey; don't let a check abort the job
-      - name: Verify hawk CLI
-        run: hawk version
-        continue-on-error: true  # absence is captured per-prompt in the eval traces
-
-      # hawkop (StackHawk platform/API CLI) — hawkscan Step-1 dedup checks + the api skill.
-      - name: Install hawkop CLI
+      # HawkScan 6 ships as a single self-contained native binary (no JDK) that
+      # provides BOTH scanning (`hawk`) and the platform/API CLI (`hawk op …`).
+      # Install it from the download manifest (source of truth for version + URL)
+      # into /usr/local/bin (already on PATH). One install covers the hawkscan
+      # skill's CLI path AND the api skill + hawkscan Step-1 dedup checks.
+      - name: Install hawk CLI (combined binary, manifest-driven)
         run: |
           set -euo pipefail
-          HAWKOP_VERSION="$(curl -fsSL https://download.stackhawk.com/hawkop/latest-version.txt)"
-          echo "Installing hawkop v${HAWKOP_VERSION}"
-          curl -fLo /tmp/hawkop.tar.gz \
-            "https://download.stackhawk.com/hawkop/cli/hawkop-v${HAWKOP_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-          tar -xzf /tmp/hawkop.tar.gz -C /tmp
-          sudo mv /tmp/hawkop /usr/local/bin/hawkop
-        continue-on-error: true  # don't abort the job — evals records any absence
-      - name: Verify hawkop CLI
-        run: hawkop --version
+          MANIFEST=https://download.stackhawk.com/hawkdocs/hawk.manifest.json
+          url="$(curl -fsSL "$MANIFEST" | jq -r '.latest.assets[]
+            | select(.asset.group == "linux-x64" and (.url | endswith("/hawk"))) | .url')"
+          [ -n "$url" ] || { echo "ERROR: no linux-x64 hawk binary in manifest"; exit 1; }
+          echo "Installing hawk from $url"
+          curl -fsSL "$url" -o /tmp/hawk
+          chmod +x /tmp/hawk
+          sudo mv /tmp/hawk /usr/local/bin/hawk
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+      - name: Verify hawk CLI
+        run: |
+          hawk version
+          hawk op --help
         continue-on-error: true  # absence is captured per-prompt in the eval traces
 
       # No --bare: bare mode disables skill auto-trigger (skills only resolve via an
@@ -111,9 +103,7 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
-          API_KEY: ${{ secrets.HAWK_API_KEY }}            # hawk reads API_KEY
-          HAWKOP_API_KEY: ${{ secrets.HAWK_API_KEY }}     # hawkop reads HAWKOP_API_KEY
-          HAWKOP_FORMAT: json
+          HAWK_FORMAT: json
         run: |
           uv run evals --harness claude-code --skill ${{ matrix.skill }} \
             --model ${{ matrix.model }} --max-budget 0.15 || true
@@ -133,7 +123,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize]
         model: [gpt-5.5, o3]
     steps:
       - uses: actions/checkout@v7
@@ -165,42 +155,36 @@ jobs:
           echo y | codex plugin add stackhawk-api@stackhawk
           echo y | codex plugin add stackhawk-data-seed@stackhawk
           echo y | codex plugin add hawkscan-ci@stackhawk
+          echo y | codex plugin add stackhawk-optimize@stackhawk
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - name: Install latest hawk CLI
-        uses: stackhawk/hawkscan-action@v2.5.0
-        with:
-          apiKey: ${{ secrets.HAWK_API_KEY }}
-          version: latest
-          installCLIOnly: true
-        continue-on-error: true  # install-only shouldn't need apiKey; don't let a check abort the job
-      - name: Verify hawk CLI
-        run: hawk version
-        continue-on-error: true  # absence is captured per-prompt in the eval traces
-      - name: Install hawkop CLI
+      # HawkScan 6 ships as a single self-contained native binary (no JDK) that
+      # provides BOTH scanning (`hawk`) and the platform/API CLI (`hawk op …`).
+      # Install it from the download manifest (source of truth for version + URL)
+      # into /usr/local/bin (already on PATH). One install covers the hawkscan
+      # skill's CLI path AND the api skill + hawkscan Step-1 dedup checks.
+      - name: Install hawk CLI (combined binary, manifest-driven)
         run: |
           set -euo pipefail
-          HAWKOP_VERSION="$(curl -fsSL https://download.stackhawk.com/hawkop/latest-version.txt)"
-          echo "Installing hawkop v${HAWKOP_VERSION}"
-          curl -fLo /tmp/hawkop.tar.gz \
-            "https://download.stackhawk.com/hawkop/cli/hawkop-v${HAWKOP_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-          tar -xzf /tmp/hawkop.tar.gz -C /tmp
-          sudo mv /tmp/hawkop /usr/local/bin/hawkop
-        continue-on-error: true  # don't abort the job — evals records any absence
-      - name: Verify hawkop CLI
-        run: hawkop --version
+          MANIFEST=https://download.stackhawk.com/hawkdocs/hawk.manifest.json
+          url="$(curl -fsSL "$MANIFEST" | jq -r '.latest.assets[]
+            | select(.asset.group == "linux-x64" and (.url | endswith("/hawk"))) | .url')"
+          [ -n "$url" ] || { echo "ERROR: no linux-x64 hawk binary in manifest"; exit 1; }
+          echo "Installing hawk from $url"
+          curl -fsSL "$url" -o /tmp/hawk
+          chmod +x /tmp/hawk
+          sudo mv /tmp/hawk /usr/local/bin/hawk
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+      - name: Verify hawk CLI
+        run: |
+          hawk version
+          hawk op --help
         continue-on-error: true  # absence is captured per-prompt in the eval traces
 
       - name: Run baseline eval (${{ matrix.model }})
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
-          API_KEY: ${{ secrets.HAWK_API_KEY }}
-          HAWKOP_API_KEY: ${{ secrets.HAWK_API_KEY }}
-          HAWKOP_FORMAT: json
+          HAWK_FORMAT: json
         run: |
           uv run evals --harness codex --skill ${{ matrix.skill }} --model ${{ matrix.model }} || true
       - name: Upload baseline artifact
@@ -219,7 +203,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize]
         model: [default]
     steps:
       - uses: actions/checkout@v7
@@ -248,43 +232,37 @@ jobs:
           echo y | agy plugin install plugins/api
           echo y | agy plugin install plugins/stackhawk-data-seed
           echo y | agy plugin install plugins/hawkscan-ci
+          echo y | agy plugin install plugins/optimize
         continue-on-error: true  # depends on agy CLI; best-effort so evals still runs
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - name: Install latest hawk CLI
-        uses: stackhawk/hawkscan-action@v2.5.0
-        with:
-          apiKey: ${{ secrets.HAWK_API_KEY }}
-          version: latest
-          installCLIOnly: true
-        continue-on-error: true  # install-only shouldn't need apiKey; don't let a check abort the job
-      - name: Verify hawk CLI
-        run: hawk version
-        continue-on-error: true  # absence is captured per-prompt in the eval traces
-      - name: Install hawkop CLI
+      # HawkScan 6 ships as a single self-contained native binary (no JDK) that
+      # provides BOTH scanning (`hawk`) and the platform/API CLI (`hawk op …`).
+      # Install it from the download manifest (source of truth for version + URL)
+      # into /usr/local/bin (already on PATH). One install covers the hawkscan
+      # skill's CLI path AND the api skill + hawkscan Step-1 dedup checks.
+      - name: Install hawk CLI (combined binary, manifest-driven)
         run: |
           set -euo pipefail
-          HAWKOP_VERSION="$(curl -fsSL https://download.stackhawk.com/hawkop/latest-version.txt)"
-          echo "Installing hawkop v${HAWKOP_VERSION}"
-          curl -fLo /tmp/hawkop.tar.gz \
-            "https://download.stackhawk.com/hawkop/cli/hawkop-v${HAWKOP_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-          tar -xzf /tmp/hawkop.tar.gz -C /tmp
-          sudo mv /tmp/hawkop /usr/local/bin/hawkop
-        continue-on-error: true  # don't abort the job — evals records any absence
-      - name: Verify hawkop CLI
-        run: hawkop --version
+          MANIFEST=https://download.stackhawk.com/hawkdocs/hawk.manifest.json
+          url="$(curl -fsSL "$MANIFEST" | jq -r '.latest.assets[]
+            | select(.asset.group == "linux-x64" and (.url | endswith("/hawk"))) | .url')"
+          [ -n "$url" ] || { echo "ERROR: no linux-x64 hawk binary in manifest"; exit 1; }
+          echo "Installing hawk from $url"
+          curl -fsSL "$url" -o /tmp/hawk
+          chmod +x /tmp/hawk
+          sudo mv /tmp/hawk /usr/local/bin/hawk
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+      - name: Verify hawk CLI
+        run: |
+          hawk version
+          hawk op --help
         continue-on-error: true  # absence is captured per-prompt in the eval traces
 
       - name: Run baseline eval
         env:
           ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}
           HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
-          API_KEY: ${{ secrets.HAWK_API_KEY }}
-          HAWKOP_API_KEY: ${{ secrets.HAWK_API_KEY }}
-          HAWKOP_FORMAT: json
+          HAWK_FORMAT: json
         run: |
           MODEL_ARGS=()
           if [ "${{ matrix.model }}" != "default" ]; then MODEL_ARGS=(--model "${{ matrix.model }}"); fi
@@ -305,7 +283,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize]
         model: [default]
     steps:
       - uses: actions/checkout@v7
@@ -324,41 +302,34 @@ jobs:
         run: agent --version
         continue-on-error: true  # absence is captured per-prompt in the eval traces
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - name: Install latest hawk CLI
-        uses: stackhawk/hawkscan-action@v2.5.0
-        with:
-          apiKey: ${{ secrets.HAWK_API_KEY }}
-          version: latest
-          installCLIOnly: true
-        continue-on-error: true  # install-only shouldn't need apiKey; don't let a check abort the job
-      - name: Verify hawk CLI
-        run: hawk version
-        continue-on-error: true  # absence is captured per-prompt in the eval traces
-      - name: Install hawkop CLI
+      # HawkScan 6 ships as a single self-contained native binary (no JDK) that
+      # provides BOTH scanning (`hawk`) and the platform/API CLI (`hawk op …`).
+      # Install it from the download manifest (source of truth for version + URL)
+      # into /usr/local/bin (already on PATH). One install covers the hawkscan
+      # skill's CLI path AND the api skill + hawkscan Step-1 dedup checks.
+      - name: Install hawk CLI (combined binary, manifest-driven)
         run: |
           set -euo pipefail
-          HAWKOP_VERSION="$(curl -fsSL https://download.stackhawk.com/hawkop/latest-version.txt)"
-          echo "Installing hawkop v${HAWKOP_VERSION}"
-          curl -fLo /tmp/hawkop.tar.gz \
-            "https://download.stackhawk.com/hawkop/cli/hawkop-v${HAWKOP_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-          tar -xzf /tmp/hawkop.tar.gz -C /tmp
-          sudo mv /tmp/hawkop /usr/local/bin/hawkop
-        continue-on-error: true  # don't abort the job — evals records any absence
-      - name: Verify hawkop CLI
-        run: hawkop --version
+          MANIFEST=https://download.stackhawk.com/hawkdocs/hawk.manifest.json
+          url="$(curl -fsSL "$MANIFEST" | jq -r '.latest.assets[]
+            | select(.asset.group == "linux-x64" and (.url | endswith("/hawk"))) | .url')"
+          [ -n "$url" ] || { echo "ERROR: no linux-x64 hawk binary in manifest"; exit 1; }
+          echo "Installing hawk from $url"
+          curl -fsSL "$url" -o /tmp/hawk
+          chmod +x /tmp/hawk
+          sudo mv /tmp/hawk /usr/local/bin/hawk
+        continue-on-error: true  # absence is captured per-prompt in the eval traces
+      - name: Verify hawk CLI
+        run: |
+          hawk version
+          hawk op --help
         continue-on-error: true  # absence is captured per-prompt in the eval traces
 
       - name: Run baseline eval
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
-          API_KEY: ${{ secrets.HAWK_API_KEY }}
-          HAWKOP_API_KEY: ${{ secrets.HAWK_API_KEY }}
-          HAWKOP_FORMAT: json
+          HAWK_FORMAT: json
         run: |
           MODEL_ARGS=()
           if [ "${{ matrix.model }}" != "default" ]; then MODEL_ARGS=(--model "${{ matrix.model }}"); fi

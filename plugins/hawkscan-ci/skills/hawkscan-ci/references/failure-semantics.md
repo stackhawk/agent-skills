@@ -146,22 +146,27 @@ GHA's `ubuntu-latest` runners cache popular images automatically. A `stackhawk/h
 The CLI zip is version-numbered (there's no `hawk-latest.zip`), so resolve the current version first and key the cache on it — that tracks the latest CLI while keeping a stable cache key:
 
 ```yaml
-- name: Resolve current hawk version
+- name: Resolve current hawk version + binary URL (from the manifest)
   id: hawk
-  run: echo "version=$(curl -s https://api.stackhawk.com/hawkscan/version)" >> "$GITHUB_OUTPUT"
+  run: |
+    read -r version url < <(curl -fsSL https://download.stackhawk.com/hawkdocs/hawk.manifest.json \
+      | jq -r '.latest | "\(.version) \(.assets[] | select(.asset.group=="linux-x64" and (.url|endswith("/hawk"))) | .url)"')
+    [ -n "$url" ] || { echo "ERROR: no linux-x64 hawk binary in manifest"; exit 1; }
+    echo "version=$version" >> "$GITHUB_OUTPUT"
+    echo "url=$url" >> "$GITHUB_OUTPUT"
 - name: Cache hawk CLI
   uses: actions/cache@v4
   with:
-    path: ~/hawk-${{ steps.hawk.outputs.version }}
+    path: ~/.local/bin/hawk
     key: hawk-cli-${{ steps.hawk.outputs.version }}
 - name: Install hawk if not cached
   run: |
-    V="${{ steps.hawk.outputs.version }}"
-    if [ ! -d ~/hawk-"$V" ]; then
-      curl -Lo /tmp/hawk.zip "https://download.stackhawk.com/hawk/cli/hawk-$V.zip"
-      unzip -d ~/ /tmp/hawk.zip
+    if [ ! -x ~/.local/bin/hawk ]; then
+      mkdir -p ~/.local/bin
+      curl -fsSL "${{ steps.hawk.outputs.url }}" -o ~/.local/bin/hawk
+      chmod +x ~/.local/bin/hawk
     fi
-    echo "$HOME/hawk-$V" >> $GITHUB_PATH
+    echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 ```
 
 ## Scheduled vs PR-Trigger Tradeoffs

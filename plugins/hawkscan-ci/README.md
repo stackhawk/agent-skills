@@ -23,7 +23,7 @@ This skill graduates a working *local* HawkScan setup (`stackhawk.yml` exists an
 ## Prerequisites
 
 - A working local HawkScan setup — `stackhawk.yml` at repo root, `hawk validate config` passing, real `applicationId` (not a placeholder). If you don't have this yet, run the `hawkscan` skill first.
-- The `hawk` CLI installed (v5.5.11+). The skill calls `hawk config show` and `hawk validate config`.
+- The `hawk` CLI installed (v6.0.0+). The skill calls `hawk config show` and `hawk validate config`.
 - Access to your CI provider's secret store, or an external secrets manager your org approves.
 
 ## Installation

@@ -76,10 +76,17 @@ export HAWK_API_KEY=hawk.xxxxxxxxxxxx.xxxxxxxxxxxx
 
 ```
 /plugin marketplace add stackhawk/agent-skills
-/plugin install hawkscan@stackhawk
-/plugin install stackhawk-api@stackhawk
-/plugin install hawkscan-ci@stackhawk
-/plugin install stackhawk-data-seed@stackhawk
+/plugin install wingman@stackhawk      # installs hawkscan + api + data-seed + optimize
+```
+
+Advanced — install individually instead:
+
+```
+# /plugin install hawkscan@stackhawk
+# /plugin install stackhawk-api@stackhawk
+# /plugin install hawkscan-ci@stackhawk
+# /plugin install stackhawk-data-seed@stackhawk
+# /plugin install stackhawk-optimize@stackhawk
 ```
 
 #### Codex
@@ -90,7 +97,10 @@ export HAWK_API_KEY=hawk.xxxxxxxxxxxx.xxxxxxxxxxxx
 /plugin install stackhawk-api@stackhawk
 /plugin install hawkscan-ci@stackhawk
 /plugin install stackhawk-data-seed@stackhawk
+/plugin install stackhawk-optimize@stackhawk
 ```
+
+If your Codex version supports umbrella dependency auto-install, you may use `/plugin install wingman@stackhawk` instead.
 
 #### Gemini CLI
 
@@ -104,9 +114,12 @@ gemini extensions install https://github.com/stackhawk/agent-skills
 copilot plugin marketplace add stackhawk/agent-skills-marketplace
 copilot plugin install hawkscan@stackhawk
 copilot plugin install stackhawk-api@stackhawk
+copilot plugin install hawkscan-ci@stackhawk
+copilot plugin install stackhawk-data-seed@stackhawk
+copilot plugin install stackhawk-optimize@stackhawk
 ```
 
-Installs `hawkscan` and `stackhawk-api` into `~/.agents/skills/`. Confirm both appear under **GitHub Copilot → Configure Skills** in VS Code.
+Installs `hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, and `stackhawk-optimize` into `~/.agents/skills/`. Confirm they appear under **GitHub Copilot → Configure Skills** in VS Code.
 
 #### OpenCode
 
@@ -122,7 +135,7 @@ mkdir -p ~/.config/opencode/skills
 cp -r agent-skills/.opencode/skills/* ~/.config/opencode/skills/
 ```
 
-Installs `hawkscan`, `stackhawk-api`, `hawkscan-ci`, and `stackhawk-data-seed`.
+Installs `hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, and `stackhawk-optimize`.
 
 #### Cursor
 
@@ -224,12 +237,12 @@ scripts/install.ps1              Installer for Cursor and Copilot (Windows)
 
 | Platform | Install Method | Skills Available |
 |----------|---------------|-----------------|
-| Claude Code | `/plugin install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed |
-| Codex | `/plugin install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed |
-| Gemini CLI | `gemini extensions install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed |
-| GitHub Copilot | `copilot plugin install` | hawkscan, stackhawk-api |
-| OpenCode | Copy to `.opencode/skills/` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed |
-| Cursor | `install.sh --platform cursor` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed |
+| Claude Code | `/plugin install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
+| Codex | `/plugin install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
+| Gemini CLI | `gemini extensions install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
+| GitHub Copilot | `copilot plugin install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
+| OpenCode | Copy to `.opencode/skills/` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
+| Cursor | `install.sh --platform cursor` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 
 ---
 

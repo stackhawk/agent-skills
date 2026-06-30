@@ -9,7 +9,7 @@ tracking and SCM-driven automapping. Do this once during app onboarding (Phase 0
 - [How to Identify the Repo](#how-to-identify-the-repo)
 - [No Match Fallback: git_origin Tag](#no-match-fallback-git_origin-tag)
 - [Full Phase 0a Algorithm](#full-phase-0a-algorithm)
-- [hawkop repo list Output Shape](#hawkop-repo-list-output-shape)
+- [hawk op repo list Output Shape](#hawk-op-repo-list-output-shape)
 
 ---
 
@@ -23,13 +23,13 @@ tracking and SCM-driven automapping. Do this once during app onboarding (Phase 0
 
 ```bash
 # List all repositories in the org's attack surface
-hawkop repo list --format json
+hawk op repo list --format json
 
 # Link an existing app to a repo (additive — safe to re-run)
-hawkop repo link --repo-id <REPO_UUID> --app-id <APP_UUID>
+hawk op repo link --repo-id <REPO_UUID> --app-id <APP_UUID>
 
 # Link by app name (creates a new app if the name doesn't exist)
-hawkop repo link --repo-id <REPO_UUID> --app-name "my-api"
+hawk op repo link --repo-id <REPO_UUID> --app-name "my-api"
 ```
 
 > ⚠️ **Do not use `--app-name` to create applications.** Application creation must
@@ -40,7 +40,7 @@ hawkop repo link --repo-id <REPO_UUID> --app-name "my-api"
 ```bash
 # Full replacement (destructive — overwrites all existing app mappings for this repo)
 # Use only if you need to remove a previously linked app
-hawkop repo set-apps --repo-id <REPO_UUID> --app-ids <UUID1>,<UUID2>
+hawk op repo set-apps --repo-id <REPO_UUID> --app-ids <UUID1>,<UUID2>
 ```
 
 **Prefer `repo link` over `repo set-apps`.** The `link` command reads the current
@@ -54,7 +54,7 @@ preserved. `set-apps` replaces the entire list.
    git remote get-url origin
    ```
 
-2. Normalize both the local URL and every `url` field in `hawkop repo list` output
+2. Normalize both the local URL and every `url` field in `hawk op repo list` output
    using these 4 steps:
    1. Lowercase
    2. Strip `.git` suffix
@@ -114,11 +114,11 @@ automap repos to apps using the `git_origin` tag values.
    If this command fails (no git repo or no origin remote), skip Phase 0a entirely
    and continue to Phase 0b. Repo linking is non-blocking.
 2. Apply 4-step normalization to LOCAL_URL → PATH_LOCAL (bare owner/repo path)
-3. hawkop repo list --format json → REPOS[]
+3. hawk op repo list --format json → REPOS[]
 4. For each repo in REPOS[]:
      apply 4-step normalization to repo.url → PATH_REPO
      if PATH_LOCAL == PATH_REPO:
-       hawkop repo link --repo-id repo.id --app-id <APP_ID>
+       hawk op repo link --repo-id repo.id --app-id <APP_ID>
          (where <APP_ID> is the applicationId resolved in SKILL.md Step 1 substep 5)
        Report: "Ensured link: app <APP_NAME> ↔ ASM repo <REPO_NAME>"
        DONE
@@ -129,7 +129,7 @@ automap repos to apps using the `git_origin` tag values.
    Report: "No ASM repo match for PATH_LOCAL — added git_origin tag for future automapping"
 ```
 
-## `hawkop repo list` Output Shape
+## `hawk op repo list` Output Shape
 
 ```json
 {

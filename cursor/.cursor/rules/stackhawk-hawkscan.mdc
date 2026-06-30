@@ -18,14 +18,14 @@ coding loop. The core workflow is:
 
 ## Prerequisites (preflight — run before anything else)
 
-This skill requires **hawk v5.5.11 or newer**. Verify:
+This skill requires **hawk v6.0.0 or newer**. Verify:
 
 ```bash
 hawk version
-hawk config --help >/dev/null 2>&1 || echo "MISSING: hawk config — upgrade hawk to v5.5.11+"
+hawk config --help >/dev/null 2>&1 || echo "MISSING: hawk config — upgrade hawk to v6.0.0+"
 ```
 
-If hawk is older than `5.5.11` or `hawk config --help` fails, stop and tell the user to
+If hawk is older than `6.0.0` or `hawk config --help` fails, stop and tell the user to
 upgrade before proceeding. Do not inline auth recipes from memory — they live in
 `hawk config show` and are stale by design when hardcoded.
 
@@ -35,23 +35,23 @@ See `references/installation.md` for upgrade and install instructions.
 
 ## Companion Skills
 
-The `api` skill wraps read-only StackHawk platform lookups via the `hawkop` CLI:
+The `api` skill wraps read-only StackHawk platform lookups via the `hawk` CLI (`hawk op …`):
 
 | Purpose                       | Command                                                                          |
 |-------------------------------|----------------------------------------------------------------------------------|
-| Check if App exists           | `hawkop app list --format json`                                                  |
-| Check if Env exists           | `hawkop env list --app <APP_ID> --format json`                                   |
-| Get findings with triage      | `hawkop scan get --app <NAME> --detail full --format json`                       |
-| List ASM repos                | `hawkop repo list --format json`                                                 |
-| Link app to ASM repo          | `hawkop repo link --repo-id <ID> --app-id <ID>`                                  |
-| Get tech flags                | `hawkop app tech-flags get --app <NAME> --format json`                           |
-| Disable all tech flags        | `hawkop app tech-flags disable-all --app <NAME> --yes`                           |
-| Set specific tech flags       | `hawkop app tech-flags set --app <NAME> Key=true`                                |
-| Triage a finding              | `hawkop scan triage --scan <ID> --hash <HASH> --status false-positive --note ""` |
-| Bulk triage from file         | `hawkop scan triage --scan <ID> --from-file triage.yaml`                         |
-| Annotate w/o triage perm      | `hawkop finding note --scan <ID> --hash <HASH> --note "..."`                     |
+| Check if App exists           | `hawk op app list --format json`                                                  |
+| Check if Env exists           | `hawk op env list --app <APP_ID> --format json`                                   |
+| Get findings with triage      | `hawk op scan get --app <NAME> --detail full --format json`                       |
+| List ASM repos                | `hawk op repo list --format json`                                                 |
+| Link app to ASM repo          | `hawk op repo link --repo-id <ID> --app-id <ID>`                                  |
+| Get tech flags                | `hawk op app tech-flags get --app <NAME> --format json`                           |
+| Disable all tech flags        | `hawk op app tech-flags disable-all --app <NAME> --yes`                           |
+| Set specific tech flags       | `hawk op app tech-flags set --app <NAME> Key=true`                                |
+| Triage a finding              | `hawk op scan triage --scan <ID> --hash <HASH> --status false-positive --note ""` |
+| Bulk triage from file         | `hawk op scan triage --scan <ID> --from-file triage.yaml`                         |
+| Annotate w/o triage perm      | `hawk op finding note --scan <ID> --hash <HASH> --note "..."`                     |
 
-If `hawkop` is not installed, the api skill documents raw REST fallbacks.
+These reads require the combined `hawk` CLI; the `api` skill covers setup (`hawk init --browser` or the `HAWK_API_KEY` env var).
 
 The `stackhawk-data-seed` skill sets up checked-in backend seed data via `hawk perch seed`.
 Hand off to it when authentication fails because the backend has no valid credential
@@ -83,8 +83,8 @@ the first time). Do NOT run on every scan.
 
 **Phase 0a — Repo Linking:** Associate the app with its source repo in Attack Surface
 Management. Get the git remote URL, normalize it (lowercase, strip `.git`, strip host prefix
-to `owner/repo`), match against `hawkop repo list --format json` output, and run
-`hawkop repo link --repo-id <UUID> --app-id <UUID>`. If no match, inject a `git_origin` tag
+to `owner/repo`), match against `hawk op repo list --format json` output, and run
+`hawk op repo link --repo-id <UUID> --app-id <UUID>`. If no match, inject a `git_origin` tag
 into `stackhawk.yml`.
 → Full normalization rules and SSH/HTTPS edge cases: [`references/repo-linking.md`](references/repo-linking.md)
 
@@ -95,10 +95,17 @@ tags:
     value: ${HAWK_AGENT:none}
 ```
 
-**Phase 0c — Tech Flag Detection:** Detect codebase evidence (package.json, pom.xml, go.mod,
-requirements.txt, Gemfile, *.csproj). If evidence found: disable all flags then enable only
-detected ones. If no evidence: skip, do not touch flags.
-→ Full detection heuristics and flag names: [`references/tech-flags.md`](references/tech-flags.md)
+**Phase 0c — Scan Policy & Tech Flags (via optimize):** Set up the scan policy + tech flags
+through the **optimize skill's Setup mode** (non-destructive — builds a named scan policy and
+references it in `stackhawk.yml`, never mutating the app's own flags). Run optimize Setup once
+here at onboarding; it stays re-runnable later via `/optimize`.
+→ **Fallback** (no policy permissions): if optimize's `hawk op policy create --dry-run` reports
+a missing `ORG_POLICY_MANAGEMENT` / `WRITE_POLICY` / feature flag, it degrades to recommend-only.
+In that case, fall back to direct tech-flag detection on the app: detect codebase evidence
+(package.json, pom.xml, go.mod, requirements.txt, Gemfile, *.csproj); if found, disable all then
+enable only detected flags via `hawk op app tech-flags`; if none, skip.
+→ Optimize Setup workflow: the `optimize` skill. Fallback detection heuristics + flag names:
+[`references/tech-flags.md`](references/tech-flags.md)
 
 ---
 
@@ -162,11 +169,11 @@ find . -not -path "*/node_modules/*" \( -path "*/pages/api/*" -o -path "*/app/ap
 1. **App running?** HawkScan requires a live target. Start it first if not running.
 2. **`stackhawk.yml` present?** If missing → Step 2a (generate). If present → Step 2b (tune).
 3. **Credentials?** Check `~/.hawk/hawk.properties` (written by `hawk init`). If missing: run
-   `hawk init`. For CI/CD: set `HAWK_API_KEY` as a secret and prefix invocations with
-   `API_KEY=$HAWK_API_KEY hawk <cmd>`. If a later command returns 401/403, re-run `hawk init`.
+   `hawk init --browser`. For CI/CD: set `HAWK_API_KEY` as a secret and prefix invocations with
+   `API_KEY=$HAWK_API_KEY hawk <cmd>`. If a later command returns 401/403, re-run `hawk init --browser`.
 4. **Runtime?** Check `which hawk`. If found: use CLI. If not: check `docker --version`.
    If both absent: see `references/installation.md`.
-5. **App exists?** Run `hawkop app list --format json`. Match by name (normalized: lowercased,
+5. **App exists?** Run `hawk op app list --format json`. Match by name (normalized: lowercased,
    `_` and `-` equivalent). Exactly one match → use its `applicationId`. Multiple matches →
    pick by host if established, else surface to user. No match → create:
    ```bash
@@ -174,8 +181,8 @@ find . -not -path "*/node_modules/*" \( -path "*/pages/api/*" -o -path "*/app/ap
    ```
    Resolve `<env-name>` with the Env Name Algorithm above. Announce the created app ID and URL.
 6. **Env exists?** Determine env name via Env Name Algorithm. Run
-   `hawkop env list --app <APP_ID> --format json`. Reuse if exists; otherwise run
-   `hawkop env create --app <APP_ID> --env <name> --host <url>`.
+   `hawk op env list --app <APP_ID> --format json`. Reuse if exists; otherwise run
+   `hawk op env create --app <APP_ID> --env <name> --host <url>`.
 
 ---
 
@@ -201,7 +208,7 @@ APP_HOST=http://localhost:3000 hawk scan
 
 After writing `stackhawk.yml`, always validate:
 ```bash
-timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed"
+timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 6.0.0+ is installed"
 ```
 Do not proceed to Step 3 until validation passes.
 
@@ -257,7 +264,7 @@ hawk perch seed validate --help >/dev/null 2>&1 && hawk perch seed finalize --he
 ```
 If gate passes and `stackhawk-data-seed` is installed → invoke it. It produces
 `.data-seed-credentials.env` which this skill then consumes. If hawk is too old → tell the
-user to upgrade (`brew upgrade stackhawk/cli/hawk`, hawk ≥ `5.6.11`) or manually create the
+user to upgrade (`brew upgrade stackhawk/cli/hawk`, hawk ≥ `6.0.0`) or manually create the
 dev credential. For gateway/multi-service apps, the credential lives in an upstream service's
 datastore — run the seed against that repo, not the gateway.
 
@@ -285,7 +292,7 @@ Review the config against the current app state:
 
 **Validate after any modification:**
 ```bash
-timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed"
+timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 6.0.0+ is installed"
 ```
 
 ---
@@ -356,6 +363,16 @@ pre-existing SQL injection is just as exploitable as one introduced today.
   "done" looks like, verify commands, escalation thresholds:
   [`references/high-iteration-findings.md`](references/high-iteration-findings.md)
 
+**If the scan was slow, suggest optimize (once).** After a full scan, if it ran **≥ 20 minutes**
+(wall-clock) OR stopped at its `hawk.spider.maxDurationMinutes` cap, surface a one-time suggestion:
+
+> This scan was slow. Consider running `/optimize` to tune the scan policy from per-path
+> metrics — it can lower concurrency for rate-limited paths and exclude heavy/slow paths.
+
+This is a suggestion only — do **not** auto-run optimize. Surface it at most **once per session**,
+and **only for full scans** — never for the rescans / fix-verification reruns in the Step 6 loop
+(good scans can legitimately take a while; 20 min is the floor to avoid noise).
+
 ---
 
 ## Step 5: Filter Findings by Triage State
@@ -368,7 +385,7 @@ Filter by the per-path `status` field (`findings[].paths[].status`) before fixin
 
 **Marking false positives** — mark `NEW` findings that are clearly false positives before routing the rest to the fix loop:
 ```bash
-hawkop scan triage --scan <SCAN_UUID> --hash <FINDING_HASH> --status false-positive \
+hawk op scan triage --scan <SCAN_UUID> --hash <FINDING_HASH> --status false-positive \
   --note "<reason> [triaged by ${HAWK_AGENT:-agent}]"
 ```
 Always append `[triaged by ${HAWK_AGENT:-agent}]` to every note for platform audit trail attribution.
@@ -377,7 +394,7 @@ Always append `[triaged by ${HAWK_AGENT:-agent}]` to every note for platform aud
 - ✅ Mark `FALSE_POSITIVE` autonomously with a clear reason note
 - ❌ **Never mark `RISK_ACCEPTED` or `ASSIGNED`** — human decisions only
 - ❌ Do NOT suppress findings in the codebase to hide scanner results
-- ⚠️ If `scan triage` is denied (no `WRITE_TRIAGE`): fall back to `hawkop finding note`; tell the user a `WRITE_TRIAGE` holder must apply the status
+- ⚠️ If `scan triage` is denied (no `WRITE_TRIAGE`): fall back to `hawk op finding note`; tell the user a `WRITE_TRIAGE` holder must apply the status
 
 After triage: "Marked [N] findings as false positive. Routing [M] remaining NEW findings to fix loop. Platform: https://app.stackhawk.com/scans/<scanId>"
 

@@ -1,6 +1,6 @@
 ---
 name: stackhawk-data-seed
-version: 1.15.0
+version: 2.0.0
 description: >
   Set up checked-in seed data so authenticated HawkScan can reach non-trivial
   paths. Drives the `hawk perch seed` preflight, designs the minimum seed
@@ -61,7 +61,7 @@ hawk version 2>/dev/null || hawk --version 2>/dev/null   # for the message only;
 
 If `SEED-FLOW-UNSUPPORTED`, **PUNT** — do NOT hand-author seed data:
 
-> Your installed hawk (`<version from above, if any>`) doesn't include the data-seed flow yet. Upgrade to **hawk ≥ `5.6.11`** to enable seeding:
+> Your installed hawk (`<version from above, if any>`) doesn't include the data-seed flow yet. Upgrade to **hawk ≥ `6.0.0`** to enable seeding:
 > `brew upgrade stackhawk/cli/hawk` (or download from https://download.stackhawk.com/hawk), then re-invoke this skill.
 
 The probe — not the version number — is the gate; the version is shown only to help the user.

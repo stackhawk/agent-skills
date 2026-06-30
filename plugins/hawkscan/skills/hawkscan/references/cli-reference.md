@@ -3,7 +3,7 @@
 The `hawk` CLI is preferred for local/agentic use — lower overhead than Docker,
 faster iteration on config, and better localhost networking.
 
-**Option resolution order:** CLI flag → `API_KEY` environment variable → `~/.hawk/hawk.properties`. For local/agentic use, `hawk init` writes credentials to `~/.hawk/hawk.properties` — no env var needed. For CI/CD pipelines, prefix invocations with `API_KEY=$HAWK_API_KEY hawk ...`.
+**Option resolution order:** CLI flag → `API_KEY` environment variable → `~/.hawk/hawk.properties`. For local/agentic use, run `hawk init --browser` to write credentials to `~/.hawk/hawk.properties` — no env var needed. For CI/CD pipelines, prefix invocations with `API_KEY=$HAWK_API_KEY hawk ...`.
 
 ## Contents
 - [Top-Level Options](#top-level-options)
@@ -25,7 +25,7 @@ faster iteration on config, and better localhost networking.
 These go **before** the command (`hawk [options] <command>`):
 
 ```bash
-hawk scan                                # after `hawk init` — credentials from ~/.hawk/hawk.properties
+hawk scan                                # after `hawk init --browser` — credentials from ~/.hawk/hawk.properties
 hawk --no-color scan                     # strip ANSI escape codes (required for log parsing)
 hawk --num-stored-sessions=4 scan        # number of sessions to keep (default: 4)
 hawk --log-roll-size=100MB scan          # log file roll size (default: 100MB)
@@ -37,7 +37,7 @@ hawk --log-files-count=10 scan           # max rolled log files to upload (defau
 ## Setup
 
 ```bash
-hawk init                                # first-time: prompts for API key, saves to ~/.hawk/hawk.properties
+hawk init --browser                      # first-time: browser device-flow auth, saves to ~/.hawk/hawk.properties
 API_KEY=$HAWK_API_KEY hawk scan          # CI/CD: pass key directly when no local config (pipelines, Docker)
 ```
 
@@ -120,7 +120,7 @@ See the main SKILL.md Step 3 for config file path rules and common agent mistake
 
 ## `hawk config`
 
-**Requires hawk v5.5.11 or newer.** Older hawk versions don't have the `config` subcommand. The skill's Prerequisites section enforces this with a preflight check; this section just documents the surface.
+**Requires hawk v6.0.0 or newer.** Older hawk versions don't have the `config` subcommand. The skill's Prerequisites section enforces this with a preflight check; this section just documents the surface.
 
 Look up HawkScan configuration reference and recipes. Reads the canonical knowledge artifact bundled with hawk (shared with the hosted-scanner auth-analyzer flow).
 

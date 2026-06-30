@@ -1,0 +1,69 @@
+{
+  "skill": "optimize",
+  "version": "1.0.0",
+  "description": "Deterministic process checks for the optimize skill. Each check maps to a required behavior in SKILL.md. Harnesses should look for these signals in agent traces, command histories, or output text.",
+  "checks": [
+    {
+      "id": "no-app-tech-flag-mutation",
+      "phase": "any",
+      "description": "The run must NOT mutate the app's own tech flags (optimization lives in a trial scan policy, not the app's persisted flags).",
+      "type": "command_negative",
+      "anti_patterns": [
+        "hawk op app tech-flags set",
+        "hawk op app tech-flags disable-all"
+      ],
+      "severity": "blocking",
+      "failure_guidance": "Optimization must be expressed as a trial ScanPolicy referenced from stackhawk.yml, never by mutating the app's own tech flags. Mutating app flags is destructive and persists beyond the trial."
+    },
+    {
+      "id": "trial-policy-name-upper-snake",
+      "phase": "step_2",
+      "description": "A trial scan policy is created with an explicit --name (upper-snake per hawk op's validate_policy_name, which rejects lowercase).",
+      "type": "command_executed",
+      "signals": [
+        "policy create --name"
+      ],
+      "severity": "warning",
+      "failure_guidance": "Trial policies should be created via `hawk op policy create --name <UPPER_SNAKE>` (e.g. TRIAL_FAST_SCAN) so they are easy to identify and clean up later; hawk op enforces the ^[A-Z0-9_]+$ format."
+    },
+    {
+      "id": "yml-backup-before-edit",
+      "phase": "step_2",
+      "description": "stackhawk.yml is backed up before edits so a discard can restore the original.",
+      "type": "command_executed",
+      "signals": [
+        "stackhawk.yml.optimize-bak",
+        "cp stackhawk.yml",
+        "backup"
+      ],
+      "severity": "warning",
+      "failure_guidance": "Without a backup, discarding the optimization cannot cleanly restore the original stackhawk.yml app.scanPolicy reference."
+    },
+    {
+      "id": "metrics-phase-runs",
+      "phase": "any",
+      "description": "After the trial scan, the run invokes the post-scan metrics phase to inspect scan performance before refining.",
+      "type": "command_executed",
+      "signals": [
+        "hawk op scan metrics",
+        "scan metrics"
+      ],
+      "severity": "warning",
+      "failure_guidance": "Refinement must be metric-driven: run `hawk op scan metrics` after the trial scan so concurrency/exclusion decisions are grounded in observed rate-limiting and per-endpoint scan time, not guesses."
+    },
+    {
+      "id": "exclusion-confirmed-not-auto",
+      "phase": "any",
+      "description": "Path exclusions (app.excludePaths) and auth changes are surfaced/confirmed with a diff, not silently auto-applied; only hawk.scan.concurrentRequests reductions may be auto-applied for rate-limited/timeout-prone scans.",
+      "type": "output_negative",
+      "anti_patterns": [
+        "auto-applied excludePaths",
+        "automatically excluded",
+        "auto-applied app.authentication",
+        "silently excluded"
+      ],
+      "severity": "warning",
+      "failure_guidance": "Tiering rule: hawk.scan.concurrentRequests reductions MAY be auto-applied, but app.excludePaths and auth changes must be PROPOSED with a stackhawk.yml diff and confirmed by the user — never silently auto-applied."
+    }
+  ]
+}

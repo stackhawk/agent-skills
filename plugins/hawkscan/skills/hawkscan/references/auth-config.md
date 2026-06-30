@@ -76,12 +76,12 @@ If the recipe itself is wrong or ambiguous instead, use **Phase 1c.5** (return t
 
 **Action:**
 
-- **Gate first** — seeding needs hawk ≥ 5.6.11. Probe:
+- **Gate first** — seeding needs hawk ≥ 6.0.0. Probe:
   ```bash
   hawk perch seed validate --help >/dev/null 2>&1 && hawk perch seed finalize --help >/dev/null 2>&1
   ```
 - If the probe **succeeds** and `stackhawk-data-seed` is installed → invoke it. It runs `hawk perch seed` (preflight → synthesizes manifest → validate → finalize), and on success produces a `.data-seed-credentials.env` handoff this skill then consumes.
-- If the probe **fails** (hawk too old) → tell the user the authenticated scan can't get past the empty backend without seed data, and to either **upgrade** (`brew upgrade stackhawk/cli/hawk`, hawk ≥ `5.6.11`) to enable seeding or manually create the dev user/credential, then re-run. If they proceed without seeding, the scan still runs but authenticated endpoints return empty/unauthorized — flag that results will be limited.
+- If the probe **fails** (hawk too old) → tell the user the authenticated scan can't get past the empty backend without seed data, and to either **upgrade** (`brew upgrade stackhawk/cli/hawk`, hawk ≥ `6.0.0`) to enable seeding or manually create the dev user/credential, then re-run. If they proceed without seeding, the scan still runs but authenticated endpoints return empty/unauthorized — flag that results will be limited.
 - If `stackhawk-data-seed` is **not available** but hawk supports the flow → tell the user to install it (`/plugin install stackhawk-data-seed@stackhawk`) and re-run the seeding step; not a hard blocker for the scan.
 - **Cross-repo:** for a gateway / multi-service app the credential or entity usually lives in an **upstream** service's datastore (e.g. the auth service), not the target repo. Run the seed against that upstream repo; seeding the gateway repo alone finds no local storage and produces a no-op.
 

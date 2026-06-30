@@ -4,17 +4,17 @@
   "description": "Deterministic process checks for the api skill. Each check maps to a required behavior in SKILL.md. Harnesses should look for these signals in agent traces, command histories, or output text.",
   "checks": [
     {
-      "id": "step1_hawkop_checked_first",
+      "id": "step1_hawk_op_checked_first",
       "phase": "step_1",
-      "description": "Agent checks for hawkop availability before falling back to raw API calls.",
+      "description": "Agent checks for hawk op availability before making any platform API calls.",
       "type": "command_executed",
       "signals": [
-        "command -v hawkop",
-        "hawkop status",
-        "which hawkop"
+        "command -v hawk",
+        "hawk op status",
+        "which hawk"
       ],
       "severity": "blocking",
-      "failure_guidance": "hawkop must be preferred over raw curl. Skipping the check and defaulting to curl violates the skill's execution path and produces fragile, paginated-result gaps."
+      "failure_guidance": "hawk op must be used for all platform queries. If hawk is unavailable, instruct the user to install it and run hawk init — do not fall back to curl."
     },
     {
       "id": "step1_auth_verified",
@@ -22,10 +22,9 @@
       "description": "Agent verifies authentication status before making any API calls.",
       "type": "command_executed",
       "signals": [
-        "hawkop status",
-        "hawkop init",
-        "HAWK_API_KEY",
-        "HAWKOP_API_KEY"
+        "hawk op status",
+        "hawk init",
+        "HAWK_API_KEY"
       ],
       "severity": "blocking",
       "failure_guidance": "Unauthenticated API calls return 401. Verifying auth state early avoids silent failures mid-query."
@@ -33,48 +32,35 @@
     {
       "id": "step1_org_id_established",
       "phase": "step_1",
-      "description": "Agent establishes orgId before making org-scoped API calls. hawkop implicitly knows the org from its stored config, so hawkop status is sufficient.",
+      "description": "Agent establishes orgId before making org-scoped API calls. hawk op implicitly knows the org from its stored config, so hawk op status is sufficient.",
       "type": "command_executed",
       "signals": [
-        "hawkop org get",
-        "hawkop status",
+        "hawk op org get",
+        "hawk op status",
         "ORG_ID",
         "organization.id",
         "orgId"
       ],
       "severity": "blocking",
-      "failure_guidance": "Most raw API endpoints require orgId. Missing it returns empty results without an error \u2014 easily misread as 'no apps scanned'. When using hawkop, 'hawkop status' confirms the org is known."
+      "failure_guidance": "Most endpoints require orgId. Missing it returns empty results without an error — easily misread as 'no apps scanned'. 'hawk op status' confirms the org is known."
     },
     {
-      "id": "step3_hawkop_preferred_when_available",
+      "id": "step3_hawk_op_used",
       "phase": "step_3_4",
-      "description": "When hawkop is available and configured, agent uses hawkop commands rather than raw curl for supported operations.",
+      "description": "Agent uses hawk op commands for all platform queries.",
       "type": "command_preference",
       "preferred": [
-        "hawkop scan get",
-        "hawkop app list",
-        "hawkop env list",
-        "hawkop org get"
+        "hawk op scan get",
+        "hawk op app list",
+        "hawk op scan list",
+        "hawk op org get"
       ],
       "anti_patterns": [
         "curl.*api/v1/scan",
         "curl.*api/v2/org"
       ],
       "severity": "warning",
-      "failure_guidance": "hawkop handles auth token refresh, pagination, and stable JSON output. Using raw curl when hawkop is available introduces unnecessary auth and pagination fragility."
-    },
-    {
-      "id": "step3_raw_api_used_for_env_endpoint",
-      "phase": "step_3",
-      "description": "For org posture summary (Step 3), agent uses the raw /api/v2/org/{orgId}/envs endpoint because hawkop does not wrap it.",
-      "type": "command_executed",
-      "signals": [
-        "/api/v2/org",
-        "envs",
-        "hawk_api GET"
-      ],
-      "severity": "warning",
-      "failure_guidance": "hawkop does not wrap /api/v2/org/{orgId}/envs. This endpoint is the only one that returns per-environment untriaged counts in a single call. Skipping it requires multiple calls to approximate the same data."
+      "failure_guidance": "hawk op handles auth token refresh, pagination, and stable JSON output. There is no raw-REST fallback — if hawk is unavailable, install it."
     },
     {
       "id": "step5_platform_link_included",
@@ -111,7 +97,7 @@
       "description": "Agent does NOT attempt triage write operations (mark false positive, accept risk, assign finding).",
       "type": "command_negative",
       "anti_patterns": [
-        "hawkop scan triage",
+        "hawk op scan triage",
         "triage.*false-positive",
         "triage.*risk-accepted",
         "PUT.*triage",

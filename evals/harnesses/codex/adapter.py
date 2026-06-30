@@ -24,12 +24,12 @@ CLI_SIGNALS = {
         "hawk perch",
     ],
     # Signals specific to the api reporting workflow — avoids false positives
-    # from hawkop status/app/env commands that the hawkscan skill also runs.
+    # from hawk op status/app/env commands that the hawkscan skill also runs.
     "api": [
-        "hawkop scan get",     # api Step 4: app deep dive
-        "hawkop org get",      # api Step 1: establish orgId
-        "hawkop org set",      # api Step 1: switch org
-        "/api/v2/org",         # api Step 3: org posture endpoint (hawkop doesn't wrap it)
+        "hawk op scan get",    # api Step 4: app deep dive
+        "hawk op org get",     # api Step 1: establish orgId
+        "hawk op org set",     # api Step 1: switch org
+        "hawk op scan list",   # api Step 3: org posture via scan list
         "/api/v1/scan",        # api Step 4: raw scan drill-down
         "hawk_api GET",        # api raw API helper function
     ],

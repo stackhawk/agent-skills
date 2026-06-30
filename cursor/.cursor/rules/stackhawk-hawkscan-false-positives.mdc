@@ -96,7 +96,7 @@ Use this sparingly. Prefer path exclusions over disabling entire plugins.
 
 ## Triaging via the API
 
-Use `hawkop scan triage` to record false-positive decisions on the platform.
+Use `hawk op scan triage` to record false-positive decisions on the platform.
 This is the preferred action over config suppression when the finding is a true
 false positive — it creates an auditable, human-reviewable record.
 
@@ -111,7 +111,7 @@ false positive — it creates an auditable, human-reviewable record.
 ### Single finding
 
 ```bash
-hawkop scan triage \
+hawk op scan triage \
   --scan <SCAN_UUID> \
   --hash <FINDING_HASH> \
   --status false-positive \
@@ -137,7 +137,7 @@ Write a `triage.yaml`:
 
 Then apply:
 ```bash
-hawkop scan triage --scan <SCAN_UUID> --from-file triage.yaml
+hawk op scan triage --scan <SCAN_UUID> --from-file triage.yaml
 ```
 
 JSON format is also accepted (leading `[` is auto-detected). Max 100 actions per call — split into batches if needed.
@@ -152,14 +152,14 @@ JSON format is also accepted (leading `[` is auto-detected). Max 100 actions per
 
 ```bash
 # ADD_COMMENT example — for findings under review but not yet confirmed FP
-hawkop scan triage \
+hawk op scan triage \
   --scan <SCAN_UUID> \
   --hash <FINDING_HASH> \
   --status add-comment \
   --note "Reviewing with team; suspected false positive on /actuator/info"
 ```
 
-> **Permission-independent alternative:** `hawkop finding note` adds the same kind
+> **Permission-independent alternative:** `hawk op finding note` adds the same kind
 > of annotation through an ungated route (`POST .../findings/triage/notes`), so it
 > works even without `WRITE_TRIAGE`. Prefer it for comment-only annotations when the
 > account may lack triage permission. See
@@ -167,14 +167,14 @@ hawkop scan triage \
 
 ### When triage is denied (no `WRITE_TRIAGE`)
 
-`hawkop scan triage` writes through the permission-gated
+`hawk op scan triage` writes through the permission-gated
 `POST .../findings/triage` endpoint. If the account lacks `WRITE_TRIAGE` — either by
 role default, or because the org enabled the `LIMITED_MEMBER_ROLE` setting that turns
 off member finding-triage (it revokes `WRITE_TRIAGE` from the MEMBER role) — the
 command fails with an unauthorized-feature error (a 401 after a valid login).
 
-Detection is **reactive**: attempt `hawkop scan triage`; if it returns the
-unauthorized-feature error, fall back to `hawkop finding note`, which writes through
+Detection is **reactive**: attempt `hawk op scan triage`; if it returns the
+unauthorized-feature error, fall back to `hawk op finding note`, which writes through
 the ungated `POST .../findings/triage/notes` route (any org member, no
 `WRITE_TRIAGE`). The note route ignores status, so it can only annotate.
 
@@ -182,7 +182,7 @@ the ungated `POST .../findings/triage/notes` route (any org member, no
 annotation never fails for lack of permission:
 
 ```bash
-hawkop finding note \
+hawk op finding note \
   --scan <SCAN_UUID> \
   --hash <FINDING_HASH> \
   --note "Reviewing with team; suspected false positive on /actuator/info [triaged by ${HAWK_AGENT:-agent}]"
@@ -193,7 +193,7 @@ Record the reasoning as a note (audit trail preserved), prefixed so a reviewer k
 the status action is still pending, then escalate to the user:
 
 ```bash
-hawkop finding note \
+hawk op finding note \
   --scan <SCAN_UUID> \
   --hash <FINDING_HASH> \
   --note "[Agent-proposed FALSE_POSITIVE — apply status in UI; WRITE_TRIAGE required] CSP finding on JSON endpoint /api/health which never serves HTML; inapplicable [triaged by ${HAWK_AGENT:-agent}]"
@@ -210,7 +210,7 @@ Bulk notes use the same `--from-file` form (max 100 per call); each entry needs 
 `finding_hash` and `note` (no `status`):
 
 ```bash
-hawkop finding note --scan <SCAN_UUID> --from-file notes.yaml
+hawk op finding note --scan <SCAN_UUID> --from-file notes.yaml
 ```
 
 ### How to get the finding hash
@@ -220,9 +220,9 @@ The finding hash (`--hash`) comes from the scan JSON output:
 hawk scan --json-output | jq '.findings[].hash'
 ```
 
-Or from `hawkop scan get`:
+Or from `hawk op scan get`:
 ```bash
-hawkop scan get --app <APP_NAME> --detail full --format json | jq '.data.findings[].hash'
+hawk op scan get --app <APP_NAME> --detail full --format json | jq '.data.findings[].hash'
 ```
 
 The scan UUID (`--scan`) comes from:
@@ -236,7 +236,7 @@ When you encounter a finding that is a known false positive:
 
 1. **Do not "fix" intentional behavior.** Changing a deliberately open health endpoint
    to require auth will break monitoring.
-2. **Triage via the API** using `hawkop scan triage` (see section above) so the decision
+2. **Triage via the API** using `hawk op scan triage` (see section above) so the decision
    is recorded and auditable.
 3. **Report it clearly:** "Finding X on path Y is a false positive because [reason].
    Marked via API triage with note: [note]."
