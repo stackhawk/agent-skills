@@ -17,7 +17,8 @@ If `hawk config` is unrecognized, upgrade hawk before running this skill.
 
 ## Contents
 - [CLI Installation](#cli-installation)
-  - [Recommended — download the binary (macOS / Linux)](#recommended--download-the-binary-macos--linux)
+  - [Homebrew (macOS — recommended)](#homebrew-macos--recommended)
+  - [Download the binary (macOS / Linux)](#download-the-binary-macos--linux)
   - [macOS — .pkg installer](#macos--pkg-installer)
   - [Windows — .msi installer (PowerShell)](#windows--msi-installer-powershell)
   - [Pin a specific version](#pin-a-specific-version)
@@ -45,7 +46,15 @@ where `<group>` is one of `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-aarc
 `windows-x64`, `windows-arm64`. Always resolve the URL from the manifest rather than
 hand-building it — the version and asset list are authoritative there.
 
-### Recommended — download the binary (macOS / Linux)
+### Homebrew (macOS — recommended)
+
+```bash
+brew tap stackhawk/cli
+brew trust stackhawk/cli
+brew install hawk
+```
+
+### Download the binary (macOS / Linux)
 
 ```bash
 MANIFEST=https://download.stackhawk.com/hawkdocs/hawk.manifest.json

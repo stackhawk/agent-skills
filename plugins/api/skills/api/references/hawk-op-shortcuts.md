@@ -10,8 +10,17 @@ See `SKILL.md` for the full workflow.
 ## Setup (once) {#setup-once}
 
 **Install the combined `hawk` CLI** — a single self-contained binary (no Java needed).
-The manifest is the source of truth for the version and every download URL:
-`https://download.stackhawk.com/hawkdocs/hawk.manifest.json`
+
+macOS — Homebrew (recommended):
+
+```bash
+brew tap stackhawk/cli
+brew trust stackhawk/cli
+brew install hawk
+```
+
+Otherwise resolve the binary from the manifest (the source of truth for the version
+and every download URL, `https://download.stackhawk.com/hawkdocs/hawk.manifest.json`):
 
 ```bash
 # macOS / Linux — resolve the right binary from the manifest, then install
@@ -29,8 +38,8 @@ curl -fsSL "$url" -o hawk && chmod +x hawk && sudo mv hawk /usr/local/bin/hawk
 
 URL pattern: `https://download.stackhawk.com/hawk/<version>/<group>/hawk[.pkg|.exe|.msi]`
 (`<group>`: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-aarch64`, `windows-x64`,
-`windows-arm64`). macOS `.pkg` / Windows `.msi` installers and Homebrew are also
-available — see `https://docs.stackhawk.com/downloads/`.
+`windows-arm64`). macOS `.pkg` and Windows `.msi` installers are also available —
+see `https://docs.stackhawk.com/downloads/`.
 
 ```bash
 hawk init              # Interactive — browser device flow or manual API key
