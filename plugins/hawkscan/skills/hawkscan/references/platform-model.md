@@ -403,4 +403,4 @@ lookups. Relevant commands and their documentation:
 | List envs for an app          | `hawk op env list --app <APP_ID> --format json`             |
 | Get scan findings with triage | `hawk op scan get --app <NAME> --detail full --format json` |
 
-These reads require the combined `hawk` CLI; the `api` skill covers setup (`hawk init` or the `HAWK_API_KEY` env var).
+These reads require the combined `hawk` CLI; the `api` skill covers setup (`hawk init --browser` or the `HAWK_API_KEY` env var).

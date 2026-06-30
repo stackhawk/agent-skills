@@ -110,7 +110,7 @@ hawk version
 ### Authenticate with `hawk init`
 
 ```bash
-hawk init
+hawk init --browser
 ```
 
 When prompted, enter your StackHawk API key (format: `hawk.xxxxxxxxxx.xxxxxxxxxx`).
@@ -123,7 +123,7 @@ This saves the key to `~/.hawk/hawk.properties`.
 
 ### CI/CD: Set `HAWK_API_KEY` as a Secret
 
-For pipeline runs where `hawk init` cannot be used interactively, set `HAWK_API_KEY` as a
+For pipeline runs where `hawk init --browser` cannot be used interactively, set `HAWK_API_KEY` as a
 CI secret and prefix each invocation:
 
 ```bash
@@ -132,7 +132,7 @@ API_KEY=$HAWK_API_KEY hawk scan
 
 The CLI resolves keys in this order: `--api-key` flag → `API_KEY` env var → `~/.hawk/hawk.properties`.
 
-For local/agentic use, `hawk init` is the preferred approach — no env var needed.
+For local/agentic use, `hawk init --browser` is the preferred approach — no env var needed.
 
 ---
 

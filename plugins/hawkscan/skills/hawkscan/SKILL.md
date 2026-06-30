@@ -60,7 +60,7 @@ The `api` skill wraps read-only StackHawk platform lookups via the `hawk` CLI (`
 | Bulk triage from file         | `hawk op scan triage --scan <ID> --from-file triage.yaml`                         |
 | Annotate w/o triage perm      | `hawk op finding note --scan <ID> --hash <HASH> --note "..."`                     |
 
-These reads require the combined `hawk` CLI; the `api` skill covers setup (`hawk init` or the `HAWK_API_KEY` env var).
+These reads require the combined `hawk` CLI; the `api` skill covers setup (`hawk init --browser` or the `HAWK_API_KEY` env var).
 
 The `stackhawk-data-seed` skill sets up checked-in backend seed data via `hawk perch seed`.
 Hand off to it when authentication fails because the backend has no valid credential
@@ -178,8 +178,8 @@ find . -not -path "*/node_modules/*" \( -path "*/pages/api/*" -o -path "*/app/ap
 1. **App running?** HawkScan requires a live target. Start it first if not running.
 2. **`stackhawk.yml` present?** If missing → Step 2a (generate). If present → Step 2b (tune).
 3. **Credentials?** Check `~/.hawk/hawk.properties` (written by `hawk init`). If missing: run
-   `hawk init`. For CI/CD: set `HAWK_API_KEY` as a secret and prefix invocations with
-   `API_KEY=$HAWK_API_KEY hawk <cmd>`. If a later command returns 401/403, re-run `hawk init`.
+   `hawk init --browser`. For CI/CD: set `HAWK_API_KEY` as a secret and prefix invocations with
+   `API_KEY=$HAWK_API_KEY hawk <cmd>`. If a later command returns 401/403, re-run `hawk init --browser`.
 4. **Runtime?** Check `which hawk`. If found: use CLI. If not: check `docker --version`.
    If both absent: see `references/installation.md`.
 5. **App exists?** Run `hawk op app list --format json`. Match by name (normalized: lowercased,

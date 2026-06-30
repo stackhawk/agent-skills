@@ -22,7 +22,7 @@ platform. The core workflow is:
 All platform queries run through the `hawk` binary's `op` subtree
 (`hawk op …`). It authenticates, refreshes tokens, follows pagination, and
 emits stable JSON. There is no raw-REST fallback — if `hawk` is unavailable,
-install it and run `hawk init` rather than hand-rolling curl.
+install it and run `hawk init --browser` rather than hand-rolling curl.
 See [`references/hawk-op-shortcuts.md`](references/hawk-op-shortcuts.md).
 
 ---
@@ -36,14 +36,14 @@ Before making any calls, check what's available:
    command -v hawk >/dev/null && hawk op status
    ```
    - valid org + JWT → proceed.
-   - installed but unconfigured → `hawk init` (interactive; the combined binary
+   - installed but unconfigured → `hawk init --browser` (interactive; the combined binary
      has no `hawk op init` — `hawk init` writes `~/.hawk/hawk.properties`, which
      `hawk op` reads along with the `HAWK_API_KEY` env var; the legacy
      standalone-binary config file is no longer used).
    - not installed → instruct the user to install the `hawk` CLI (docs:
      [docs.stackhawk.com](https://docs.stackhawk.com)) and stop; do **not** fall back to curl.
 
-2. **Is `hawk op` authenticated?** For local/agentic use, `hawk init` stores
+2. **Is `hawk op` authenticated?** For local/agentic use, `hawk init --browser` stores
    credentials in `~/.hawk/hawk.properties` — no env var needed for interactive
    sessions. Verify:
    ```bash
@@ -70,7 +70,7 @@ Before making any calls, check what's available:
 
 ## Step 2: Authenticate
 
-`hawk init` once for interactive setup — the CLI stores credentials in
+`hawk init --browser` once for interactive setup — the CLI stores credentials in
 `~/.hawk/hawk.properties` and `hawk op` handles token refresh and `401` retry on
 every call. No further auth work for this skill.
 
@@ -210,7 +210,7 @@ Base suggestions on what the data shows:
 
 ## Common Mistakes to Avoid
 
-- **Don't hardcode API keys in scripts** — always reference `${HAWK_API_KEY}` for CI/CD; store credentials via `hawk init` for local use; never inline the key value itself.
+- **Don't hardcode API keys in scripts** — always reference `${HAWK_API_KEY}` for CI/CD; store credentials via `hawk init --browser` for local use; never inline the key value itself.
 - **Don't confuse `orgId` with `appId`** — `hawk op scan list --app <APP_ID>` takes the app UUID. The org is implicit from config; override with `--org <ID>` if needed. Mixing them returns empty results, not an error.
 - **Don't attempt triage via API** — triage write operations (accept, false positive) are not in scope for this skill. Direct users to the platform UI at app.stackhawk.com.
 - **Don't report "no findings" without checking path count** — an empty findings list may mean the spider didn't crawl enough routes. Low path count on a scan is a coverage gap, not a clean bill of health. Recommend spider tuning via → hawkscan skill.

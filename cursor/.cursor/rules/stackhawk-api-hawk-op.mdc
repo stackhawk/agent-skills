@@ -48,7 +48,7 @@ URL pattern: `https://download.stackhawk.com/hawk/<version>/<group>/hawk[.pkg|.e
 see `https://docs.stackhawk.com/downloads/`.
 
 ```bash
-hawk init              # Interactive — browser device flow or manual API key
+hawk init --browser    # Browser device-flow auth; writes ~/.hawk/hawk.properties
 hawk op status         # Confirm auth
 ```
 
