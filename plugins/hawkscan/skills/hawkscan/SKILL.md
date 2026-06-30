@@ -104,10 +104,17 @@ tags:
     value: ${HAWK_AGENT:none}
 ```
 
-**Phase 0c — Tech Flag Detection:** Detect codebase evidence (package.json, pom.xml, go.mod,
-requirements.txt, Gemfile, *.csproj). If evidence found: disable all flags then enable only
-detected ones. If no evidence: skip, do not touch flags.
-→ Full detection heuristics and flag names: [`references/tech-flags.md`](references/tech-flags.md)
+**Phase 0c — Scan Policy & Tech Flags (via optimize):** Set up the scan policy + tech flags
+through the **optimize skill's Setup mode** (non-destructive — builds a named scan policy and
+references it in `stackhawk.yml`, never mutating the app's own flags). Run optimize Setup once
+here at onboarding; it stays re-runnable later via `/optimize`.
+→ **Fallback** (no policy permissions): if optimize's `hawk op policy create --dry-run` reports
+a missing `ORG_POLICY_MANAGEMENT` / `WRITE_POLICY` / feature flag, it degrades to recommend-only.
+In that case, fall back to direct tech-flag detection on the app: detect codebase evidence
+(package.json, pom.xml, go.mod, requirements.txt, Gemfile, *.csproj); if found, disable all then
+enable only detected flags via `hawk op app tech-flags`; if none, skip.
+→ Optimize Setup workflow: the `optimize` skill. Fallback detection heuristics + flag names:
+[`references/tech-flags.md`](references/tech-flags.md)
 
 ---
 
