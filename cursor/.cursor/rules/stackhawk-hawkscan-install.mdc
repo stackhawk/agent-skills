@@ -6,7 +6,7 @@ alwaysApply: false
 ---
 # HawkScan Installation Reference
 
-**Minimum hawk version:** This skill calls `hawk config show <section>` for live config documentation. You need hawk **v5.5.11** or later. Verify with:
+**Minimum hawk version:** This skill calls `hawk config show <section>` for live config documentation. You need hawk **v6.0.0** or later. Verify with:
 
 ```bash
 hawk version
@@ -17,8 +17,10 @@ If `hawk config` is unrecognized, upgrade hawk before running this skill.
 
 ## Contents
 - [CLI Installation](#cli-installation)
-  - [Homebrew (macOS)](#homebrew-macos--recommended)
-  - [Package Installers (All Platforms)](#package-installers-all-platforms)
+  - [Recommended — download the binary (macOS / Linux)](#recommended--download-the-binary-macos--linux)
+  - [macOS — .pkg installer](#macos--pkg-installer)
+  - [Windows — .msi installer (PowerShell)](#windows--msi-installer-powershell)
+  - [Pin a specific version](#pin-a-specific-version)
   - [Prerequisites](#prerequisites)
   - [Verify Installation](#verify-installation)
 - [Post-Install Setup](#post-install-setup)

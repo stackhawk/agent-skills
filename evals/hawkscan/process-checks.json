@@ -6,7 +6,7 @@
     {
       "id": "preflight_version_check",
       "phase": "preflight",
-      "description": "Agent verifies the hawk CLI is installed and meets the minimum version (5.5.11) before proceeding.",
+      "description": "Agent verifies the hawk CLI is installed and meets the minimum version (6.0.0) before proceeding.",
       "type": "command_executed",
       "signals": [
         "hawk version",
@@ -14,7 +14,7 @@
         "hawk -v"
       ],
       "severity": "blocking",
-      "failure_guidance": "If hawk < 5.5.11, the agent must stop and tell the user to upgrade. Proceeding risks using stale inline auth recipes instead of 'hawk config show'."
+      "failure_guidance": "If hawk < 6.0.0, the agent must stop and tell the user to upgrade. Proceeding risks using stale inline auth recipes instead of 'hawk config show'."
     },
     {
       "id": "preflight_config_command_available",

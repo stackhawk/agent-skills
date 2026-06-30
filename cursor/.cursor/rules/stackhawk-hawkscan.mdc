@@ -18,14 +18,14 @@ coding loop. The core workflow is:
 
 ## Prerequisites (preflight — run before anything else)
 
-This skill requires **hawk v5.5.11 or newer**. Verify:
+This skill requires **hawk v6.0.0 or newer**. Verify:
 
 ```bash
 hawk version
-hawk config --help >/dev/null 2>&1 || echo "MISSING: hawk config — upgrade hawk to v5.5.11+"
+hawk config --help >/dev/null 2>&1 || echo "MISSING: hawk config — upgrade hawk to v6.0.0+"
 ```
 
-If hawk is older than `5.5.11` or `hawk config --help` fails, stop and tell the user to
+If hawk is older than `6.0.0` or `hawk config --help` fails, stop and tell the user to
 upgrade before proceeding. Do not inline auth recipes from memory — they live in
 `hawk config show` and are stale by design when hardcoded.
 
@@ -201,7 +201,7 @@ APP_HOST=http://localhost:3000 hawk scan
 
 After writing `stackhawk.yml`, always validate:
 ```bash
-timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed"
+timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 6.0.0+ is installed"
 ```
 Do not proceed to Step 3 until validation passes.
 
@@ -257,7 +257,7 @@ hawk perch seed validate --help >/dev/null 2>&1 && hawk perch seed finalize --he
 ```
 If gate passes and `stackhawk-data-seed` is installed → invoke it. It produces
 `.data-seed-credentials.env` which this skill then consumes. If hawk is too old → tell the
-user to upgrade (`brew upgrade stackhawk/cli/hawk`, hawk ≥ `5.6.11`) or manually create the
+user to upgrade (`brew upgrade stackhawk/cli/hawk`, hawk ≥ `6.0.0`) or manually create the
 dev credential. For gateway/multi-service apps, the credential lives in an upstream service's
 datastore — run the seed against that repo, not the gateway.
 
@@ -285,7 +285,7 @@ Review the config against the current app state:
 
 **Validate after any modification:**
 ```bash
-timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed"
+timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 6.0.0+ is installed"
 ```
 
 ---

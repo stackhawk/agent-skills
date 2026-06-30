@@ -37,7 +37,7 @@ tags:
 Export `HAWK_AGENT` using the detection block from Step 3 of SKILL.md *(see Step 3 → `references/agent-detection.md`)*, then validate:
 
 ```bash
-timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 5.5.0+ is installed (hawk update)"
+timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — ensure hawk CLI 6.0.0+ is installed (hawk update)"
 ```
 
 **4. Scan**
