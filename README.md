@@ -86,6 +86,7 @@ Advanced — install individually instead:
 # /plugin install stackhawk-api@stackhawk
 # /plugin install hawkscan-ci@stackhawk
 # /plugin install stackhawk-data-seed@stackhawk
+# /plugin install stackhawk-optimize@stackhawk
 ```
 
 #### Codex
@@ -96,6 +97,7 @@ Advanced — install individually instead:
 /plugin install stackhawk-api@stackhawk
 /plugin install hawkscan-ci@stackhawk
 /plugin install stackhawk-data-seed@stackhawk
+/plugin install stackhawk-optimize@stackhawk
 ```
 
 If your Codex version supports umbrella dependency auto-install, you may use `/plugin install wingman@stackhawk` instead.
@@ -130,7 +132,7 @@ mkdir -p ~/.config/opencode/skills
 cp -r agent-skills/.opencode/skills/* ~/.config/opencode/skills/
 ```
 
-Installs `hawkscan`, `stackhawk-api`, `hawkscan-ci`, and `stackhawk-data-seed`.
+Installs `hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, and `stackhawk-optimize`.
 
 #### Cursor
 

@@ -1,6 +1,6 @@
 ---
 description: >
-  HawkScan installation: Homebrew (macOS), package installers (all platforms), prerequisites (Java 17+), verification (hawk version).
+  HawkScan installation: Homebrew (macOS), manifest-driven binary download, package installers (.pkg/.msi), verification (hawk version). Self-contained binary — no separate Java install needed.
 globs:
 alwaysApply: false
 ---

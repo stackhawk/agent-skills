@@ -52,17 +52,19 @@ switch ($Platform) {
             @{ src = "hawkscan\skills\hawkscan";                        dst = "hawkscan" },
             @{ src = "api\skills\api";                                  dst = "api" },
             @{ src = "hawkscan-ci\skills\hawkscan-ci";                  dst = "hawkscan-ci" },
-            @{ src = "stackhawk-data-seed\skills\stackhawk-data-seed";  dst = "stackhawk-data-seed" }
+            @{ src = "stackhawk-data-seed\skills\stackhawk-data-seed";  dst = "stackhawk-data-seed" },
+            @{ src = "optimize\skills\optimize";                        dst = "optimize" }
         )) {
             $d = Join-Path $skillsDest $skill.dst
             New-Item -ItemType Directory -Force $d | Out-Null
             Copy-Item -Recurse (Join-Path $pluginsSource "$($skill.src)\*") $d -Force
         }
-        Write-Host "Installed 4 Cursor skills to ${skillsDest}\"
+        Write-Host "Installed 5 Cursor skills to ${skillsDest}\"
         Write-Host "  hawkscan\            -- DAST scanning skill"
         Write-Host "  api\                 -- StackHawk API reporting skill"
         Write-Host "  hawkscan-ci\         -- CI/CD pipeline skill"
         Write-Host "  stackhawk-data-seed\ -- Data seed skill"
+        Write-Host "  optimize\            -- Scan optimization skill"
 
         # Hooks
         New-Item -ItemType Directory -Force $hooksDest | Out-Null
