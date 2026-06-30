@@ -95,7 +95,7 @@ jobs:
         run: claude --version
 
       # hawk CLI is a Java app; ensure a JDK 17+ is on PATH for it.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -216,7 +216,7 @@ jobs:
           echo y | codex plugin add hawkscan-ci@stackhawk
 
       # hawk CLI (Java app) — the hawkscan skill needs it on PATH; install-only, no scan.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -318,7 +318,7 @@ jobs:
         continue-on-error: true  # depends on agy CLI; best-effort so evals still runs
 
       # hawk CLI (Java app) — the hawkscan skill needs it on PATH; install-only, no scan.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -417,7 +417,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       # hawk CLI (Java app) — the hawkscan skill needs it on PATH; install-only, no scan.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
