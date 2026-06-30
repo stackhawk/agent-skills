@@ -105,7 +105,7 @@ jobs:
       # skill can follow its documented CLI path (hawk version/config/validate/
       # scan). Without hawk the agent improvises and never emits a hawk* signal.
       - name: Install latest hawk CLI
-        uses: stackhawk/hawkscan-action@v2.5.0
+        uses: stackhawk/hawkscan-action@v3.0.0
         with:
           apiKey: ${{ secrets.HAWK_API_KEY }}
           version: latest
@@ -221,7 +221,7 @@ jobs:
           distribution: temurin
           java-version: "17"
       - name: Install latest hawk CLI
-        uses: stackhawk/hawkscan-action@v2.5.0
+        uses: stackhawk/hawkscan-action@v3.0.0
         with:
           apiKey: ${{ secrets.HAWK_API_KEY }}
           version: latest
@@ -323,7 +323,7 @@ jobs:
           distribution: temurin
           java-version: "17"
       - name: Install latest hawk CLI
-        uses: stackhawk/hawkscan-action@v2.5.0
+        uses: stackhawk/hawkscan-action@v3.0.0
         with:
           apiKey: ${{ secrets.HAWK_API_KEY }}
           version: latest
@@ -422,7 +422,7 @@ jobs:
           distribution: temurin
           java-version: "17"
       - name: Install latest hawk CLI
-        uses: stackhawk/hawkscan-action@v2.5.0
+        uses: stackhawk/hawkscan-action@v3.0.0
         with:
           apiKey: ${{ secrets.HAWK_API_KEY }}
           version: latest
