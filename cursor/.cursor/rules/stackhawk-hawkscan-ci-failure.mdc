@@ -155,9 +155,11 @@ The CLI zip is version-numbered (there's no `hawk-latest.zip`), so resolve the c
 - name: Resolve current hawk version + binary URL (from the manifest)
   id: hawk
   run: |
-    M=https://download.stackhawk.com/hawkdocs/hawk.manifest.json
-    echo "version=$(curl -fsSL "$M" | jq -r '.latest.version')" >> "$GITHUB_OUTPUT"
-    echo "url=$(curl -fsSL "$M" | jq -r '.latest.assets[] | select(.asset.group=="linux-x64" and (.url|endswith("/hawk"))) | .url')" >> "$GITHUB_OUTPUT"
+    read -r version url < <(curl -fsSL https://download.stackhawk.com/hawkdocs/hawk.manifest.json \
+      | jq -r '.latest | "\(.version) \(.assets[] | select(.asset.group=="linux-x64" and (.url|endswith("/hawk"))) | .url)"')
+    [ -n "$url" ] || { echo "ERROR: no linux-x64 hawk binary in manifest"; exit 1; }
+    echo "version=$version" >> "$GITHUB_OUTPUT"
+    echo "url=$url" >> "$GITHUB_OUTPUT"
 - name: Cache hawk CLI
   uses: actions/cache@v4
   with:

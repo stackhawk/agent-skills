@@ -9,8 +9,8 @@
       "description": "The run must NOT mutate the app's own tech flags (optimization lives in a trial scan policy, not the app's persisted flags).",
       "type": "command_negative",
       "anti_patterns": [
-        "hawk op tech-flags set",
-        "hawk op tech-flags disable-all"
+        "hawk op app tech-flags set",
+        "hawk op app tech-flags disable-all"
       ],
       "severity": "blocking",
       "failure_guidance": "Optimization must be expressed as a trial ScanPolicy referenced from stackhawk.yml, never by mutating the app's own tech flags. Mutating app flags is destructive and persists beyond the trial."
