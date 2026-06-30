@@ -57,7 +57,8 @@ _OBSERVE_HEADER = (
     "1. A decision line naming the StackHawk skill this request should invoke, "
     "written exactly as `hawkscan:hawkscan: YES`, `stackhawk-api:api: YES`, "
     "`stackhawk-data-seed:stackhawk-data-seed: YES`, "
-    "`hawkscan-ci:hawkscan-ci: YES`, or `none: NO`.\n"
+    "`hawkscan-ci:hawkscan-ci: YES`, `stackhawk-optimize:optimize: YES`, "
+    "or `none: NO`.\n"
 )
 
 OBSERVE_SUFFIX = {
@@ -100,6 +101,20 @@ OBSERVE_SUFFIX = {
         "protection). Do NOT run git, push a branch, open a PR, set the secret "
         "yourself, or trigger the pipeline. If stackhawk.yml is missing or invalid, "
         "say so and hand off to the hawkscan skill instead of writing a workflow. "
+        + _USE_SKILL + _CMDS_OK + ")"
+    ),
+    # optimize: builds a non-destructive trial scan policy (Setup) and tunes from
+    # per-path metrics (Refine). No live target here, so keep it a paper walkthrough
+    # of the full Setup→Refine command sequence; do NOT run a trial scan.
+    "optimize": _OBSERVE_HEADER + (
+        "2. If (and only if) the optimize skill applies, write out its COMPLETE "
+        "documented workflow as the exact CLI commands it runs, in order — Setup "
+        "(preflight `hawk op policy create --help` and `hawk op scan metrics --help`, "
+        "map tech flags, build the named trial policy with `hawk op policy create`, "
+        "back up + edit stackhawk.yml to reference `app.scanPolicy.name`) then Refine "
+        "(trial scan, `hawk op scan metrics <SCAN_ID> --format json`, tune "
+        "concurrentRequests/excludePaths, then promote or discard). This is a paper "
+        "walkthrough: do NOT run the trial scan, there is no live target here. "
         + _USE_SKILL + _CMDS_OK + ")"
     ),
 }

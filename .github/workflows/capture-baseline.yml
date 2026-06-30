@@ -57,7 +57,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize]
         model: [claude-sonnet-4-6, claude-opus-4-7, claude-haiku-4-5-20251001]
     steps:
       - uses: actions/checkout@v7
@@ -123,7 +123,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize]
         model: [gpt-5.5, o3]
     steps:
       - uses: actions/checkout@v7
@@ -202,7 +202,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize]
         model: [default]
     steps:
       - uses: actions/checkout@v7
@@ -281,7 +281,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci]
+        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize]
         model: [default]
     steps:
       - uses: actions/checkout@v7
