@@ -114,6 +114,7 @@ scan and tunes from per-path metrics; it runs only via `/optimize` or when a sca
 
 ## Companion skills
 
-- `hawkscan` — runs the actual scan loop and owns onboarding + tech-flag detection
-  heuristics (`references/tech-flags.md`), which this skill reuses.
+- `hawkscan` — runs the actual scan loop and owns the onboarding flow + the fallback
+  tech-flag detection heuristics (`references/tech-flags.md`), used only when this skill
+  can't create a scan policy.
 - `api` — read-only platform lookups via `hawk op` (app/env/policy listing).
