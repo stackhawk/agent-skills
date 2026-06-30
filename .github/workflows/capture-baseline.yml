@@ -155,6 +155,7 @@ jobs:
           echo y | codex plugin add stackhawk-api@stackhawk
           echo y | codex plugin add stackhawk-data-seed@stackhawk
           echo y | codex plugin add hawkscan-ci@stackhawk
+          echo y | codex plugin add stackhawk-optimize@stackhawk
 
       # HawkScan 6 ships as a single self-contained native binary (no JDK) that
       # provides BOTH scanning (`hawk`) and the platform/API CLI (`hawk op …`).
@@ -231,6 +232,7 @@ jobs:
           echo y | agy plugin install plugins/api
           echo y | agy plugin install plugins/stackhawk-data-seed
           echo y | agy plugin install plugins/hawkscan-ci
+          echo y | agy plugin install plugins/optimize
         continue-on-error: true  # depends on agy CLI; best-effort so evals still runs
 
       # HawkScan 6 ships as a single self-contained native binary (no JDK) that
