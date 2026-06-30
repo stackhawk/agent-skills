@@ -113,10 +113,12 @@ hawk version
 hawk init --browser
 ```
 
-When prompted, enter your StackHawk API key (format: `hawk.xxxxxxxxxx.xxxxxxxxxx`).
-This saves the key to `~/.hawk/hawk.properties`.
+This opens a browser window for device-flow authentication — log in and approve the
+request. No API key to copy or paste; the resulting credentials are saved to
+`~/.hawk/hawk.properties`.
 
-**To get an API key:**
+**No browser available (headless/remote)?** Run `hawk init` without `--browser` and
+paste an API key (format: `hawk.xxxxxxxxxx.xxxxxxxxxx`) when prompted:
 1. Log into https://app.stackhawk.com
 2. Go to Settings → API Keys
 3. Create or copy an existing key (keys only display once on creation)
