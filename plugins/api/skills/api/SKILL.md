@@ -6,7 +6,7 @@ description: >
   security reporting, findings analysis, or app management. Triggers include:
   "stackhawk api", "security posture", "findings report", "show me findings",
   "untriaged findings", "which apps", "scan history", "security dashboard",
-  "triage", "what needs attention". Uses the combined hawk CLI (hawk op …) for
+  "triage", "what needs attention". Uses the hawk CLI (`hawk op` subcommand) for
   all platform queries. Do NOT use for running scans (use the hawkscan skill for
   "scan my app", "hawkscan", "stackhawk.yml", "DAST") or for fixing/remediating
   code or vulnerabilities — this skill only reads and reports platform data.
@@ -19,7 +19,7 @@ platform. The core workflow is:
 
 **Question → Authenticate → Query API via `hawk op` → Present Results → Suggest Next Actions**
 
-All platform queries run through the combined `hawk` binary's `op` subtree
+All platform queries run through the `hawk` binary's `op` subtree
 (`hawk op …`). It authenticates, refreshes tokens, follows pagination, and
 emits stable JSON. There is no raw-REST fallback — if `hawk` is unavailable,
 install it and run `hawk init` rather than hand-rolling curl.
@@ -31,7 +31,7 @@ See [`references/hawk-op-shortcuts.md`](references/hawk-op-shortcuts.md).
 
 Before making any calls, check what's available:
 
-1. **Is `hawk` installed and configured?**
+1. **Is `hawk` installed and configured?** (`hawk version` reports v6.0.0 or greater)
    ```bash
    command -v hawk >/dev/null && hawk op status
    ```

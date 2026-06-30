@@ -12,7 +12,7 @@ platform. The core workflow is:
 
 **Question → Authenticate → Query API via `hawk op` → Present Results → Suggest Next Actions**
 
-All platform queries run through the combined `hawk` binary's `op` subtree
+All platform queries run through the `hawk` binary's `op` subtree
 (`hawk op …`). It authenticates, refreshes tokens, follows pagination, and
 emits stable JSON. There is no raw-REST fallback — if `hawk` is unavailable,
 install it and run `hawk init` rather than hand-rolling curl.
@@ -24,7 +24,7 @@ See [`references/hawk-op-shortcuts.md`](references/hawk-op-shortcuts.md).
 
 Before making any calls, check what's available:
 
-1. **Is `hawk` installed and configured?**
+1. **Is `hawk` installed and configured?** (`hawk version` reports v6.0.0 or greater)
    ```bash
    command -v hawk >/dev/null && hawk op status
    ```

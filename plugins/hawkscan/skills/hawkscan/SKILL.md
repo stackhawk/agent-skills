@@ -44,7 +44,7 @@ See `references/installation.md` for upgrade and install instructions.
 
 ## Companion Skills
 
-The `api` skill wraps read-only StackHawk platform lookups via the combined `hawk` CLI (`hawk op …`):
+The `api` skill wraps read-only StackHawk platform lookups via the `hawk` CLI (`hawk op …`):
 
 | Purpose                       | Command                                                                          |
 |-------------------------------|----------------------------------------------------------------------------------|
