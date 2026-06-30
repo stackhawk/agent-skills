@@ -6,10 +6,13 @@ description: >
   plugin selection, and stackhawk.yml corrections — then apply it as a non-destructive
   trial, run ONE trial scan, and promote or discard. Use when the user asks to
   "optimize my scan", "tune HawkScan", "make my scan faster", "reduce false positives",
-  "pick the right plugins/policy for my app", or invokes /optimize. Do NOT use for: a
-  normal security scan or fixing vulnerabilities (use the hawkscan skill); querying
-  existing findings or posture (use the api skill); or editing stackhawk.yml without
-  optimizing/scanning. Requires an onboarded StackHawk app + env and a `hawk` build whose `hawk op` has the
+  "pick the right plugins/policy for my app", or invokes /optimize. Also invoked
+  automatically by the hawkscan skill once at onboarding to set up the scan policy +
+  tech flags (Setup mode), and re-runnable anytime via /optimize; the metrics Refine
+  mode is surfaced when a scan is slow. Do NOT use for: a normal security scan or
+  fixing vulnerabilities (use the hawkscan skill); querying existing findings or
+  posture (use the api skill); or editing stackhawk.yml without optimizing/scanning.
+  Requires an onboarded StackHawk app + env and a `hawk` build whose `hawk op` has the
   `policy` write commands.
 ---
 
@@ -45,23 +48,33 @@ property.
 
 ## Workflow
 
-Follow the phases in order. Details for each are in the references.
+Two modes. **Setup** configures scan policy + tech flags (no scan) and is what hawkscan
+onboarding invokes; it is also re-runnable anytime via `/optimize`. **Refine** runs a trial
+scan and tunes from per-path metrics; it runs only via `/optimize` or when a scan is slow.
 
 0. **Preflight** (above).
+
+### Setup (config) — tech flags + scan policy, no trial scan
+
 1. **Analyze codebase** — detect languages/frameworks/DBs and app shape
    (REST vs SPA, GraphQL, OpenAPI spec, base paths, auth). See `references/mapping.md`.
 2. **Compute optimal config** — tech flags to enable, plugin include/exclude set, and
    `stackhawk.yml` corrections. Default to a **balanced** profile; honor an explicit
    speed↔coverage lean if the user gives one. See `references/mapping.md`.
-3. **Build the trial policy** — fetch a base preset (`hawk op policy get --name DEFAULT`
+3. **Build the policy** — fetch a base preset (`hawk op policy get --name DEFAULT`
    or the API/GraphQL preset matching the app), edit its tech flags + toggle plugin
    families, write the result to a temp JSON file, and create it under a deterministic
    name matching `^[A-Z0-9_]+$` (e.g. `OPTIMIZE_TRIAL_<APP>_<ENV>`, upper-snake, sanitized).
    See `references/cli-contract.md` and `references/trial-lifecycle.md`.
 4. **Reference it locally** — back up `stackhawk.yml`, then set
    `app.scanPolicy: { name: OPTIMIZE_TRIAL_… }` plus app-type/OpenAPI/auth corrections.
-   Show the diff; never clobber unrelated keys.
-5. **Trial scan** — run one `hawk scan`. The scanner downloads the trial policy and applies
+   Show the diff; never clobber unrelated keys. **Setup ends here** — the named policy is
+   referenced in `stackhawk.yml` (the scanner downloads it by name); promotion to the app
+   default is a Refine concern, not required here.
+
+### Refine (metrics) — trial scan + per-path tuning
+
+5. **Trial scan** — run one `hawk scan`. The scanner downloads the policy and applies
    its tech flags + plugins. **Capture the trial scan id**, findings, and duration.
 6. **Analyze scan metrics** — run `hawk op scan metrics <SCAN_ID> --format json` and parse
    the per-path/operation metrics, signal flags, and request health. See
