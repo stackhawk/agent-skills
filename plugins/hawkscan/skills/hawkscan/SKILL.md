@@ -372,6 +372,16 @@ pre-existing SQL injection is just as exploitable as one introduced today.
   "done" looks like, verify commands, escalation thresholds:
   [`references/high-iteration-findings.md`](references/high-iteration-findings.md)
 
+**If the scan was slow, suggest optimize (once).** After a full scan, if it ran **≥ 20 minutes**
+(wall-clock) OR stopped at its `hawk.spider.maxDurationMinutes` cap, surface a one-time suggestion:
+
+> This scan was slow. Consider running `/optimize` to tune the scan policy from per-path
+> metrics — it can lower concurrency for rate-limited paths and exclude heavy/slow paths.
+
+This is a suggestion only — do **not** auto-run optimize. Surface it at most **once per session**,
+and **only for full scans** — never for the rescans / fix-verification reruns in the Step 6 loop
+(good scans can legitimately take a while; 20 min is the floor to avoid noise).
+
 ---
 
 ## Step 5: Filter Findings by Triage State
