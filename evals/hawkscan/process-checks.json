@@ -80,6 +80,27 @@
       "failure_guidance": "HawkScan requires a live target. Scanning a non-running app exits with code 1 (connection error), not useful findings."
     },
     {
+      "id": "step1_app_understood",
+      "phase": "step_1",
+      "description": "Agent establishes an understanding of the target before configuring: how it runs locally, how to reach its API, whether it is a SPA, and whether it requires auth — by reading repo docs, exploring, or asking the user (not by running a fixed set of detection commands).",
+      "type": "output_contains",
+      "signals": [
+        "run",
+        "start",
+        "host",
+        "port",
+        "API",
+        "OpenAPI",
+        "GraphQL",
+        "gRPC",
+        "SPA",
+        "auth"
+      ],
+      "severity": "warning",
+      "failure_guidance": "Generating config without understanding the app's run command, API style, SPA status, and auth need produces a mis-targeted or unauthenticated scan that returns few useful findings. The agent may determine these by reading AGENTS.md/CLAUDE.md/README, exploring the repo, or asking the user.",
+      "tier": "extended"
+    },
+    {
       "id": "step2_config_uses_interpolation",
       "phase": "step_2",
       "description": "stackhawk.yml uses ${VAR:default} env var interpolation for host, applicationId, and credentials \u2014 no hardcoded values.",
