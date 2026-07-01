@@ -1,9 +1,9 @@
 # SPA Scanning Strategy
 
-Reference for scanning JavaScript-heavy apps with HawkScan. Use this when Step 1b detects a SPA framework. Read the scenario that matches your detection results.
+Reference for scanning JavaScript-heavy apps with HawkScan. Use this when Step 1a determines the app is a SPA. Pick the scenario that matches the app.
 
 ## Contents
-- [Detection Heuristic](#detection-heuristic)
+- [Choosing a scenario](#choosing-a-scenario)
 - [Scenario A — Frontend SPA + separate backend API](#scenario-a--frontend-spa--separate-backend-api-most-common)
 - [Scenario B — Fullstack app (Next.js, Nuxt, SvelteKit)](#scenario-b--fullstack-app-nextjs-api-routes-nuxt-server-routes-sveltekit-endpoints)
 - [Scenario C — Pure frontend, backend out of scope](#scenario-c--pure-frontend-backend-is-third-party-or-out-of-scope)
@@ -11,29 +11,15 @@ Reference for scanning JavaScript-heavy apps with HawkScan. Use this when Step 1
 
 ---
 
-## Detection Heuristic
+## Choosing a scenario
 
-Run both commands before choosing a scenario:
+You already established whether the app is a SPA while understanding it (Step 1a in
+SKILL.md). Pick the scenario by whether a backend API also lives in **this** repo:
 
-```bash
-# 1. Check for SPA frameworks in package.json
-node -e "const p=require('./package.json'); const deps={...p.dependencies,...p.devDependencies}; const spa=['react','next','vue','@angular/core','svelte','gatsby','nuxt']; console.log(spa.filter(f=>deps[f]).join(','))" 2>/dev/null
-
-# 2. Check for API routes (indicates fullstack, not pure frontend)
-find . -not -path "*/node_modules/*" \( \
-  -path "*/pages/api/*" \
-  -o -path "*/app/api/*" \
-  -o -path "*/src/app/api/*" \
-  -o -path "*/server/api/*" \
-  -o -path "*/server/routes/*" \
-  -o -path "*/src/routes/*" \
-  -o -path "*/app/routes/*" \
-  -o -name "server.js" -o -name "server.ts" \
-\) 2>/dev/null | head -5
-```
-
-- Command 1 finds a framework, command 2 finds **nothing** → **Scenario A or C**
-- Both commands find results → **Scenario B** (create two separate StackHawk apps)
+- SPA, and no backend API in this repo → **Scenario A or C** (frontend and backend are
+  separate; the backend is usually the higher-value target).
+- SPA **and** a backend API in this repo (Next.js API routes, Nuxt/SvelteKit server
+  routes, an embedded `server.*`) → **Scenario B** (register two separate StackHawk apps).
 
 ---
 

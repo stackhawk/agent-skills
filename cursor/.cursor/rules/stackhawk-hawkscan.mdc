@@ -116,53 +116,37 @@ enable only detected flags via `hawk op app tech-flags`; if none, skip.
 > 2. `CI=true` or `GITHUB_ACTIONS=true` → `CI`
 > 3. Git branch `main`/`master`/`production` → `Production`; `staging` → `Staging`; otherwise → `Development`
 
-### Step 1a: Profile the Application
+### Step 1a: Understand the Application
 
-Build a minimal app profile before generating config. Collect three things:
+Before generating config, build a working understanding of the target: **how it runs
+locally, how to reach its API, whether it's a SPA, and whether exercising it requires
+auth.** Work in three passes; stop as soon as you can answer all four:
 
-**API type** — detect signals:
-```bash
-find . -not -path "*/node_modules/*" -not -path "*/vendor/*" \( -name "openapi*.yaml" -o -name "openapi*.json" -o -name "swagger*.yaml" -o -name "swagger*.json" \) 2>/dev/null | head -5
-find . -not -path "*/node_modules/*" -not -path "*/vendor/*" -name "*.proto" 2>/dev/null | head -5
-find . -not -path "*/node_modules/*" -not -path "*/vendor/*" \( -name "*.graphql" -o -name "schema.graphql" \) 2>/dev/null | head -5
-find . -not -path "*/bin/*" -not -path "*/obj/*" \( -name "*.csproj" -o -name "Program.cs" \) 2>/dev/null | head -5
-```
-OpenAPI/Swagger → REST + `openApiConf`; `.proto` → gRPC + `grpcConf`; `.graphql` → GraphQL + `graphqlConf`;
-`.csproj`/`Program.cs` → ASP.NET Core REST; none → standard web app.
+1. **Read what the repo already documents.** Most repos describe how to run themselves —
+   prefer their own words over guessing, and treat them as authoritative.
+   → Source files and what to harvest: [`references/app-discovery.md`](references/app-discovery.md)
 
-**Auth requirement** — detect signals:
-```bash
-grep -rn --include="*.cs" --exclude-dir=bin --exclude-dir=obj -E "\[Authorize|AddAuthentication\(|UseAuthentication\(" . 2>/dev/null | head -3
-grep -rn --include="*.java" --exclude-dir=target --exclude-dir=build -E "@PreAuthorize|@Secured|class\s+SecurityConfig" . 2>/dev/null | head -3
-grep -rn --include="*.js" --include="*.ts" --exclude-dir=node_modules --exclude-dir=dist -E "(require|from)\s*['\"].*?(passport|express-jwt|jsonwebtoken|@auth0)" . 2>/dev/null | head -3
-```
-Two or more independent signals (or one framework-level signal like `AddAuthentication(` or `class SecurityConfig`) → auth required → follow **Phase 1c**. **Anti-pattern:** do NOT scan unauthenticated first when auth is detected — the spider hits `/login`, can't proceed, and returns ~0 findings by design.
+2. **Explore to fill the gaps.** For anything the docs don't answer, investigate the repo
+   the way a developer would when handed an unfamiliar codebase — read the run/build
+   manifests, entry points, and route definitions — until you can state, concretely:
+   - **Run command + host/port** — how to start it locally and where it listens.
+   - **API style + base path** — REST (note an OpenAPI/Swagger spec if one is served or
+     checked in), GraphQL, gRPC, or a plain HTML web app.
+   - **SPA?** — a client-rendered JS front end changes what we scan.
+   - **Auth?** — does reaching the real endpoints require a login, and what shape does it
+     appear to use? This is an *understanding* signal only; picking, obtaining, and
+     configuring the credential is Step 1c / Phase 1c.
 
-**Startup pattern and host:**
-```bash
-find . -name "launchSettings.json" -path "*/Properties/*" -exec cat {} + 2>/dev/null
-find . -name "docker-compose*.yml" 2>/dev/null | head -3
-jq '.scripts // {}' package.json 2>/dev/null
-```
+3. **Confirm the unknowns with the user.** Never stall or invent. Ask directly for
+   anything still unresolved — most often the start command, host/port, or the login. When
+   file access is limited, skip straight to asking for all four.
 
-**When file access is limited**, ask the user directly for: API type, auth requirement with login endpoint, and startup command + host/port.
+Record the four answers — Step 1c and Step 2 consume them.
 
-### Step 1b: SPA Framework Detection
-
-Check for SPA frameworks before generating config:
-```bash
-node -e "const p=require('./package.json'); const deps={...p.dependencies,...p.devDependencies}; const spa=['react','next','vue','@angular/core','svelte','gatsby','nuxt']; console.log(spa.filter(f=>deps[f]).join(','))" 2>/dev/null
-find . -not -path "*/node_modules/*" \( -path "*/pages/api/*" -o -path "*/app/api/*" -o -path "*/server/api/*" -o -path "*/server/routes/*" -o -name "server.js" -o -name "server.ts" \) 2>/dev/null | head -5
-```
-
-**Outcomes:**
-- SPA + API routes → register as **two separate apps** (frontend + API). See `references/spa-scanning.md` Scenario B.
-- SPA + no API routes → enable Ajax Spider; note that the backend API is the higher-value target and ask the user whether to scan frontend, backend, or both. See `references/spa-scanning.md` Scenario A/C.
-- No SPA → proceed normally; do not add Ajax Spider config.
-
-**Rule:** Never scan a SPA app without the Ajax Spider enabled. Never wait for a low path count to add it.
-
-→ Full strategy and config templates: [`references/spa-scanning.md`](references/spa-scanning.md)
+**SPA rule:** if the app is a client-rendered JS front end, never scan it without the Ajax
+Spider, and note that a separate backend API is usually the higher-value target. Full
+strategy, frontend-vs-backend scenarios, and config templates:
+→ [`references/spa-scanning.md`](references/spa-scanning.md)
 
 ### Step 1c: Environment Checks (run in order)
 
