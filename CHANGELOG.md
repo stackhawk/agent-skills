@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.gitignore` updated: `.claude/skills/` is now tracked so contributor skills are version-controlled
 - Removed `skill-authoring` from public release paths (`skills/`, `.opencode/skills/`, `.cursor/skills/`) and Cursor rule generation
 
+## [2.1.1] - 2026-07-01
+
+### Fixed
+- `scripts/generate-marketplace-catalogs.py`'s `DEFAULT_PLUGINS` publish allowlist was never updated after `hawkscan-ci`, `stackhawk-data-seed`, `stackhawk-optimize`, and `wingman` were added — every release since v1.13.1 silently published only `hawkscan` and `stackhawk-api` to `agent-skills-marketplace`. `/plugin install wingman@stackhawk` returned "not found" even though `wingman` has existed in this repo since #60. All six documented plugins are now published.
+
 ## [1.12.0] - 2026-06-11
 
 ### Added
