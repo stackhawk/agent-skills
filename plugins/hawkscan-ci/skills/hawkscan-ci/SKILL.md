@@ -1,6 +1,6 @@
 ---
 name: hawkscan-ci
-version: 2.0.0
+version: 2.1.0
 description: >
   Use when the user wants to configure HawkScan in their CI/CD pipeline —
   triggers on "set up hawkscan in CI", "add stackhawk to my pipeline",
