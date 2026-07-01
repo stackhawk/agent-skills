@@ -51,7 +51,16 @@ FLAVORS = (
 
 # Default curation: the set currently published to the marketplace. Keeping this
 # explicit avoids silently promoting in-development plugins to the public catalog.
-DEFAULT_PLUGINS = ["hawkscan", "stackhawk-api"]
+# NOTE: every plugin documented as marketplace-installable in README.md must be
+# listed here, or `release.yml`'s update-marketplace job will silently omit it.
+DEFAULT_PLUGINS = [
+    "hawkscan",
+    "stackhawk-api",
+    "hawkscan-ci",
+    "stackhawk-data-seed",
+    "stackhawk-optimize",
+    "wingman",
+]
 
 
 def subpath_from_local_source(source):
