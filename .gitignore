@@ -21,3 +21,4 @@ stackhawk-auth.yml
 .mcp.json
 .codex/
 .superpowers/
+.claude/skills/benchmark/.skills/
