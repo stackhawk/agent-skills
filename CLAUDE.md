@@ -116,6 +116,6 @@ The `stop` hook's `followup_message` causes Cursor to automatically continue wit
 - Cursor skills `name:` field must match the symlink folder name (they all do: `hawkscan`, `api`, `hawkscan-ci`, `stackhawk-data-seed`)
 - Cursor hook `command` path (`.cursor/hooks/stop.sh`) is relative to the project root — correct for both user-level (`~`) and project-level installs
 - `docs/superpowers/` is gitignored (design specs/plans kept locally)
-- `.claude/` dir is gitignored (local settings only)
+- `.claude/` dir is gitignored (local settings only), EXCEPT `.claude/settings.json` — tracked (via `!.claude/settings.json` in `.gitignore`) to ship the benchmark skill's finishing-work nudge hook wiring; all other `.claude/*` files remain local-only
 - SKILL.md frontmatter requires `name:`, `version:`, and `description:` — CI validates all three
 - `scripts/release.sh` must be run from `main` with a clean working tree

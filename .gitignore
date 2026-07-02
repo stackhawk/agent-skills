@@ -2,6 +2,7 @@
 .claude/*
 !.claude/skills/
 !.claude/skills/**
+!.claude/settings.json
 *.skill
 .DS_Store
 docs/
