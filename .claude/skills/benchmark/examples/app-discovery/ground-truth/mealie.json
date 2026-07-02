@@ -1,0 +1,15 @@
+{
+  "app": "mealie",
+  "run_command": "docker compose up -d (production single container, image ghcr.io/mealie-recipes/mealie, e.g. port 9925:9000). Local dev: `task setup` then `task py` (backend :9000, SQLite default) + `task ui` (Nuxt dev :3000); optional Postgres via `task dev:services` + `task py:postgres`.",
+  "host": "http://localhost:9000 (backend API + production SPA static files, single origin). In local dev the Nuxt frontend runs separately on http://localhost:3000 and calls the backend on :9000.",
+  "api_style": "REST + OpenAPI (FastAPI). API base path /api (APIRouter(prefix='/api')). Swagger UI at /docs, ReDoc at /redoc, raw spec at default /openapi.json.",
+  "spa": "yes — Vue 3 + Nuxt 3 built as a static SPA (ssr:false, `nuxt generate --spa`); in production the FastAPI backend serves the prebuilt SPA bundle from the same origin.",
+  "auth": "required for essentially all non-public routes (only public 'explore' group endpoints and /docs are open). OAuth2 password grant: POST /api/auth/token (form username/password) -> bearer JWT; JWT also accepted via httpOnly cookie mealie.access_token. OIDC/SSO and long-lived API tokens also supported.",
+  "evidence": {
+    "run_command": "Taskfile.yml (setup, py, ui, dev:services, py:postgres); docker/docker-compose.yml + .dev.yml; docs starting-dev-server.md; installation/sqlite.md (docker compose up -d).",
+    "host": "settings.py API_PORT=9000 API_HOST=0.0.0.0; Dockerfile APP_PORT=9000; Taskfile BASE_URL http://localhost:3000; nuxt.config.ts apiUrl default http://localhost:9000; compose 9925:9000.",
+    "api_style": "app.py FastAPI (docs_url=/docs, redoc_url=/redoc, default /openapi.json); routes/__init__.py APIRouter(prefix='/api'); api-usage.md GET /api/recipes.",
+    "spa": "nuxt.config.ts ssr:false; package.json generate='nuxt generate --spa'; routes/spa SPAStaticFiles index.html fallback; Dockerfile copies frontend/dist into the package.",
+    "auth": "routes/auth/auth.py POST /token CredentialsRequestForm -> bearer; dependencies.py OAuth2PasswordBearer(tokenUrl='/api/auth/token'), get_current_user falls back to cookie mealie.access_token; /oauth + /oauth/callback OIDC."
+  }
+}
