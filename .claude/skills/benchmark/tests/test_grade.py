@@ -1,4 +1,4 @@
-import pathlib, sys, tempfile, unittest
+import json, pathlib, shutil, subprocess, sys, tempfile, unittest
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 import grade
@@ -103,6 +103,41 @@ def checks(parsed, ground_truth):
         self.assertTrue(out["ran_legacy_command_menu"])
         out2 = self.fn(grade.parse_transcript(FX / "transcript_new.jsonl"), GT)
         self.assertFalse(out2["ran_legacy_command_menu"])
+
+
+class TestGradeCliMerge(unittest.TestCase):
+    """End-to-end via the grade.py CLI (--no-judge): the checks.py merge, its
+    fail-safe degradation, and core-wins-on-collision."""
+    def _run(self, checks_py_body):
+        cell = pathlib.Path(tempfile.mkdtemp())
+        shutil.copy(FX / "transcript_new.jsonl", cell / "transcript.jsonl")
+        (cell / "gt.json").write_text(json.dumps(GT))
+        (cell / "checks.py").write_text(checks_py_body)
+        p = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "grade.py"), "--cell", str(cell),
+             "--app", "x", "--ground-truth", str(cell / "gt.json"),
+             "--checks", str(cell / "checks.py"), "--no-judge"],
+            capture_output=True, text=True)
+        return p, json.loads((cell / "checks.json").read_text())
+
+    def test_custom_signal_merges_with_core(self):
+        p, c = self._run("def checks(p, g):\n    return {'my_extra_signal': True}\n")
+        self.assertEqual(p.returncode, 0)
+        self.assertTrue(c["my_extra_signal"])
+        self.assertIn("read_agent_docs", c)  # core still present
+
+    def test_raising_checks_degrades_to_core_without_aborting(self):
+        p, c = self._run("def checks(p, g):\n    raise RuntimeError('boom')\n")
+        self.assertEqual(p.returncode, 0)          # run did not abort
+        self.assertIn("read_agent_docs", c)         # core signals still written
+        self.assertNotIn("my_extra_signal", c)
+        self.assertIn("custom checks.py failed", p.stderr)
+
+    def test_core_wins_on_name_collision(self):
+        # a checks.py trying to clobber a core signal must not win
+        p, c = self._run("def checks(p, g):\n    return {'read_agent_docs': 'HIJACK'}\n")
+        self.assertEqual(p.returncode, 0)
+        self.assertIsInstance(c["read_agent_docs"], bool)
 
 
 class TestJudgeParsing(unittest.TestCase):

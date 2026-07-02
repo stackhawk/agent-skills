@@ -62,11 +62,13 @@ requires the agent to produce a diff or run something.
 ## What the prompt must elicit
 
 - **Observational prompts** must ask for a structured, parseable
-  conclusion block, because Stage 1 grading (see
-  `references/grading.md`) is regex-based and needs a fixed shape to
-  check against. The app-discovery example's prompt ends with a literal
-  `DISCOVERY:` header and five fixed fields
-  (`run_command`/`host`/`api_style`/`spa`/`auth`) for exactly this reason.
+  conclusion block, because Stage 1 grading (see `references/grading.md`) is
+  regex-based and needs a fixed shape to check against. Use whatever answer
+  fields *your* ground truth defines — `grade.py` derives the expected fields
+  from the ground-truth keys, so there is no fixed field list. The
+  app-discovery example, for instance, ends its prompt with a literal
+  `DISCOVERY:` header and its own five fields
+  (`run_command`/`host`/`api_style`/`spa`/`auth`).
 - **Task-completion prompts** must describe the job with enough
   specificity that "done" is unambiguous, and should explicitly permit the
   agent to run/build/test locally (otherwise a `sandbox-rw` agent may still

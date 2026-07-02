@@ -56,14 +56,17 @@ def process_checks(parsed, ground_truth):
     calls = parsed["tool_calls"]; final = parsed["final_text"]
     read_targets = [c["target"] for c in calls if c["name"] in ("Read", "Grep", "Glob")]
     keys = answer_keys(ground_truth)
-    return {
+    core = {
         "read_agent_docs": any(DOC_RE.search(t or "") for t in read_targets),
         "exploration_breadth": len({t for t in read_targets if t}),
-        # derived from the ground-truth's own answer fields — NOT a hard-coded list
-        "emitted_expected_answers": bool(keys) and all(
-            re.search(rf"\b{re.escape(k)}\b", final, re.I) for k in keys),
         "stayed_read_only": True,  # overwritten in main via the guard-denies sidecar
     }
+    # only meaningful when the ground truth defines answer fields (observational);
+    # derived from those fields — NOT a hard-coded list. Omitted otherwise.
+    if keys:
+        core["emitted_expected_answers"] = all(
+            re.search(rf"\b{re.escape(k)}\b", final, re.I) for k in keys)
+    return core
 
 def load_custom_checks(path):
     """Load a benchmark's checks.py exposing `checks(parsed, ground_truth) -> dict`.
@@ -171,14 +174,16 @@ def main():
     cell = Path(a.cell)
     gt = json.loads(Path(a.ground_truth).read_text())
     parsed = parse_transcript(cell / "transcript.jsonl")
-    checks = process_checks(parsed, gt)
+    core = process_checks(parsed, gt)
     # merge hypothesis-specific signals from the benchmark's own checks.py, if any
+    checks = {}
     custom = load_custom_checks(a.checks)
     if custom:
         try:
             checks.update(custom(parsed, gt) or {})
         except Exception as e:
             print(f"[checks] {a.app}: custom checks.py failed ({e}) — core signals only", file=sys.stderr)
+    checks.update(core)  # core signals always win over custom on a name collision
     # incorporate guardrail hits recorded by run.sh, if present
     denies = cell / "guard-denies.txt"
     if denies.exists() and denies.read_text().strip():

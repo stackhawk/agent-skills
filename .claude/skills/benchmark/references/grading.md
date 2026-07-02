@@ -89,6 +89,11 @@ to move" or the "must not regress" list). A signal that maps to neither is
 noise — leave it out. If your hypothesis needs no custom signals, the generic
 core alone is a valid (if blunt) benchmark; omit `checks.py`.
 
+The four core names (`read_agent_docs`, `exploration_breadth`,
+`emitted_expected_answers`, `stayed_read_only`) are reserved — `grade.py` merges
+your `checks.py` output first and the core last, so core always wins a name
+collision. Give your signals distinct names.
+
 ## Authoring ground truth
 
 One `ground-truth/<app>.json` per repo, written by you (the human/agent
