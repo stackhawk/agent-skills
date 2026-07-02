@@ -49,3 +49,13 @@ class TestGuard(unittest.TestCase):
         for cmd in ("docker compose up -d","hawk scan","npm start"):
             rc,_ = run({"tool_name":"Bash","tool_input":{"command":cmd}}, "sandbox-rw")
             self.assertEqual(rc, 0, cmd)
+    def test_rw_allows_relative_write_resolved_against_workdir(self):
+        import tempfile
+        wd = tempfile.mkdtemp()
+        rc,_ = run({"tool_name":"Write","tool_input":{"file_path":"src/app.py"}}, "sandbox-rw", wd)
+        self.assertEqual(rc, 0)
+    def test_rw_denies_symlink_escape(self):
+        import os as _os, tempfile
+        wd = tempfile.mkdtemp(); _os.symlink("/etc", _os.path.join(wd, "escape"))
+        rc,_ = run({"tool_name":"Write","tool_input":{"file_path": _os.path.join(wd,"escape","x")}}, "sandbox-rw", wd)
+        self.assertEqual(rc, 2)

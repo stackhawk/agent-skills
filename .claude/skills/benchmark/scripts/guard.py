@@ -54,8 +54,10 @@ def main():
             deny("write/app-start/scan blocked in readonly profile")
     else:  # sandbox-rw: allow writes/runs/scans, but confine writes to workdir
         if tool in WRITE_TOOLS and a.workdir:
-            fp = os.path.abspath(tgts[0]) if tgts[0] else ""
-            wd = os.path.abspath(a.workdir)
+            wd = os.path.realpath(a.workdir)
+            raw = tgts[0] or ""
+            cand = raw if os.path.isabs(raw) else os.path.join(wd, raw)
+            fp = os.path.realpath(cand)
             if not (fp == wd or fp.startswith(wd + os.sep)):
                 deny(f"write outside workdir not allowed: {fp}")
     sys.exit(0)
