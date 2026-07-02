@@ -18,9 +18,8 @@ both grader types.
 Process checks are the Stage 1, deterministic half of grading (see
 `references/methodology.md` for why both stages exist). `grade.py`'s
 `process_checks()` computes them from the parsed transcript alone — no
-model call, fully reproducible. The shipped app-discovery example computes
-7 signals (documented in full, with reference outcomes, in
-`examples/app-discovery/process-checks.md`):
+model call, fully reproducible. Our **worked example — the app-discovery
+reframe (skill v2.0.0 → v2.1.0)** — computed 7 signals:
 
 1. `read_agent_docs` — did the agent read repo docs (README, CONTRIBUTING,
    `docs/`, etc.) at all during the run.
@@ -37,6 +36,22 @@ model call, fully reproducible. The shipped app-discovery example computes
 7. `ran_legacy_command_menu` — did it regress to a superseded pattern the
    change was meant to retire.
 
+**Reference outcome** (that run — 3 apps × 2 arms, 1 run/cell):
+
+| Signal | OLD v2.0.0 | NEW v2.1.0 |
+|---|---|---|
+| `read_agent_docs` | 1/3 apps | **3/3** |
+| `docs_before_conclusion` | 1/3 | **3/3** |
+| `exploration_breadth` | 8.7 files | **13.7** |
+| `ran_legacy_command_menu` | 1/3 | **0/3** |
+| correctness (judge, of 5) | 4.67 | 4.33 |
+
+The reframe moved the docs-first signals decisively (the intended change),
+with no correctness regression and no pigeonholing — and the *deterministic*
+signals carried the verdict, which is exactly why Stage 1 is the backbone.
+That is the shape every benchmark aims for: a clear move on the targeted
+metric, nothing else regressed.
+
 When you design process-checks for your own hypothesis, follow the same
 shape: each check should be (a) computable by a regex or simple parse over
 `tool_calls`/`events`/`final_text` — no judgment calls, (b) named for what
@@ -48,8 +63,7 @@ that doesn't map to either is noise — leave it out.
 
 One `ground-truth/<app>.json` per repo, written by you (the human/agent
 author) *before* running either arm, from direct inspection of the repo —
-never inferred from what an arm produces. Required shape (see
-`examples/app-discovery/ground-truth/immich.json` for the full pattern):
+never inferred from what an arm produces. Required shape:
 
 - The answer fields specific to your prompt (for app-discovery:
   `run_command`, `host`, `api_style`, `spa`, `auth`).
@@ -58,6 +72,26 @@ never inferred from what an arm produces. Required shape (see
   reviewer (or a future you) audit whether the ground truth itself is
   correct, and it's what the judge is implicitly checked against.
 - `app` — the app name, matching its row in `apps.tsv`.
+
+Sample (app-discovery, `miniflux`):
+
+```json
+{
+  "app": "miniflux",
+  "run_command": "docker compose up (requires PostgreSQL) or `make run` against a local Postgres",
+  "host": "http://127.0.0.1:8080 (binary/make run); 0.0.0.0:8080 in Docker",
+  "api_style": "REST, no served OpenAPI spec; base path /v1/ (plus /fever/, /reader/api/0/)",
+  "spa": "no (server-rendered Go templates)",
+  "auth": "required — web session cookie; REST API via HTTP Basic or X-Auth-Token header",
+  "evidence": {
+    "run_command": "Makefile `run` target + contrib/docker-compose/basic.yml",
+    "host": "internal/config/options.go LISTEN_ADDR default",
+    "api_style": "internal/http/server/routes.go registers /v1/",
+    "spa": "internal/ui server-side templates; assets bundled in the binary",
+    "auth": "internal/api/api.go validateAPIKeyAuth + validateBasicAuth"
+  }
+}
+```
 
 For task-completion ground truth, the shape is looser since the judge
 reads the diff directly — describe the expected vulnerability set and what

@@ -17,10 +17,11 @@ that proves — or disproves — a hypothesis about a skill/reference change in
 this repo. It is a maintainer tool for `stackhawk/agent-skills` itself, not a
 customer-facing capability.
 
-**Start here:** `.claude/skills/benchmark/examples/app-discovery/` is a
-complete worked example (the v2.0.0 → v2.1.0 app-discovery reframe) — its
-`apps.tsv`, `prompt.txt`, and `ground-truth/*.json` are the reference shape
-for everything you author in Steps 5–6. When in doubt, copy its structure.
+**Worked example:** the app-discovery reframe (skill v2.0.0 → v2.1.0) is used
+as the running example throughout this skill — its process-checks, a sample
+ground-truth file, and the reference outcome are written up in the **Grading**
+reference (linked from Step 6). Model everything you author in Steps 5–6 on
+that shape.
 
 ## Critical rules (apply throughout)
 
@@ -118,17 +119,17 @@ Author `apps.tsv` — tab-separated, one row per app, no header:
 ```
 
 `<pin>` is a tag/branch/sha `run.sh` passes to `git clone --branch`; it falls
-back to an unpinned shallow clone if the pin doesn't resolve. See
-`examples/app-discovery/apps.tsv` for the exact shape (miniflux, mealie,
-immich pinned to release tags).
+back to an unpinned shallow clone if the pin doesn't resolve. Each row is
+tab-separated — `<app-name>\t<repo-url>\t<pin>`, one per repo — using 3 real
+repos pinned to release tags.
 
 ### Step 6 — Author the prompt + ground truth
 
 Write `prompt.txt` — the single prompt given to the benchmarked agent in
 every cell, both arms. It must exercise the exact capability the hypothesis
 is about, and for observational benchmarks it must ask for a structured,
-parseable conclusion (see `examples/app-discovery/prompt.txt`'s `DISCOVERY:`
-block) so process-checks can be scored deterministically.
+parseable conclusion — e.g. end the prompt with a literal `DISCOVERY:` block,
+one line per answer field — so process-checks can be scored deterministically.
 
 Write one `ground-truth/<app>.json` per repo — the author-judged correct
 answers plus evidence citations, used by the grader. Designing process
@@ -152,13 +153,14 @@ Invoke `scripts/run.sh` with the config as environment variables:
 | `JUDGE_MODEL` | model used for the skill-blind judge | `claude-opus-4-8` |
 | `CRED_ENV` | space-separated env var names to pass through into each cell (e.g. `HAWK_API_KEY`) | *(empty)* |
 
-Example invocation, using the worked example as `BENCH_DIR`:
+Example invocation — point `BENCH_DIR` at the directory holding the
+`apps.tsv`, `prompt.txt`, and `ground-truth/` you authored in Steps 5–6:
 
 ```bash
 cd .claude/skills/benchmark
 OLD_REF=<old-sha-or-tag> NEW_REF=<new-sha-or-branch> \
 SKILL_SUBPATH=plugins/hawkscan/skills/hawkscan \
-BENCH_DIR="$(pwd)/examples/app-discovery" \
+BENCH_DIR="$(pwd)/my-benchmark" \
 PROFILE=readonly GRADER=observational \
 scripts/run.sh
 ```

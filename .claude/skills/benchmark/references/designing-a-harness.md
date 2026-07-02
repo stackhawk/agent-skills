@@ -77,7 +77,9 @@ requires the agent to produce a diff or run something.
 
 ## Worked example 1 — discovery (observational, `readonly`)
 
-This is `examples/app-discovery/`, the shipped worked example. Hypothesis:
+This is the **app-discovery** worked example (its process-checks, sample
+ground truth, and reference outcome are written up under "Grading").
+Hypothesis:
 the v2.0.0 → v2.1.0 hawkscan reframe should make agents read repo docs
 *before* concluding, rather than jumping straight to a prescriptive
 command menu.
