@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-"""Grade one discovery cell: stage-1 deterministic checks + stage-2 skill-blind judge."""
-import argparse, json, os, re, subprocess, sys, tempfile
+"""Grade one benchmark cell: stage-1 deterministic checks + stage-2 skill-blind judge.
+
+Stage 1 = a small hypothesis-agnostic core (below) plus any signals the benchmark
+supplies in its own `checks.py`. Anything specific to a particular hypothesis
+(e.g. "read docs before concluding", "didn't run the old command menu") belongs
+in that benchmark's checks.py, NOT in this file."""
+import argparse, importlib.util, json, os, re, subprocess, sys, tempfile
 from pathlib import Path
 
+# Generic: "did the agent consult the repo's own documentation?" — a reasonable
+# behavioral signal for most observational benchmarks. Kept in core because it is
+# hypothesis-agnostic; anything hypothesis-specific goes in a per-benchmark checks.py.
 DOC_RE = re.compile(r"(AGENTS\.md|CLAUDE\.md|GEMINI\.md|copilot-instructions|\.cursor/|README|CONTRIBUTING|(^|/)docs/)", re.I)
-MANIFEST_RE = re.compile(r"(go\.mod|package\.json|pyproject\.toml|requirements\.txt|Gemfile|Dockerfile|docker-compose|compose\.ya?ml|pom\.xml|build\.gradle|\.csproj|main\.(go|py|ts|js)|server\.(t|j)s|routes?/)", re.I)
-LEGACY_RE = re.compile(r"(node -e .*(react|vue|spa)|@PreAuthorize|AddAuthentication\(|launchSettings\.json|-name \"openapi)", re.I)
-CONCLUSION_RE = re.compile(r"(DISCOVERY:|api_style:|host:\s*http)", re.I)
 
 def _tool_target(name, ti):
     if not isinstance(ti, dict): return ""
@@ -38,35 +43,47 @@ def parse_transcript(path):
             texts.append(ev["result"])
     return {"tool_calls": tool_calls, "events": events, "final_text": texts[-1] if texts else ""}
 
-def process_checks(parsed):
-    calls = parsed["tool_calls"]; final = parsed["final_text"]; events = parsed.get("events", [])
-    read_targets = [c["target"] for c in calls if c["name"] in ("Read","Grep","Glob")]
-    all_cmds = " \n ".join(c["target"] for c in calls)
-    first_doc = first_concl = None
-    for i, e in enumerate(events):
-        if e.get("kind") == "tool" and e.get("name") in ("Read","Grep","Glob") and DOC_RE.search(e.get("target") or ""):
-            if first_doc is None: first_doc = i
-        elif e.get("kind") == "text" and CONCLUSION_RE.search(e.get("text") or ""):
-            if first_concl is None: first_concl = i
-    read_agent_docs = first_doc is not None
-    answers = ["run_command", "host", "api_style", "spa", "auth"]
+META_KEYS = {"app", "evidence", "vulns", "notes"}
+
+def answer_keys(ground_truth):
+    """The answer fields a prompt should elicit = ground-truth keys minus metadata."""
+    return [k for k in (ground_truth or {}) if k not in META_KEYS]
+
+def process_checks(parsed, ground_truth):
+    """Hypothesis-AGNOSTIC core signals — the ones that apply to almost any
+    observational benchmark. Hypothesis-specific signals are added by the
+    benchmark's own checks.py (merged in main), not here."""
+    calls = parsed["tool_calls"]; final = parsed["final_text"]
+    read_targets = [c["target"] for c in calls if c["name"] in ("Read", "Grep", "Glob")]
+    keys = answer_keys(ground_truth)
     return {
-        "read_agent_docs": read_agent_docs,
-        "docs_before_conclusion": read_agent_docs and (first_concl is None or first_doc < first_concl),
-        "explored_manifests": any(MANIFEST_RE.search(t or "") for t in read_targets),
+        "read_agent_docs": any(DOC_RE.search(t or "") for t in read_targets),
         "exploration_breadth": len({t for t in read_targets if t}),
-        "emitted_five_answers": all(re.search(rf"\b{a}\b", final, re.I) for a in answers),
-        "stayed_read_only": True,  # overwritten by run.sh via guardrail-hit sidecar if any
-        "ran_legacy_command_menu": bool(LEGACY_RE.search(all_cmds)),
+        # derived from the ground-truth's own answer fields — NOT a hard-coded list
+        "emitted_expected_answers": bool(keys) and all(
+            re.search(rf"\b{re.escape(k)}\b", final, re.I) for k in keys),
+        "stayed_read_only": True,  # overwritten in main via the guard-denies sidecar
     }
 
+def load_custom_checks(path):
+    """Load a benchmark's checks.py exposing `checks(parsed, ground_truth) -> dict`.
+    Returns the callable, or None if there is no checks.py."""
+    if not path or not os.path.exists(path):
+        return None
+    spec = importlib.util.spec_from_file_location("bench_custom_checks", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return getattr(mod, "checks", None)
+
 def build_judge_prompt(final_text, transcript_excerpt, ground_truth):
-    return f"""You are grading how well an AI agent DISCOVERED an application before security scanning. You have no other tools or skills.
+    keys = answer_keys(ground_truth)
+    fields = ", ".join(f"`{k}`" for k in keys) if keys else "each answer field in the ground truth"
+    return f"""You are grading how well an AI agent investigated a repository and answered a set of questions about it. You have no other tools or skills.
 
 GROUND TRUTH (the correct answers for this repo):
 {json.dumps(ground_truth, indent=2)}
 
-The agent's final DISCOVERY output:
+The agent's final answer:
 ---
 {final_text}
 ---
@@ -76,12 +93,13 @@ An excerpt of what the agent did (tool calls):
 {transcript_excerpt}
 ---
 
-Score strictly and return ONLY a JSON object:
+Score strictly and return ONLY a JSON object. `correctness` must have one entry
+per ground-truth answer field ({fields}), each "correct" | "partial" | "wrong":
 {{
-  "correctness": {{"run_command":"correct|partial|wrong","host":"...","api_style":"...","spa":"...","auth":"..."}},
-  "correctness_reasons": {{"run_command":"...","host":"...","api_style":"...","spa":"...","auth":"..."}},
+  "correctness": {{ "<field>": "correct|partial|wrong" }},
+  "correctness_reasons": {{ "<field>": "..." }},
   "exploratory_score": 0,   // 0=blind guess, 3=thorough investigation to an educated conclusion
-  "pigeonholed": false,     // true if it fixated on one file / asserted host or API type with no corroboration / skipped docs
+  "pigeonholed": false,     // true if it fixated on one file / asserted a conclusion with no corroboration / skipped available docs
   "pigeonholed_evidence": "..."
 }}"""
 
@@ -146,12 +164,21 @@ def main():
     ap.add_argument("--cell", required=True); ap.add_argument("--app", required=True)
     ap.add_argument("--ground-truth", required=True)
     ap.add_argument("--grader", choices=["observational","task-completion"], default="observational")
+    ap.add_argument("--checks", default="")  # optional path to a benchmark-specific checks.py
     ap.add_argument("--judge-model", default=os.environ.get("JUDGE_MODEL","claude-opus-4-8"))
     ap.add_argument("--no-judge", action="store_true")
     a = ap.parse_args()
     cell = Path(a.cell)
+    gt = json.loads(Path(a.ground_truth).read_text())
     parsed = parse_transcript(cell / "transcript.jsonl")
-    checks = process_checks(parsed)
+    checks = process_checks(parsed, gt)
+    # merge hypothesis-specific signals from the benchmark's own checks.py, if any
+    custom = load_custom_checks(a.checks)
+    if custom:
+        try:
+            checks.update(custom(parsed, gt) or {})
+        except Exception as e:
+            print(f"[checks] {a.app}: custom checks.py failed ({e}) — core signals only", file=sys.stderr)
     # incorporate guardrail hits recorded by run.sh, if present
     denies = cell / "guard-denies.txt"
     if denies.exists() and denies.read_text().strip():
@@ -159,7 +186,6 @@ def main():
     (cell / "checks.json").write_text(json.dumps(checks, indent=2))
     print(f"[checks] {a.app}: {json.dumps(checks)}")
     if a.no_judge: return
-    gt = json.loads(Path(a.ground_truth).read_text())
     if a.grader == "task-completion":
         grade = grade_task_completion(a.cell, gt, a.judge_model)
         (cell / "grade.json").write_text(json.dumps(grade, indent=2))

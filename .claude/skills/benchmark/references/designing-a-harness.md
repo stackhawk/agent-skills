@@ -87,10 +87,12 @@ command menu.
 - `PROFILE=readonly` — the agent only needs to read and report; nothing it
   does should touch the filesystem or start a service.
 - `CRED_ENV` empty — discovery needs no platform credentials.
-- `GRADER=observational` — grade the transcript's tool-call trajectory
-  (`read_agent_docs`, `docs_before_conclusion`, `explored_manifests`, etc.)
-  plus a skill-blind judge's correctness score against
-  `ground-truth/<app>.json`.
+- `GRADER=observational` — grade the transcript's tool-call trajectory: the
+  generic core signals (`read_agent_docs`, `exploration_breadth`,
+  `emitted_expected_answers`, `stayed_read_only`) plus the hypothesis-specific
+  signals in this benchmark's `checks.py` (here: `docs_before_conclusion`,
+  `ran_legacy_command_menu`), plus a skill-blind judge's correctness score
+  against `ground-truth/<app>.json`.
 - Prompt ends in the `DISCOVERY:` block described above.
 
 ## Worked example 2 — vulnerability remediation (task-completion, `sandbox-rw`)

@@ -42,7 +42,8 @@ while IFS=$'\t' read -r app url pin; do
     git -C "$cell/workdir" diff > "$cell/fix.diff" 2>/dev/null || true
     grep -i "Denied (benchmark guard" "$cell/transcript.jsonl" "$cell/agent.stderr" > "$cell/guard-denies.txt" 2>/dev/null || true
     python3 "$SCRIPTS_DIR/grade.py" --cell "$cell" --app "$app" \
-      --ground-truth "$BENCH_DIR/ground-truth/$app.json" --grader "$GRADER" --judge-model "$JUDGE_MODEL" \
+      --ground-truth "$BENCH_DIR/ground-truth/$app.json" --grader "$GRADER" \
+      --checks "$BENCH_DIR/checks.py" --judge-model "$JUDGE_MODEL" \
       || echo "grade failed ${arm}__${app}" >&2
   done
 done < "$BENCH_DIR/apps.tsv"

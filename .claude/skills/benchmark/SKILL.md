@@ -123,7 +123,7 @@ back to an unpinned shallow clone if the pin doesn't resolve. Each row is
 tab-separated — `<app-name>\t<repo-url>\t<pin>`, one per repo — using 3 real
 repos pinned to release tags.
 
-### Step 6 — Author the prompt + ground truth
+### Step 6 — Author the prompt, ground truth, and (observational) checks
 
 Write `prompt.txt` — the single prompt given to the benchmarked agent in
 every cell, both arms. It must exercise the exact capability the hypothesis
@@ -132,8 +132,15 @@ parseable conclusion — e.g. end the prompt with a literal `DISCOVERY:` block,
 one line per answer field — so process-checks can be scored deterministically.
 
 Write one `ground-truth/<app>.json` per repo — the author-judged correct
-answers plus evidence citations, used by the grader. Designing process
-checks, ground truth, and the two graders (observational vs
+answers plus evidence citations, used by the grader.
+
+For observational benchmarks, write the signals **specific to your hypothesis**
+in `checks.py` (in `BENCH_DIR`), exposing `checks(parsed, ground_truth) -> dict`.
+`grade.py` always computes a generic core (`read_agent_docs`,
+`exploration_breadth`, `emitted_expected_answers`, `stayed_read_only`) and merges
+your `checks.py` signals on top — so core stays fluid and each benchmark declares
+what actually matters for its change. Omit `checks.py` if the core is enough.
+Designing checks, ground truth, and the two graders (observational vs
 task-completion):
 → [`references/grading.md`](references/grading.md)
 
@@ -146,7 +153,7 @@ Invoke `scripts/run.sh` with the config as environment variables:
 | `OLD_REF` | git ref for the pre-change skill | *(required)* |
 | `NEW_REF` | git ref for the post-change skill | `origin/main` |
 | `SKILL_SUBPATH` | path to the skill within the repo | `plugins/hawkscan/skills/hawkscan` |
-| `BENCH_DIR` | dir holding `apps.tsv`, `prompt.txt`, `ground-truth/` | *(required)* |
+| `BENCH_DIR` | dir holding `apps.tsv`, `prompt.txt`, `ground-truth/` (+ optional `checks.py`) | *(required)* |
 | `PROFILE` | guard profile: `readonly` or `sandbox-rw` | `readonly` |
 | `GRADER` | `observational` or `task-completion` | `observational` |
 | `MODEL` | model the benchmarked agent runs as | `claude-sonnet-5` |

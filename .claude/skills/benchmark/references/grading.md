@@ -16,48 +16,78 @@ both grader types.
 ## Designing process-checks for an observational hypothesis
 
 Process checks are the Stage 1, deterministic half of grading (see
-`references/methodology.md` for why both stages exist). `grade.py`'s
-`process_checks()` computes them from the parsed transcript alone — no
-model call, fully reproducible. Our **worked example — the app-discovery
-reframe (skill v2.0.0 → v2.1.0)** — computed 7 signals:
+`references/methodology.md` for why both stages exist) — computed from the
+parsed transcript alone, no model call, fully reproducible. They come in two
+layers:
 
-1. `read_agent_docs` — did the agent read repo docs (README, CONTRIBUTING,
-   `docs/`, etc.) at all during the run.
-2. `docs_before_conclusion` — did that doc-read happen *before* the first
-   textual conclusion, not after (ordering matters — an agent that reads
-   docs only to double-check a guess it already stated doesn't count).
-3. `explored_manifests` — did it read at least one manifest/config file
-   (package.json, Dockerfile, go.mod, etc.).
-4. `exploration_breadth` — count of distinct files read; a thoroughness
-   proxy.
-5. `emitted_five_answers` — did the final response include every field the
-   prompt asked for.
-6. `stayed_read_only` — no guard denial was recorded for this cell.
-7. `ran_legacy_command_menu` — did it regress to a superseded pattern the
-   change was meant to retire.
+**1. A generic core (`grade.py`, hypothesis-agnostic).** These apply to almost
+any observational benchmark, so they live in core and you get them for free:
 
-**Reference outcome** (that run — 3 apps × 2 arms, 1 run/cell):
+- `read_agent_docs` — did the agent read repo docs (README, CONTRIBUTING,
+  `AGENTS.md`/`CLAUDE.md`, `docs/`, etc.) at all.
+- `exploration_breadth` — count of distinct files read; a thoroughness proxy.
+- `emitted_expected_answers` — did the final answer mention every field your
+  ground truth defines. **Derived from your ground-truth's answer keys** — not
+  a hard-coded list — so it adapts to whatever your prompt asks for.
+- `stayed_read_only` — no guard denial was recorded for this cell.
 
-| Signal | OLD v2.0.0 | NEW v2.1.0 |
-|---|---|---|
-| `read_agent_docs` | 1/3 apps | **3/3** |
-| `docs_before_conclusion` | 1/3 | **3/3** |
-| `exploration_breadth` | 8.7 files | **13.7** |
-| `ran_legacy_command_menu` | 1/3 | **0/3** |
-| correctness (judge, of 5) | 4.67 | 4.33 |
+**2. Hypothesis-specific signals (your benchmark's `checks.py`).** The signals
+that only matter for *your* change go in a `checks.py` file in your `BENCH_DIR`,
+exposing `checks(parsed, ground_truth) -> dict`. `grade.py` loads it and merges
+the result into `checks.json`. This is what keeps the harness fluid: core stays
+generic, and each benchmark declares its own signals. `parsed` gives you
+`tool_calls`, `events` (tool calls + assistant text, in order), and `final_text`.
 
-The reframe moved the docs-first signals decisively (the intended change),
-with no correctness regression and no pigeonholing — and the *deterministic*
-signals carried the verdict, which is exactly why Stage 1 is the backbone.
-That is the shape every benchmark aims for: a clear move on the targeted
-metric, nothing else regressed.
+The **app-discovery** worked example's two hypothesis-specific signals looked
+like this (they are NOT in core — they are exactly the kind of thing a `checks.py`
+carries):
 
-When you design process-checks for your own hypothesis, follow the same
-shape: each check should be (a) computable by a regex or simple parse over
-`tool_calls`/`events`/`final_text` — no judgment calls, (b) named for what
-it measures, and (c) directly traceable back to one clause of your Step 1
-hypothesis (the "metric to move" or the "must not regress" list). A check
-that doesn't map to either is noise — leave it out.
+```python
+# BENCH_DIR/checks.py  — signals specific to the app-discovery hypothesis
+import re
+CONCL  = re.compile(r"DISCOVERY:|api_style:|host:\s*http", re.I)
+DOC    = re.compile(r"README|CLAUDE\.md|AGENTS\.md", re.I)
+LEGACY = re.compile(r"node -e .*(react|vue|spa)|@PreAuthorize|AddAuthentication\(", re.I)
+
+def checks(parsed, ground_truth):
+    first_doc = first_concl = None
+    for i, e in enumerate(parsed["events"]):
+        if e.get("kind") == "tool" and DOC.search(e.get("target") or "") and first_doc is None:
+            first_doc = i
+        if e.get("kind") == "text" and CONCL.search(e.get("text") or "") and first_concl is None:
+            first_concl = i
+    cmds = " ".join(c["target"] for c in parsed["tool_calls"])
+    return {
+        # did docs get read BEFORE the first textual conclusion (not after, to backfill a guess)?
+        "docs_before_conclusion": first_doc is not None and (first_concl is None or first_doc < first_concl),
+        # did it regress to the superseded command menu the change was meant to retire?
+        "ran_legacy_command_menu": bool(LEGACY.search(cmds)),
+    }
+```
+
+**Reference outcome** for that benchmark (3 apps × 2 arms, 1 run/cell) — core
+signals plus those two custom ones:
+
+| Signal | source | OLD v2.0.0 | NEW v2.1.0 |
+|---|---|---|---|
+| `read_agent_docs` | core | 1/3 apps | **3/3** |
+| `docs_before_conclusion` | checks.py | 1/3 | **3/3** |
+| `exploration_breadth` | core | 8.7 files | **13.7** |
+| `ran_legacy_command_menu` | checks.py | 1/3 | **0/3** |
+| correctness (judge, of 5) | stage 2 | 4.67 | 4.33 |
+
+The reframe moved the docs-first signals decisively (the intended change), with
+no correctness regression and no pigeonholing — and the *deterministic* signals
+carried the verdict, which is why Stage 1 is the backbone. That is the shape
+every benchmark aims for: a clear move on the targeted metric, nothing else
+regressed.
+
+When you write your own `checks.py`, each signal should be (a) computable by a
+regex or simple parse over `parsed` — no judgment calls, (b) named for what it
+measures, and (c) traceable to one clause of your Step 1 hypothesis (the "metric
+to move" or the "must not regress" list). A signal that maps to neither is
+noise — leave it out. If your hypothesis needs no custom signals, the generic
+core alone is a valid (if blunt) benchmark; omit `checks.py`.
 
 ## Authoring ground truth
 
@@ -101,7 +131,8 @@ reads the diff directly — describe the expected vulnerability set and what
 ## The observational grader
 
 `grade.py --grader observational` (the default) does two things:
-1. Writes `checks.json` from `process_checks()`.
+1. Writes `checks.json` — the generic core signals merged with your benchmark's
+   `checks.py` output (if present).
 2. Builds a judge prompt (`build_judge_prompt`) containing the ground
    truth, the agent's final text, and an excerpt of its tool calls, and
    sends it to `JUDGE_MODEL` via a bare `claude --print` invocation with no
