@@ -84,6 +84,11 @@ push`/`git remote`, no network egress to a non-local host), and it applies
 a **permission profile** (`readonly` vs `sandbox-rw`, see
 `references/designing-a-harness.md`).
 
+Note that `git clone`/`git fetch` (remote **reads**) are intentionally NOT
+egress-gated under `readonly` — the harness itself clones the benchmarked
+app — so the "no non-local egress" statement above covers curl/wget/nc/etc.
+tool egress, not git remote reads.
+
 All three of those checks are pattern-matching heuristics over tool names
 and string targets — not a sandboxed execution environment, a network
 namespace, or a filesystem jail. A **determined adversary** could bypass

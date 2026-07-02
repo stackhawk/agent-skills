@@ -59,3 +59,11 @@ class TestGuard(unittest.TestCase):
         wd = tempfile.mkdtemp(); _os.symlink("/etc", _os.path.join(wd, "escape"))
         rc,_ = run({"tool_name":"Write","tool_input":{"file_path": _os.path.join(wd,"escape","x")}}, "sandbox-rw", wd)
         self.assertEqual(rc, 2)
+    def test_readonly_allows_reading_docker_files(self):
+        for cmd in ("cat docker-compose.yml", "grep image docker-compose.yml", "cat Dockerfile"):
+            rc,_ = run({"tool_name":"Bash","tool_input":{"command":cmd}}, "readonly")
+            self.assertEqual(rc, 0, cmd)
+    def test_readonly_still_denies_docker_run_verbs(self):
+        for cmd in ("docker compose up -d", "docker run img", "docker-compose up", "podman run img"):
+            rc,_ = run({"tool_name":"Bash","tool_input":{"command":cmd}}, "readonly")
+            self.assertEqual(rc, 2, cmd)
