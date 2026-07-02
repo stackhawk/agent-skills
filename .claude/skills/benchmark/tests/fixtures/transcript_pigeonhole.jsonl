@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"t"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"This is clearly a Node app. host: http://localhost:3000, api_style: REST."}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/w/README.md"}}]}}
+{"type":"result","subtype":"success","result":"DISCOVERY:\nrun_command: npm start\nhost: http://localhost:3000\napi_style: REST\nspa: no\nauth: not required"}

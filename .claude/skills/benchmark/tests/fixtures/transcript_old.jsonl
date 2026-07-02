@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"t"}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"node -e \"const p=require('./package.json');const spa=['react','vue'];\""}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"grep -rn @PreAuthorize ."}}]}}
+{"type":"result","subtype":"success","result":"DISCOVERY:\nrun_command: unknown\nhost: http://localhost:3000\napi_style: REST\nspa: no\nauth: not required"}
