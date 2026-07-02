@@ -1,0 +1,16 @@
+Using the hawkscan skill, perform the app-understanding/discovery step ONLY for the repository in the current working directory. Do NOT run any security scan, do NOT install anything, do NOT start the app or any container, and do NOT modify, create, or delete any files.
+
+Determine, by investigating the repository:
+1. The technology stack — the primary language and the application framework(s).
+2. How the app runs locally — the exact start command and the host/port it listens on.
+3. Its API style — REST (note an OpenAPI/Swagger spec if present), GraphQL, gRPC, or a plain server-rendered web app — and the API base path.
+4. Whether it is a single-page app (SPA) front end.
+5. Whether exercising its endpoints requires authentication, and what login shape it appears to use.
+
+End your response with a block that begins with the literal line "DISCOVERY:" followed by one line per answer:
+technology: ...
+run_command: ...
+host: ...
+api_style: ...
+spa: yes|no
+auth: required|not required — <shape>

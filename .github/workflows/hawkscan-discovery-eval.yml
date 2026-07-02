@@ -1,0 +1,84 @@
+name: HawkScan Discovery Eval
+
+# Single-arm pulse of the hawkscan skill's app-discovery flow against real repos.
+# Manual, on-demand only (matches skill-evals.yml's deliberate workflow_dispatch design).
+# This is an eval (grade the current skill vs answer keys), NOT a blind A/B benchmark.
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Agent model"
+        required: false
+        default: "claude-sonnet-5"
+        type: string
+      no_judge:
+        description: "Deterministic process-checks only (skip the LLM judge)"
+        required: false
+        default: false
+        type: boolean
+      pass_threshold:
+        description: "Per-repo pass bar out of 12"
+        required: false
+        default: "9"
+        type: string
+
+# ---------------------------------------------------------------------------
+# Required secrets:
+#   ANTHROPIC_API_KEY      Anthropic API key for the headless agent + judge.
+#   RESEARCH_REPO_TOKEN    GitHub token with read access to the stackhawk-research
+#                          org (the eval clones its mirrored target apps). Falls back
+#                          to GITHUB_TOKEN, which will NOT have cross-org access.
+# ---------------------------------------------------------------------------
+permissions:
+  contents: read
+
+jobs:
+  discovery:
+    name: app-discovery pulse
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install claude CLI
+        run: curl -fsSL https://claude.ai/install.sh | bash
+
+      - name: Verify claude CLI
+        run: claude --version
+
+      - name: Configure access to stackhawk-research mirrors
+        env:
+          RESEARCH_REPO_TOKEN: ${{ secrets.RESEARCH_REPO_TOKEN }}
+          FALLBACK_TOKEN: ${{ github.token }}
+        run: |
+          TOKEN="${RESEARCH_REPO_TOKEN:-$FALLBACK_TOKEN}"
+          git config --global url."https://x-access-token:${TOKEN}@github.com/stackhawk-research/".insteadOf "https://github.com/stackhawk-research/"
+
+      - name: Run discovery eval
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MODEL: ${{ inputs.model }}
+          NO_JUDGE: ${{ inputs.no_judge && '1' || '0' }}
+          PASS_THRESHOLD: ${{ inputs.pass_threshold }}
+        working-directory: evals/hawkscan-discovery
+        run: scripts/run.sh
+
+      - name: Publish report to run summary
+        if: always()
+        working-directory: evals/hawkscan-discovery
+        run: |
+          latest="$(ls -1d runs/* 2>/dev/null | tail -1)"
+          if [ -n "$latest" ] && [ -f "$latest/report.md" ]; then
+            cat "$latest/report.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No report produced (see logs)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: discovery-eval-run
+          path: evals/hawkscan-discovery/runs/
+          if-no-files-found: ignore
+          retention-days: 14

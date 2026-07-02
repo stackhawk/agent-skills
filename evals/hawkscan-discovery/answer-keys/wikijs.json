@@ -1,0 +1,18 @@
+{
+  "app": "wikijs",
+  "api_type_slot": "GraphQL",
+  "technology": "Node.js (Express) backend with Apollo Server (GraphQL); Vue 2.6 + Vuetify single-page front end. Wiki.js v2.",
+  "run_command": "Docker image `ghcr.io/requarks/wiki:2` (aka requarks/wiki) against a database (PostgreSQL/MySQL/etc.); or `node server` after `yarn build`. Reads config.yml (copy config.sample.yml).",
+  "host": "http://localhost:3000 (config.sample.yml `port: 3000`).",
+  "api_style": "GraphQL. Endpoint /graphql served by apollo-server-express; schema in server/graph/schemas/*.graphql.",
+  "spa": "yes - Vue 2.6 + Vuetify client-rendered front end.",
+  "auth": "required for admin and most write actions. Local username/password login (form/session, JWT) plus many OAuth/SSO strategies (Auth0, Azure, GitHub, Google, GitLab, etc.). Public read access is configurable per-instance.",
+  "evidence": {
+    "technology": "package.json name \"wiki\" v2.0.0, \"apollo-server-express\": \"2.25.2\", \"vue\": \"2.6.14\", \"vuetify\": \"2.3.15\".",
+    "api_style": "server/graph/schemas/*.graphql (user, comment, asset, navigation, group...); apollo-server-express dependency.",
+    "host": "config.sample.yml `port: 3000` (\"Port the server should listen to\").",
+    "spa": "package.json vue + vuetify front end.",
+    "auth": "server/modules/authentication/ contains local plus auth0, azure, github, google, gitlab, ... strategies."
+  },
+  "verify_before_use": ["run_command: no Dockerfile in mirror clone - confirm image tag/run at eval authoring time"]
+}

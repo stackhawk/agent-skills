@@ -1,0 +1,19 @@
+{
+  "app": "dawarich",
+  "api_type_slot": "Server-rendered web app (primary); also a documented REST API",
+  "technology": "Ruby 3.4.6, Rails 8.0. Server-rendered Hotwire (Turbo + Stimulus via importmap-rails); MapLibre JS for maps.",
+  "run_command": "`docker compose up` (upstream ships a compose stack with PostgreSQL + Redis + Sidekiq); or `bin/rails server` for local dev. Ruby 3.4.6.",
+  "host": "http://localhost:3000 (Rails/Puma default).",
+  "api_style": "Primary UX is a server-rendered HTML web app (Hotwire: Turbo + Stimulus). It ALSO exposes a REST API under /api (config/routes.rb `namespace :api`) documented by an OpenAPI/Swagger spec at swagger/v1/swagger.yaml.",
+  "spa": "no - server-rendered Rails with importmap + Stimulus + Turbo; no React/Vue SPA.",
+  "auth": "required. Devise session/form login (with devise-two-factor 2FA and OmniAuth OAuth). The REST API is authenticated with a per-user API key.",
+  "evidence": {
+    "technology": "Gemfile `gem 'rails', '~> 8.0'`; .ruby-version 3.4.6; Gemfile importmap-rails + stimulus-rails.",
+    "api_style": "config/routes.rb `namespace :api`; swagger/v1/swagger.yaml (OpenAPI spec); app/javascript is Hotwire-driven, not an SPA bundle.",
+    "host": "Rails/Puma default port 3000.",
+    "spa": "importmap-rails + stimulus-rails + Turbo; no React/Vue dependency.",
+    "auth": "Gemfile `gem 'devise'`, `gem 'devise-two-factor'`; app/models/concerns/omniauthable.rb; per-user API key for /api."
+  },
+  "verify_before_use": ["run_command: no compose file in mirror clone - confirm the upstream compose/run at eval authoring time"],
+  "notes": "Dual API surface: SSR primary (this is why it fills the server-rendered slot) plus a secondary REST+OpenAPI API. Overlaps firefly-iii on REST, but its PRIMARY style is SSR and its stack (Ruby/Rails) is distinct, so the 'one of each API type, no duplicate stack' constraint still holds."
+}

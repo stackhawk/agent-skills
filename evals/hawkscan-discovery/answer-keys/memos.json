@@ -1,0 +1,18 @@
+{
+  "app": "memos",
+  "api_type_slot": "gRPC",
+  "technology": "Go (go 1.26) backend; React 18 (TypeScript) front end in web/. usememos/memos.",
+  "run_command": "`docker run -p 5230:5230 neosmemo/memos:stable` with a mounted data volume (README); or build from source (Go server + web/ React build).",
+  "host": "http://localhost:5230 (README `-p 5230:5230` and \"Open http://localhost:5230\"; scripts/Dockerfile MEMOS_PORT=5230).",
+  "api_style": "gRPC. Service definitions in proto/api/v1/*.proto (memo_service, user_service, attachment_service, shortcut_service, instance_service...) under package memos.api.v1, exposed over HTTP via grpc-gateway. gRPC is the native API.",
+  "spa": "yes - React 18 client-rendered front end (web/).",
+  "auth": "required for user-scoped actions. Username/password sign-in issuing a session token; API access via bearer access tokens. Public/anonymous read is possible depending on a memo's visibility setting.",
+  "evidence": {
+    "technology": "go.mod module github.com/usememos/memos, go 1.26.2; web/package.json \"react\": \"^18.3.1\".",
+    "api_style": "proto/api/v1/memo_service.proto and sibling *.proto service files.",
+    "host": "README.md line 66 `-p 5230:5230`, line 71 http://localhost:5230; scripts/Dockerfile MEMOS_PORT=5230.",
+    "spa": "web/package.json react ^18.3.1, @types/react ^18.3.28.",
+    "auth": "access-token / session auth in server; visibility-based public read."
+  },
+  "verify_before_use": ["auth: confirm exact token header/session shape against the running instance at eval authoring time"]
+}

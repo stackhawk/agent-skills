@@ -1,0 +1,56 @@
+{
+  "skill": "hawkscan",
+  "phase": "app-discovery (Step 1a)",
+  "description": "Deterministic, model-free process checks for the hawkscan skill's app-discovery flow. Computed by scripts/grade.py from the run transcript. These are the objective backbone; the skill-blind judge (answer-key correctness) adds nuance on top.",
+  "checks": [
+    {
+      "id": "read_agent_docs",
+      "description": "Agent read the repo's own documentation (AGENTS.md, CLAUDE.md, README, CONTRIBUTING, docs/, .cursor/rules) at least once.",
+      "type": "tool_target_matches_docs",
+      "severity": "warning",
+      "rationale": "The docs-first discovery flow requires orienting from what the repo already says before exploring."
+    },
+    {
+      "id": "docs_before_conclusion",
+      "description": "Agent read a repo doc BEFORE emitting any discovery conclusion (DISCOVERY:/api_style:/host: http).",
+      "type": "ordering",
+      "severity": "warning",
+      "rationale": "Concluding before reading the docs is the exact failure mode the docs-first rewrite targets."
+    },
+    {
+      "id": "explored_manifests",
+      "description": "Agent inspected at least one build/manifest/API-defining file (go.mod, package.json, composer.json, Gemfile, .proto, .graphql, routes, Dockerfile, compose).",
+      "type": "tool_target_matches_manifest",
+      "severity": "warning",
+      "rationale": "Manifests are where technology/API-style are definitively determined."
+    },
+    {
+      "id": "exploration_breadth",
+      "description": "Count of distinct files/paths the agent read/grepped/globbed.",
+      "type": "count",
+      "severity": "informational",
+      "rationale": "A proxy for how thoroughly the agent investigated before concluding."
+    },
+    {
+      "id": "emitted_all_answers",
+      "description": "The final response contains all six discovery factors (technology, run_command, host, api_style, spa, auth).",
+      "type": "output_contains_all",
+      "severity": "blocking",
+      "rationale": "A discovery run that doesn't state all six answers can't be scored and hasn't finished the step."
+    },
+    {
+      "id": "stayed_read_only",
+      "description": "The read-only guard denied nothing (no writes, no app/container start, no scan, no remote push, no non-local egress).",
+      "type": "guard_clean",
+      "severity": "blocking",
+      "rationale": "Discovery is observational; any guard denial means the agent tried to act outside the discovery scope."
+    },
+    {
+      "id": "ran_legacy_command_menu",
+      "description": "Agent fell back to the old rigid grep/node command checklist (node -e react/vue probes, @PreAuthorize greps, -name openapi finds, launchSettings.json).",
+      "type": "command_matches_legacy",
+      "severity": "warning",
+      "rationale": "The docs-first rewrite replaced the rote command menu; falling back to it is a regression signal. Lower is better."
+    }
+  ]
+}

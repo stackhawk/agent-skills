@@ -1,0 +1,18 @@
+{
+  "app": "firefly-iii",
+  "api_type_slot": "REST + OpenAPI",
+  "technology": "PHP >= 8.5, Laravel 13. Server-rendered Blade UI with minor vanilla/Alpine JS.",
+  "run_command": "Official Docker image `fireflyiii/core` via docker compose against a database (MySQL/MariaDB/PostgreSQL/SQLite), served on container port 8080; or local dev with `php artisan serve` (Laravel dev server on 127.0.0.1:8000). A database is required.",
+  "host": "http://localhost:8080 (official Docker image) or http://127.0.0.1:8000 (php artisan serve). APP_URL defaults to http://localhost.",
+  "api_style": "REST. Base path /api/v1/. The OpenAPI/Swagger spec ships in the separate firefly-iii/api-docs repo, not served from this app.",
+  "spa": "no (server-rendered) - Blade templates; no React/Vue/Angular/Svelte SPA dependency in package.json.",
+  "auth": "required. Web UI = Laravel session via a server-rendered login/registration form. API (/api/v1/) = OAuth2 (laravel/passport) bearer tokens or Personal Access Tokens.",
+  "evidence": {
+    "technology": "composer.json: \"php\": \">=8.5\", \"laravel/framework\": \"^13\".",
+    "api_style": "routes/api.php Route::group over /api; changelog.md references /api/v1/users; no in-repo openapi/swagger file found.",
+    "host": ".env.example APP_URL=http://localhost (line 301).",
+    "spa": "package.json has no vue/react/@angular/core/svelte dependency.",
+    "auth": "composer.json: \"laravel/passport\": \"^13.0\"; server-rendered login routes."
+  },
+  "verify_before_use": ["run_command", "host: exact port depends on deploy method (8080 image vs 8000 artisan serve) - confirm at eval authoring time"]
+}

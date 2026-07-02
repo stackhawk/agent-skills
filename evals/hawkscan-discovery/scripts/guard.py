@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""PreToolUse guardrail: discovery is read-only. Exit 0 allow, 2 deny (reason on stderr).
+
+Keeps the eval honest and safe: the agent may read/grep/glob the cloned app, but may
+not write files, start the app or a container, run a scan, push to a remote, or reach a
+non-local host. This is a cooperative safety net (heuristic), not an adversarial sandbox.
+"""
+import json, re, sys
+
+
+def deny(msg):
+    sys.stderr.write(f"Denied (read-only discovery): {msg}\n")
+    sys.exit(2)
+
+
+def main():
+    try:
+        event = json.load(sys.stdin)
+    except Exception:
+        sys.exit(0)  # unparseable -> don't block
+    tool = event.get("tool_name", "")
+    ti = event.get("tool_input", {}) or {}
+
+    if tool in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
+        deny(f"{tool} would modify files")
+
+    if tool == "Bash":
+        cmd = ti.get("command", "") or ""
+        low = cmd.lower()
+        if "hawk scan" in low or re.search(r"\bhawk\s+scan\b", low):
+            deny("hawk scan is out of scope for discovery")
+        if re.search(r"\bgit\s+(commit|push)\b", low):
+            deny("git commit/push not allowed")
+        # don't start the app/server or a container runtime -- discovery reads, it doesn't run
+        if re.search(r"\b(docker|docker-compose|podman|nerdctl)\b", low) \
+           or re.search(r"\b(npm|pnpm|yarn)\s+(start|run\s+dev|run\s+serve|serve)\b", low) \
+           or re.search(r"\b(bootrun|runserver|uvicorn|gunicorn|hypercorn|nodemon|puma|rails\s+server)\b", low) \
+           or re.search(r"spring-boot:run|flask\s+run|mix\s+phx\.server|air\b|./gradlew\s+bootrun", low):
+            deny("starting the app/server/container is out of scope for read-only discovery")
+        if re.search(r"\b(rm|mv|tee|dd)\b|>\s*\S|>>", cmd):
+            deny("file mutation not allowed")
+        # network egress: block curl/wget/nc/ssh/etc. to non-local hosts
+        if re.search(r"\b(curl|wget|nc|ncat|telnet|ssh|scp)\b", low):
+            hosts = re.findall(r"https?://([^/\s:]+)|(?:^|\s)([a-z0-9.-]+\.[a-z]{2,})", low)
+            flat = [h for pair in hosts for h in pair if h]
+            local = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+            if any(h not in local for h in flat):
+                deny(f"network egress to non-local host: {flat}")
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
