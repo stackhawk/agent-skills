@@ -12,7 +12,7 @@ esac
 if [ -n "${BENCHMARK_HOOK_CHANGED_FILES:-}" ]; then changed="$BENCHMARK_HOOK_CHANGED_FILES"
 else changed="$(git diff --name-only origin/main...HEAD 2>/dev/null; git show --name-only --format= HEAD 2>/dev/null)"; fi
 echo "$changed" | grep -qE 'plugins/.+/SKILL\.md|plugins/.+/references/|\.claude/skills/' || exit 0
-marker_dir="${BENCHMARK_HOOK_MARKER_DIR:-${TMPDIR:-/tmp}}"; marker="$marker_dir/.benchmark-nudged-$$-${PPID:-0}"
+marker_dir="${BENCHMARK_HOOK_MARKER_DIR:-${TMPDIR:-/tmp}}"
 # de-dupe per session: PPID groups a session's tool calls
 marker="$marker_dir/.benchmark-nudged-${PPID:-session}"
 [ -f "$marker" ] && exit 0

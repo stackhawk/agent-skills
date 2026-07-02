@@ -166,5 +166,24 @@ class TestRunShIntegration(unittest.TestCase):
             self.assertFalse((bad / "grade.json").exists(), f"{arm}: badapp should not have been graded")
 
 
+class TestCredflagsBash32Safe(unittest.TestCase):
+    """Regression: stock macOS /bin/bash is 3.2, which errors on "${arr[@]}" for an
+    empty array under `set -u`. run.sh must use the guarded ${arr[@]+"${arr[@]}"} form
+    so the default (no CRED_ENV) observational path doesn't abort on a stock-bash mac."""
+    def test_guarded_expansion_survives_set_u_on_stock_bash(self):
+        bash = "/bin/bash" if os.path.exists("/bin/bash") else shutil.which("bash")
+        snippet = ('set -euo pipefail; CRED_ENV=""; credflags=(); '
+                   'for v in $CRED_ENV; do credflags+=("$v=x"); done; '
+                   'env ${credflags[@]+"${credflags[@]}"} echo ok')
+        p = subprocess.run([bash, "-c", snippet], capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(p.stdout.strip(), "ok")
+
+    def test_run_sh_uses_guarded_form(self):
+        txt = (ROOT / "scripts" / "run.sh").read_text()
+        self.assertIn('${credflags[@]+"${credflags[@]}"}', txt)
+        self.assertNotIn('env "${credflags[@]}"', txt)  # the unguarded form is gone
+
+
 if __name__ == "__main__":
     unittest.main()

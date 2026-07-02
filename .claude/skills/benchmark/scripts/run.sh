@@ -32,7 +32,7 @@ while IFS=$'\t' read -r app url pin; do
     # pass through only the named credential envs
     credflags=(); for v in $CRED_ENV; do credflags+=("$v=${!v:-}"); done
     set +e
-    ( cd "$cell/workdir" && env "${credflags[@]}" \
+    ( cd "$cell/workdir" && env ${credflags[@]+"${credflags[@]}"} \
       CLAUDE_CONFIG_DIR="$cell/config" BASH_DEFAULT_TIMEOUT_MS=2700000 BASH_MAX_TIMEOUT_MS=3600000 \
       claude --print --verbose --output-format stream-json \
         --permission-mode bypassPermissions --model "$MODEL" "$PROMPT" \
