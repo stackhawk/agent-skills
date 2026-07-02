@@ -59,6 +59,17 @@ class TestGuard(unittest.TestCase):
         wd = tempfile.mkdtemp(); _os.symlink("/etc", _os.path.join(wd, "escape"))
         rc,_ = run({"tool_name":"Write","tool_input":{"file_path": _os.path.join(wd,"escape","x")}}, "sandbox-rw", wd)
         self.assertEqual(rc, 2)
+    def test_readonly_allows_stderr_redirects(self):
+        # stderr redirects are ubiquitous in benign read-only exploration, not writes
+        for cmd in ("grep -r pattern . 2>/dev/null", "find . -name '*.md' 2>&1", "cat go.mod > /dev/null"):
+            rc, _ = run({"tool_name": "Bash", "tool_input": {"command": cmd}}, "readonly")
+            self.assertEqual(rc, 0, cmd)
+
+    def test_readonly_still_denies_real_file_writes(self):
+        for cmd in ("echo x > out.txt", "echo x >> log.txt", "cmd 2> err.log"):
+            rc, _ = run({"tool_name": "Bash", "tool_input": {"command": cmd}}, "readonly")
+            self.assertEqual(rc, 2, cmd)
+
     def test_readonly_allows_reading_docker_files(self):
         for cmd in ("cat docker-compose.yml", "grep image docker-compose.yml", "cat Dockerfile"):
             rc,_ = run({"tool_name":"Bash","tool_input":{"command":cmd}}, "readonly")

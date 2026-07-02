@@ -7,7 +7,10 @@ import argparse, json, os, re, sys
 EVAL_INTERNAL = re.compile(r"(ground-truth|\.superpowers|docs/superpowers|skills/benchmark/scripts|apps\.tsv|prompt\.txt)", re.I)
 WRITE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
 RUN_OR_SCAN = re.compile(r"\b(docker|podman|nerdctl)\s+(compose\s+)?(up|run|start|exec|build|create)\b|\bdocker-compose\s+(up|run|start|create|build)\b|\b(npm|pnpm|yarn)\s+(start|run\s+dev|run\s+serve|serve)\b|\b(bootrun|runserver|uvicorn|gunicorn|hypercorn|nodemon)\b|spring-boot:run|flask\s+run|\bhawk\s+scan\b", re.I)
-WRITE_BASH = re.compile(r"\b(rm|mv|tee|dd)\b|>\s*\S|>>")
+# A write = rm/mv/tee/dd, or a redirect to a REAL target. The negative lookahead
+# keeps benign stderr redirects (`2>/dev/null`, `2>&1`, `>/dev/null`) from being
+# misread as writes — those are ubiquitous in read-only exploration.
+WRITE_BASH = re.compile(r"\b(rm|mv|tee|dd)\b|>>?\s*(?!/dev/null|&)\S")
 
 def deny(msg):
     sys.stderr.write(f"Denied (benchmark guard): {msg}\n"); sys.exit(2)

@@ -1,6 +1,6 @@
 ---
 name: benchmark
-version: 2.1.0
+version: 2.1.1
 description: >
   Guides running a blind A/B benchmark that proves a change to agent-skills
   (skill or reference edits) actually moved the metric it was meant to move,

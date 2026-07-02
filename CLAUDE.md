@@ -12,6 +12,7 @@ Multi-platform agent skills repo serving Claude, Codex, Gemini, Copilot, Cursor,
 - `plugins/api/` — StackHawk API reporting skill (SKILL.md + references)
 - `plugins/wingman/` — Umbrella plugin; `/plugin install wingman@stackhawk` installs hawkscan + api + data-seed + optimize
 - `.claude/skills/skill-authoring/` — Maintainer skill: authoring rules and best practices for contributors to this repo (NOT distributed via marketplace; tracked in git via `.gitignore` negation)
+- `.claude/skills/benchmark/` — Maintainer skill (`/benchmark <description>`): blind A/B benchmark of a skill change (OLD vs NEW git ref) on real repos, with a finishing-work nudge hook (NOT distributed via marketplace; tracked via `.gitignore` negation)
 - `skills/` — Symlinks for Gemini/Copilot discovery (points into plugins/)
 - `.opencode/skills/` — Symlinks for OpenCode discovery (points into plugins/)
 - `.cursor/skills/` — Symlinks for Cursor native skills discovery (points into plugins/)
