@@ -1,0 +1,5 @@
+{"type":"system","subtype":"init","session_id":"t"}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/w/README.md"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/w/config.yaml"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Grep","input":{"pattern":"widget","path":"/w"}}]}}
+{"type":"result","subtype":"success","result":"ANSWER:\nwidget_engine: gears-v3\nlisten_port: 9090\ncolor_scheme: dark"}
