@@ -31,10 +31,22 @@ def main():
             deny("starting the app/server/container is out of scope for read-only discovery")
         if re.search(r"\b(rm|mv|tee|dd)\b|>\s*\S|>>", cmd):
             deny("file mutation not allowed")
-        if re.search(r"\b(curl|wget|nc|ncat|telnet|ssh|scp|"
-                     r"python3?|node|nodejs|ruby|perl|php|pip3?|npm|npx|gem)\b", low):
+        classic_net_tools = r"\b(curl|wget|nc|ncat|telnet|ssh|scp)\b"
+        interpreter_tools = r"\b(python3?|node|nodejs|ruby|perl|php|pip3?|npm|npx|gem)\b"
+        if re.search(classic_net_tools, low):
+            # These tools take hosts directly, so the broad heuristic (URL,
+            # generic dotted-hostname, or bare IPv4) is appropriate.
             hosts = re.findall(r"https?://([^/\s:]+)|(?:^|\s)([a-z0-9.-]+\.[a-z]{2,})", low)
             flat = [h for pair in hosts for h in pair if h]
+            flat += re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", low)
+            local = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+            if any(h not in local and not h.startswith("127.") for h in flat):
+                deny(f"network egress to non-local host: {flat}")
+        elif re.search(interpreter_tools, low):
+            # These tools routinely take filename args (manage.py, index.js,
+            # requirements.txt), so only match explicit URLs and bare IPv4
+            # literals -- never the generic word.ext hostname regex.
+            flat = re.findall(r"https?://([^/\s:]+)", low)
             flat += re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", low)
             local = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
             if any(h not in local and not h.startswith("127.") for h in flat):

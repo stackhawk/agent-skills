@@ -51,6 +51,34 @@ class DiscoveryGuardEgress(unittest.TestCase):
         result = run_guard(event)
         self.assertEqual(result.returncode, 2, result.stderr)
 
+    def test_allows_python_manage_py(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "python3 manage.py check"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_allows_node_filename_arg(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "node index.js"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_allows_pip_install_requirements(self):
+        event = {
+            "tool_name": "Bash",
+            "tool_input": {"command": "pip install -r requirements.txt"},
+        }
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_allows_python_setup_py_version(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "python3 setup.py --version"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_denies_curl_bare_hostname_no_scheme(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "curl example.com"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 2, result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
