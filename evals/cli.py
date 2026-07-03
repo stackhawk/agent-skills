@@ -50,19 +50,34 @@ def main() -> None:
             run = adapter.launch(p.prompt, args.skill, p.id, plugin_dirs,
                                  model=args.model, load_skill=True,
                                  max_budget=args.max_budget, bare=args.bare,
-                                 full_auto=args.full_auto)
-            did = adapter.detect_trigger(run, args.skill)
-            res = grade(p, run, cfg.checks, platform=args.harness, skill=args.skill,
-                        did_trigger=did, extended=args.full_auto)
-            # Qualitative rubric: EXTENDED-ONLY. It grades output-presentation
-            # quality (formatted posture tables, platform links, severity
-            # breakdowns) that only exists when the agent executes against a real
-            # target. Running it on observe-mode narration scores ~0 everywhere
-            # (noise), so it runs only under --full-auto, and only when the skill
-            # triggered correctly.
-            if args.rubric and args.full_auto and res.trigger_correct and did:
-                from evals.lib.rubric import grade_rubric
-                res.rubric = grade_rubric(run, args.skill, p.id)
+                                 full_auto=args.full_auto, target_repo=p.target_repo)
+            if p.answer_key:
+                # Discovery cell: graded on the discovery axis (judge + its own
+                # process-checks), not the scan-trigger/global-checks path.
+                from pathlib import Path as _P
+                from evals.lib.rubric import judge_answer_key
+                from evals.lib.grading import grade_discovery
+                key_path = _P(__file__).resolve().parent / args.skill / p.answer_key
+                judge_checks = []
+                try:
+                    judge_checks = judge_answer_key(run, str(key_path))
+                except Exception as e:  # judge is best-effort; don't abort the cell
+                    run.error = run.error or f"judge failed: {type(e).__name__}: {e}"
+                res = grade_discovery(p, run, cfg.checks, judge_checks,
+                                      platform=args.harness, skill=args.skill)
+            else:
+                did = adapter.detect_trigger(run, args.skill)
+                res = grade(p, run, cfg.checks, platform=args.harness, skill=args.skill,
+                            did_trigger=did, extended=args.full_auto)
+                # Qualitative rubric: EXTENDED-ONLY. It grades output-presentation
+                # quality (formatted posture tables, platform links, severity
+                # breakdowns) that only exists when the agent executes against a
+                # real target. Running it on observe-mode narration scores ~0
+                # everywhere (noise), so it runs only under --full-auto, and only
+                # when the skill triggered correctly.
+                if args.rubric and args.full_auto and res.trigger_correct and did:
+                    from evals.lib.rubric import grade_rubric
+                    res.rubric = grade_rubric(run, args.skill, p.id)
             # persist a trace for visibility (uploaded with the artifact)
             trace = (f"# {p.id} (returncode={run.returncode})\n"
                      f"## error\n{run.error or ''}\n"

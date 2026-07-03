@@ -169,3 +169,31 @@ def grade(prompt: PromptConfig, run: ParsedRun, checks: list[dict], *,
         score=_score(proc), cost_usd=run.cost_usd,
         note=(run.error or ""),
     )
+
+
+def grade_discovery(prompt: PromptConfig, run: ParsedRun, checks: list[dict],
+                    judge_checks: list[ProcessCheckResult], *,
+                    platform: str, skill: str) -> EvalResult:
+    """Grade a discovery (answer_key) cell on the discovery axis only: the
+    process-checks that explicitly applies_to this prompt, the per-prompt
+    expected answers, and the answer-key judge results. Scan-flow trigger
+    detection and global scan-flow checks do NOT apply here."""
+    own = [c for c in checks if prompt.id in (c.get("applies_to") or [])]
+    proc = run_process_checks(run, own)
+    proc += run_adhoc_expected(run, prompt.expected)
+    proc += judge_checks
+
+    blocking_failed = any(not c.passed and c.severity == "blocking" for c in proc)
+    verdict = Verdict.FAIL if blocking_failed else Verdict.PASS
+    breaches: list[str] = []
+    if verdict == Verdict.PASS and prompt.budget is not None:
+        breaches = check_budget(run, prompt.budget)
+        if breaches:
+            verdict = Verdict.PASS_SLOW
+
+    return EvalResult(
+        platform=platform, skill=skill, run_id=prompt.id,
+        should_trigger=prompt.should_trigger, did_trigger=True, trigger_correct=True,
+        verdict=verdict, budget_breaches=breaches, process_checks=proc,
+        score=_score(proc), cost_usd=run.cost_usd, note=(run.error or ""),
+    )
