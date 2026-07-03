@@ -15,6 +15,12 @@ class BudgetSpec(BaseModel):
     wall_seconds: float | None = None
 
 
+class TargetRepo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    url: str            # e.g. https://github.com/stackhawk-research/firefly-iii.git
+    pin: str            # commit SHA (mirrors carry no release tags)
+
+
 class ExpectedCheck(BaseModel):
     model_config = ConfigDict(extra="forbid")
     check_id: str | None = None      # reference an existing process-check by id
@@ -39,6 +45,8 @@ class PromptConfig(BaseModel):
     notes: str = ""
     budget: BudgetSpec | None = None
     expected: list[ExpectedCheck] = []
+    target_repo: TargetRepo | None = None      # clone into the cell cwd (read-only run)
+    answer_key: str | None = None              # path, relative to the suite dir
 
 
 class Verdict(str, Enum):
@@ -58,6 +66,7 @@ class ParsedRun(BaseModel):
     error: str | None = None
     returncode: int | None = None
     stderr_tail: str = ""
+    guard_denials: list[str] = []
 
 
 class ProcessCheckResult(BaseModel):
