@@ -1,9 +1,11 @@
 """claude-code Harness adapter. Parsing + signal lists ported from run-evals.py."""
 from __future__ import annotations
 import json
+import os
 import shutil
 import subprocess
 import tempfile
+from pathlib import Path
 
 from evals.lib.models import ParsedRun
 from evals.lib.triggers import explicit_decision, decide_trigger
@@ -127,13 +129,36 @@ class ClaudeCodeAdapter:
                               loose_hit=loose)
 
     def launch(self, prompt, skill, run_id, plugin_dirs, *, model, load_skill,
-               max_budget, bare, full_auto) -> ParsedRun:
+               max_budget, bare, full_auto, target_repo=None) -> ParsedRun:
         tmpdir = tempfile.mkdtemp(prefix=f"hawkeval_{run_id}_")
+        cfgdir = None
         try:
-            # Observe mode (default): ask the agent to declare + outline its
-            # workflow. Full-auto/extended runs against a real target execute for
-            # real, so they use the bare prompt.
-            effective_prompt = prompt if full_auto else prompt + observe_suffix(skill)
+            if target_repo is not None:
+                # Populate the cell cwd with the real target repo (read-only run).
+                clone = subprocess.run(
+                    ["git", "clone", "--depth", "1", target_repo.url, tmpdir],
+                    capture_output=True, text=True, timeout=300)
+                if clone.returncode != 0:
+                    return ParsedRun(error=f"clone failed: {clone.stderr[-300:].strip()}")
+                co = subprocess.run(["git", "-C", tmpdir, "fetch", "--depth", "1",
+                                     "origin", target_repo.pin], capture_output=True, text=True)
+                subprocess.run(["git", "-C", tmpdir, "checkout", target_repo.pin],
+                               capture_output=True, text=True)
+                # Wire the read-only PreToolUse guard via an isolated config dir.
+                cfgdir = tempfile.mkdtemp(prefix=f"hawkcfg_{run_id}_")
+                guard_src = Path(__file__).resolve().parent / "discovery_guard.py"
+                (Path(cfgdir) / "settings.json").write_text(json.dumps({
+                    "hooks": {"PreToolUse": [{"matcher": "*", "hooks": [
+                        {"type": "command", "command": f"python3 {guard_src}"}]}]}
+                }))
+
+            # target_repo cells explore for real (no observe suffix); others keep
+            # today's behavior (observe unless full_auto).
+            if target_repo is not None:
+                effective_prompt = prompt
+            else:
+                effective_prompt = prompt if full_auto else prompt + observe_suffix(skill)
+
             cmd = ["claude", "-p", effective_prompt, "--output-format", "stream-json",
                    "--verbose", "--no-session-persistence",
                    "--max-budget-usd", str(max_budget)]
@@ -142,18 +167,25 @@ class ClaudeCodeAdapter:
             if load_skill:
                 for pd in plugin_dirs:
                     cmd += ["--plugin-dir", pd]
-            if full_auto:
+            if full_auto or target_repo is not None:
                 cmd.append("--dangerously-skip-permissions")
             if bare:
                 cmd.append("--bare")
+
+            env = dict(os.environ)
+            if cfgdir:
+                env["CLAUDE_CONFIG_DIR"] = cfgdir
             try:
                 proc = subprocess.run(cmd, capture_output=True, text=True,
-                                      timeout=300, cwd=tmpdir)
+                                      timeout=300, cwd=tmpdir, env=env)
             except subprocess.TimeoutExpired:
                 return ParsedRun(error="timeout")
             run = parse_stream(proc.stdout)
             run.returncode = proc.returncode
             run.stderr_tail = (proc.stderr or "")[-2000:]
+            if target_repo is not None:
+                run.guard_denials = [ln for ln in (proc.stdout + "\n" + (proc.stderr or "")).splitlines()
+                                     if "Denied (read-only discovery)" in ln]
             if proc.returncode != 0 and not run.error:
                 run.error = f"exit {proc.returncode}: {run.stderr_tail[-300:].strip()}"
             elif not run.output_text and not run.bash_commands and not run.error:
@@ -161,6 +193,8 @@ class ClaudeCodeAdapter:
             return run
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
+            if cfgdir:
+                shutil.rmtree(cfgdir, ignore_errors=True)
 
 
 ADAPTER = ClaudeCodeAdapter()
