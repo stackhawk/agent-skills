@@ -76,6 +76,9 @@ def run_process_checks(run: ParsedRun, checks: list[dict]) -> list[ProcessCheckR
                 passed = any(p in haystack for p in preferred) and anti_hit is None
             else:
                 passed = anti_hit is None  # no preference expressed; only anti-patterns matter
+        elif ctype == "guard_clean":
+            # Passes iff the read-only guard denied nothing during the run.
+            passed = not run.guard_denials
         else:
             passed = signal_hit is not None and (anti_hit is None if antis else True)
 
