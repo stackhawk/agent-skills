@@ -1,6 +1,6 @@
 {
   "name": "stackhawk-data-seed",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "description": "Read a target repo and emit checked-in seed artifacts so HawkScan has data to scan. Generates SQL / HTTP / gRPC / Mongo / shell steps across the target repo and any upstream services it depends on, plus a manifest and a credentials handoff file that hawkscan consumes.",
   "author": {
     "name": "StackHawk",

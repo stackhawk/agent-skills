@@ -1,6 +1,6 @@
 ---
 name: optimize
-version: 2.1.1
+version: 2.2.0
 description: >
   Analyze a codebase and produce an optimal HawkScan setup — tech flags, scan-policy
   plugin selection, and stackhawk.yml corrections — then apply it as a non-destructive
