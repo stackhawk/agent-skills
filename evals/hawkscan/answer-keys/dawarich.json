@@ -1,0 +1,35 @@
+{
+  "app": "dawarich",
+  "factors": {
+    "technology": {
+      "value": "Ruby 3.4.6, Rails 8.0. Server-rendered Hotwire (Turbo + Stimulus via importmap-rails); MapLibre JS for maps.",
+      "must_hit": true,
+      "evidence": "Gemfile `gem 'rails', '~> 8.0'`; .ruby-version 3.4.6; Gemfile importmap-rails + stimulus-rails."
+    },
+    "run_command": {
+      "value": "`docker compose up` (upstream ships a compose stack with PostgreSQL + Redis + Sidekiq); or `bin/rails server` for local dev. Ruby 3.4.6.",
+      "must_hit": false,
+      "evidence": "no compose file in mirror clone - confirm the upstream compose/run at eval authoring time"
+    },
+    "host": {
+      "value": "http://localhost:3000 (Rails/Puma default).",
+      "must_hit": true,
+      "evidence": "Rails/Puma default port 3000."
+    },
+    "api_style": {
+      "value": "Primary UX is a server-rendered HTML web app (Hotwire: Turbo + Stimulus). It ALSO exposes a REST API under /api (config/routes.rb `namespace :api`) documented by an OpenAPI/Swagger spec at swagger/v1/swagger.yaml.",
+      "must_hit": true,
+      "evidence": "config/routes.rb `namespace :api`; swagger/v1/swagger.yaml (OpenAPI spec); app/javascript is Hotwire-driven, not an SPA bundle."
+    },
+    "spa": {
+      "value": "no - server-rendered Rails with importmap + Stimulus + Turbo; no React/Vue SPA.",
+      "must_hit": false,
+      "evidence": "importmap-rails + stimulus-rails + Turbo; no React/Vue dependency."
+    },
+    "auth": {
+      "value": "required. Devise session/form login (with devise-two-factor 2FA and OmniAuth OAuth). The REST API is authenticated with a per-user API key.",
+      "must_hit": false,
+      "evidence": "Gemfile `gem 'devise'`, `gem 'devise-two-factor'`; app/models/concerns/omniauthable.rb; per-user API key for /api."
+    }
+  }
+}

@@ -309,6 +309,45 @@
       ],
       "severity": "blocking",
       "failure_guidance": "The -c and --config flags do not exist in the hawk CLI. Inventing them causes the command to fail silently or with a confusing error."
+    },
+    {
+      "id": "discovery_read_agent_docs",
+      "phase": "app-discovery",
+      "description": "Agent read the repo's own docs (README/CLAUDE.md/AGENTS.md/CONTRIBUTING/docs).",
+      "type": "command_executed",
+      "applies_to": ["firefly-iii", "wikijs", "memos", "dawarich"],
+      "signals": ["readme", "claude.md", "agents.md", "contributing", "docs/"],
+      "severity": "warning",
+      "failure_guidance": "Docs-first discovery orients from what the repo says before exploring."
+    },
+    {
+      "id": "discovery_explored_manifests",
+      "phase": "app-discovery",
+      "description": "Agent inspected a build/manifest/API-defining file.",
+      "type": "command_executed",
+      "applies_to": ["firefly-iii", "wikijs", "memos", "dawarich"],
+      "signals": ["package.json", "composer.json", "go.mod", "gemfile", ".proto", ".graphql", "dockerfile", "docker-compose", "routes"],
+      "severity": "warning",
+      "failure_guidance": "Manifests are where technology/API-style are definitively determined."
+    },
+    {
+      "id": "discovery_no_legacy_menu",
+      "phase": "app-discovery",
+      "description": "Agent did NOT fall back to the old rigid grep/node detection checklist.",
+      "type": "command_negative",
+      "applies_to": ["firefly-iii", "wikijs", "memos", "dawarich"],
+      "anti_patterns": ["node -e", "@preauthorize", "-name openapi", "launchsettings.json"],
+      "severity": "warning",
+      "failure_guidance": "The docs-first rewrite replaced the rote command menu; falling back to it is a regression."
+    },
+    {
+      "id": "discovery_stayed_read_only",
+      "phase": "app-discovery",
+      "description": "The read-only guard denied nothing (no writes/scans/app-start/remote push).",
+      "type": "guard_clean",
+      "applies_to": ["firefly-iii", "wikijs", "memos", "dawarich"],
+      "severity": "blocking",
+      "failure_guidance": "Discovery is observational; any guard denial means the agent acted outside scope."
     }
   ]
 }

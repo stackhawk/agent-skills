@@ -105,3 +105,131 @@
   invocation_type: negative
   prompt: What types of vulnerabilities does HawkScan detect?
   notes: Research question; no scan intent, no code change
+- id: firefly-iii
+  should_trigger: true
+  invocation_type: implicit
+  prompt: |
+    Using the hawkscan skill, perform the app-understanding/discovery step ONLY for the repository in the current working directory. Do NOT run any security scan, do NOT install anything, do NOT start the app or any container, and do NOT modify, create, or delete any files.
+
+    Determine, by investigating the repository:
+    1. The technology stack — the primary language and the application framework(s).
+    2. How the app runs locally — the exact start command and the host/port it listens on.
+    3. Its API style — REST (note an OpenAPI/Swagger spec if present), GraphQL, gRPC, or a plain server-rendered web app — and the API base path.
+    4. Whether it is a single-page app (SPA) front end.
+    5. Whether exercising its endpoints requires authentication, and what login shape it appears to use.
+
+    End your response with a block that begins with the literal line "DISCOVERY:" followed by one line per answer:
+    technology: ...
+    run_command: ...
+    host: ...
+    api_style: ...
+    spa: yes|no
+    auth: required|not required — <shape>
+  notes: app-discovery against a real cloned repo (REST+OpenAPI / PHP-Laravel)
+  target_repo:
+    url: https://github.com/stackhawk-research/firefly-iii.git
+    pin: 75ee773c471f5776fd1c8cd4095af1d7013591f1
+  answer_key: answer-keys/firefly-iii.json
+  expected:
+    - signal: "technology:"
+    - signal: "run_command:"
+    - signal: "host:"
+    - signal: "api_style:"
+    - signal: "spa:"
+    - signal: "auth:"
+- id: wikijs
+  should_trigger: true
+  invocation_type: implicit
+  prompt: |
+    Using the hawkscan skill, perform the app-understanding/discovery step ONLY for the repository in the current working directory. Do NOT run any security scan, do NOT install anything, do NOT start the app or any container, and do NOT modify, create, or delete any files.
+
+    Determine, by investigating the repository:
+    1. The technology stack — the primary language and the application framework(s).
+    2. How the app runs locally — the exact start command and the host/port it listens on.
+    3. Its API style — REST (note an OpenAPI/Swagger spec if present), GraphQL, gRPC, or a plain server-rendered web app — and the API base path.
+    4. Whether it is a single-page app (SPA) front end.
+    5. Whether exercising its endpoints requires authentication, and what login shape it appears to use.
+
+    End your response with a block that begins with the literal line "DISCOVERY:" followed by one line per answer:
+    technology: ...
+    run_command: ...
+    host: ...
+    api_style: ...
+    spa: yes|no
+    auth: required|not required — <shape>
+  notes: app-discovery against a real cloned repo (GraphQL / Node-Express-Vue SPA)
+  target_repo:
+    url: https://github.com/stackhawk-research/wikijs.git
+    pin: ae3f7771a09aa5a081acde4239b97f85e7d312d1
+  answer_key: answer-keys/wikijs.json
+  expected:
+    - signal: "technology:"
+    - signal: "run_command:"
+    - signal: "host:"
+    - signal: "api_style:"
+    - signal: "spa:"
+    - signal: "auth:"
+- id: memos
+  should_trigger: true
+  invocation_type: implicit
+  prompt: |
+    Using the hawkscan skill, perform the app-understanding/discovery step ONLY for the repository in the current working directory. Do NOT run any security scan, do NOT install anything, do NOT start the app or any container, and do NOT modify, create, or delete any files.
+
+    Determine, by investigating the repository:
+    1. The technology stack — the primary language and the application framework(s).
+    2. How the app runs locally — the exact start command and the host/port it listens on.
+    3. Its API style — REST (note an OpenAPI/Swagger spec if present), GraphQL, gRPC, or a plain server-rendered web app — and the API base path.
+    4. Whether it is a single-page app (SPA) front end.
+    5. Whether exercising its endpoints requires authentication, and what login shape it appears to use.
+
+    End your response with a block that begins with the literal line "DISCOVERY:" followed by one line per answer:
+    technology: ...
+    run_command: ...
+    host: ...
+    api_style: ...
+    spa: yes|no
+    auth: required|not required — <shape>
+  notes: app-discovery against a real cloned repo (gRPC / Go-React SPA)
+  target_repo:
+    url: https://github.com/stackhawk-research/memos.git
+    pin: f61c743345169f88246c3f37bbdac08d90328866
+  answer_key: answer-keys/memos.json
+  expected:
+    - signal: "technology:"
+    - signal: "run_command:"
+    - signal: "host:"
+    - signal: "api_style:"
+    - signal: "spa:"
+    - signal: "auth:"
+- id: dawarich
+  should_trigger: true
+  invocation_type: implicit
+  prompt: |
+    Using the hawkscan skill, perform the app-understanding/discovery step ONLY for the repository in the current working directory. Do NOT run any security scan, do NOT install anything, do NOT start the app or any container, and do NOT modify, create, or delete any files.
+
+    Determine, by investigating the repository:
+    1. The technology stack — the primary language and the application framework(s).
+    2. How the app runs locally — the exact start command and the host/port it listens on.
+    3. Its API style — REST (note an OpenAPI/Swagger spec if present), GraphQL, gRPC, or a plain server-rendered web app — and the API base path.
+    4. Whether it is a single-page app (SPA) front end.
+    5. Whether exercising its endpoints requires authentication, and what login shape it appears to use.
+
+    End your response with a block that begins with the literal line "DISCOVERY:" followed by one line per answer:
+    technology: ...
+    run_command: ...
+    host: ...
+    api_style: ...
+    spa: yes|no
+    auth: required|not required — <shape>
+  notes: app-discovery against a real cloned repo (server-rendered/REST dual surface / Ruby-Rails)
+  target_repo:
+    url: https://github.com/stackhawk-research/dawarich.git
+    pin: c958644a44b5177885e92921d8b135b5ab5be1a9
+  answer_key: answer-keys/dawarich.json
+  expected:
+    - signal: "technology:"
+    - signal: "run_command:"
+    - signal: "host:"
+    - signal: "api_style:"
+    - signal: "spa:"
+    - signal: "auth:"
