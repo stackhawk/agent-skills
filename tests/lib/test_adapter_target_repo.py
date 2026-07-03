@@ -33,6 +33,31 @@ class AdapterTargetRepo(unittest.TestCase):
                         "expected a git checkout of the pin")
         self.assertTrue(run.guard_denials, "guard denials should be captured")
 
+    def test_checkout_failure_returns_error(self):
+        calls = []
+
+        def _run(cmd, *a, **k):
+            calls.append((cmd, k))
+            joined = " ".join(cmd) if isinstance(cmd, list) else cmd
+
+            class R:
+                returncode = 1 if "checkout" in joined else 0
+                stdout = ""
+                stderr = "error: pathspec 'deadbeef' did not match any file(s) known to git\n"
+
+            return R()
+
+        tr = TargetRepo(url="https://example.com/x.git", pin="deadbeef")
+        with mock.patch("subprocess.run", _run):
+            run = cc_adapter.launch("discover", "hawkscan", "x", ["/plug"],
+                                    model=None, load_skill=True, max_budget=0.2,
+                                    bare=False, full_auto=False, target_repo=tr)
+        self.assertIsNotNone(run.error)
+        self.assertIn("checkout failed", run.error)
+        cmds = [" ".join(c[0]) if isinstance(c[0], list) else c[0] for c in calls]
+        self.assertFalse(any(c.strip().startswith("claude ") for c in cmds),
+                         "should not launch claude after a checkout failure")
+
     def test_no_target_repo_is_unchanged(self):
         calls = []
         with mock.patch("subprocess.run", self._fake_run(calls)):

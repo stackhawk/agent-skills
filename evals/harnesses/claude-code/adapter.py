@@ -142,8 +142,10 @@ class ClaudeCodeAdapter:
                     return ParsedRun(error=f"clone failed: {clone.stderr[-300:].strip()}")
                 co = subprocess.run(["git", "-C", tmpdir, "fetch", "--depth", "1",
                                      "origin", target_repo.pin], capture_output=True, text=True)
-                subprocess.run(["git", "-C", tmpdir, "checkout", target_repo.pin],
-                               capture_output=True, text=True)
+                checkout = subprocess.run(["git", "-C", tmpdir, "checkout", target_repo.pin],
+                                          capture_output=True, text=True)
+                if checkout.returncode != 0:
+                    return ParsedRun(error=f"checkout failed: {checkout.stderr[-300:].strip()}")
                 # Wire the read-only PreToolUse guard via an isolated config dir.
                 cfgdir = tempfile.mkdtemp(prefix=f"hawkcfg_{run_id}_")
                 guard_src = Path(__file__).resolve().parent / "discovery_guard.py"
