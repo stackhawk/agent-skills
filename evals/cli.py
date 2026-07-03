@@ -55,14 +55,19 @@ def main() -> None:
                 # Discovery cell: graded on the discovery axis (judge + its own
                 # process-checks), not the scan-trigger/global-checks path.
                 from pathlib import Path as _P
-                from evals.lib.rubric import judge_answer_key
+                from evals.lib.rubric import judge_answer_key, parse_discovery_block
                 from evals.lib.grading import grade_discovery
                 key_path = _P(__file__).resolve().parent / args.skill / p.answer_key
                 judge_checks = []
-                try:
-                    judge_checks = judge_answer_key(run, str(key_path))
-                except Exception as e:  # judge is best-effort; don't abort the cell
-                    run.error = run.error or f"judge failed: {type(e).__name__}: {e}"
+                # Skip the (costly) claude grader call on a broken cell -- if the
+                # run errored or produced no DISCOVERY: block, there's nothing for
+                # the judge to grade. grade_discovery's own `expected` checks still
+                # run and will fail the cell as before.
+                if not run.error and parse_discovery_block(run.output_text):
+                    try:
+                        judge_checks = judge_answer_key(run, str(key_path))
+                    except Exception as e:  # judge is best-effort; don't abort the cell
+                        run.error = run.error or f"judge failed: {type(e).__name__}: {e}"
                 res = grade_discovery(p, run, cfg.checks, judge_checks,
                                       platform=args.harness, skill=args.skill)
             else:

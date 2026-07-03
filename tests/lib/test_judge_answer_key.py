@@ -23,11 +23,6 @@ DISCOVERY = ("blah\nDISCOVERY:\ntechnology: Go\nrun_command: docker compose up\n
              "host: localhost:5230\napi_style: REST\nspa: yes\nauth: token\n")
 
 
-def _judge_reply(per_factor):
-    # Simulate the claude judge returning per-factor pass/fail as JSON.
-    return json.dumps({"factors": per_factor})
-
-
 class JudgeAnswerKey(unittest.TestCase):
     def test_parse_discovery_block(self):
         d = rubric.parse_discovery_block(DISCOVERY)
