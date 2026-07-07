@@ -132,7 +132,8 @@ unresolved — never stall or invent.
 → Docs-first source table (which files to read and what to harvest):
   [`references/app-discovery.md`](references/app-discovery.md)
 
-Record the answers — Step 1c and Step 2 consume them.
+Record what discovery produced — surfaces, run command, host/port, auth shape — Step 1c and
+Step 2 consume them.
 
 **SPA rule:** if the app is a client-rendered JS front end, never scan it without the Ajax
 Spider, and note that a separate backend API is usually the higher-value target. Full
@@ -329,9 +330,11 @@ hawk rescan --scan-id <SCAN_ID> --json-output      # fast fix verification — r
 ## Step 4.5: Quality Gate
 
 Run this gate after **every** scan — full scans and rescans alike, any exit code — before
-parsing findings into fix tasks. It is a feedback loop into config tuning, **not a
-governor**: gate state never blocks a finding from being reported and fixed; a thin scan
-that missed surface can still have found something real.
+parsing findings into fix tasks. Exception: on exit 1 where no scan was actually started
+(config parse failure, app unreachable pre-scan), there is no `scanId` to gate against — skip
+straight to Step 6's diagnosis / the environment-class path instead. It is a feedback loop
+into config tuning, **not a governor**: gate state never blocks a finding from being reported
+and fixed; a thin scan that missed surface can still have found something real.
 
 Run the four structural checks and derive the expectation fresh each time, exactly as
 `references/scan-quality.md` describes — coverage, auth, surface-completeness, and health.
