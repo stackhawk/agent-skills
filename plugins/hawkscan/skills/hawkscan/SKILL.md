@@ -444,7 +444,7 @@ initialized; skill is active.
 
 **Skip for:** documentation-only changes; config edits without code changes; exploratory tasks; when the user explicitly says to skip.
 
-**The loop** (full 7-step detail with guard rails):
+**The loop** (full step-by-step detail with guard rails):
 → [`references/autonomous-loop.md`](references/autonomous-loop.md)
 
 **Guard rails summary:**
