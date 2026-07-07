@@ -72,17 +72,18 @@ identifiers directly, so keep them exactly as written here: `coverage-gap`,
 | # | Check | What it measures | Command(s) | Pass condition | Reason identifier(s) |
 |---|-------|-------------------|------------|-----------------|------------------------|
 | 1 | Coverage | Scanned URIs vs. the expectation derived above | `hawk op scan uris <scanId> --format json` diffed against the expectation list | **Never fails the gate.** Always computed and reported as evidence, e.g. "14 of 41 planned routes untouched," with the untouched routes listed | `coverage-gap` (evidence only) |
-| 2 | Auth | Live auth validation before the scan; auth-wall signals during it | `hawk validate auth stackhawk.yml` pre-scan; `hawk op scan metrics <scanId>` for auth-wall flags | `validate auth` exited 0, and no auth-wall flag on any surface that has `authentication:` configured | `auth-validate-failed`, `auth-wall` |
+| 2 | Auth | Live auth validation before the scan; auth-wall signals during it | `hawk validate auth <surface config>.yml` pre-scan (against the config being gated — repos with multiple per-surface configs validate each one); `hawk op scan metrics <scanId>` for auth-wall flags | `validate auth` exited 0, and no auth-wall flag on any surface that has `authentication:` configured | `auth-validate-failed`, `auth-wall` |
 | 3 | Surface-completeness | Every surface discovery found has a config, that config actually ran, and any spec found for it is wired into that config | `hawk op scan config <scanId>` (effective config the scan ran with); fall back to reading the local `.yml` files | Every discovered surface maps to a config that exists, ran this scan, and has its spec wired if one exists | `surface-unscanned`, `spec-not-wired` |
 | 4 | Health | Connection-failure spikes, timeout streaks, app unreachable mid-scan; all-4xx response patterns on a configured surface | `hawk op scan metrics <scanId>` for flags; `hawk op scan get <scanId>` for `url_count` and status summary | No connection-failure spike, no timeout streak, no mid-scan unreachability, and no configured surface returning all 4xx | `env-unreachable`, `all-4xx` |
 
 **Signal classes.** Every non-evidence gap above is either config-class or environment-class
 — the class decides what you're allowed to do about it:
 
-- **Config-class** — `spec-not-wired`, `surface-unscanned`, `auth-wall` while the app is
-  demonstrably up, `all-4xx` on a configured surface (this is usually auth-shaped: the
-  surface is reachable but every request is being rejected). These route into the normal
-  bounded config iteration described below.
+- **Config-class** — `spec-not-wired`, `surface-unscanned`, `auth-validate-failed` (the fix
+  lives in the config's `authentication:` block), `auth-wall` while the app is demonstrably
+  up, `all-4xx` on a configured surface (this is usually auth-shaped: the surface is
+  reachable but every request is being rejected). These route into the normal bounded
+  config iteration described below.
 - **Environment-class** — `env-unreachable`, covering connection-failure spikes, timeout
   streaks, and the app going unreachable mid-scan. **Never touch the config for these.**
   Verify the app is up using the same playbook as SKILL.md's Step 1c / Step 6 exit-1
@@ -162,8 +163,9 @@ just degrade silently and keep going:
   before/after number: `url_count` from `hawk op scan get <scanId>`. You lose the
   untouched-route list; still report the number as evidence, just note it's coarser.
 - **Surface-completeness (check 3)** degrades from reading the effective scan config via
-  `hawk op scan config` to reading the local `.yml` files directly to confirm a surface's
-  config exists and its spec block is present.
+  `hawk op scan config` to local signals: read the per-surface `.yml` files directly to
+  confirm a surface's config exists and its spec block is present, and use the
+  `hawk validate config` output for each file to confirm the config is structurally sound.
 - **Auth and health (checks 2 and 4)** are unaffected — `hawk op scan metrics` and
   `hawk validate auth` work on all hawk op versions and remain the primary signal either way.
 
