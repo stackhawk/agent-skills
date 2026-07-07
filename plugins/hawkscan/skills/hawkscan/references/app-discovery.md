@@ -1,4 +1,4 @@
-# App Discovery Reference
+# App Discovery — Docs-First Source Table
 
 This file's discovery procedure has been superseded by `references/scan-planning.md` — see
 Step 1a in SKILL.md for the full workflow (per-surface detection, route-inventory

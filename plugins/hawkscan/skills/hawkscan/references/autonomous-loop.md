@@ -48,7 +48,21 @@ hawk scan --json-output
 
 Capture `scan.id` from the JSON output — you'll need it for rescan.
 
-**5. If findings exist**
+**5. Quality gate**
+
+Before triaging findings, run the quality gate (`scan-quality.md`'s four checks — coverage,
+auth, surface-completeness, health) against this scan. On config-class gaps
+(`spec-not-wired`, `surface-unscanned`, `auth-validate-failed`, `auth-wall`, `all-4xx`), loop
+back to config tuning with a single additive-only batched fix and rescan once — the
+autonomous cap here is **1** config-fix iteration (interactive workflows get 2; this
+unattended loop gets 1). On environment-class gaps (`env-unreachable`: connection failures,
+timeouts, app unreachable mid-scan), never edit the config: verify the app is up, retry the
+scan once for free, and if the same environment-class signal recurs on the retry, report it
+as an environment problem and stop — do not retry again or reach for a config edit. At the
+cap, or once the gate is clean, proceed to the next step regardless — findings are always
+reported and fixable independent of gate state.
+
+**6. If findings exist**
 
 Run the Step 5 triage filter first (per-path `status` field):
 - Skip `FALSE_POSITIVE` / `RISK_ACCEPTED` paths entirely
@@ -63,7 +77,7 @@ Fix in severity order: High → Medium → Low; within same severity: injection 
 
 Commit format: `fix: resolve [CWE-XXX] [vulnerability type] found by HawkScan`
 
-**6. Rescan**
+**7. Rescan**
 
 Rescan is the default for all fix-verify cycles:
 
@@ -87,12 +101,20 @@ Decision table for when you're tempted to skip rescan:
 | "Rescan might miss something" | Rescan re-runs exactly the plugins that fired on the parent scan. It's more targeted, not less. |
 | "The fix added new endpoints that need scanning" | This IS a full-scan condition — use full scan. |
 
-**7. Report**
+**8. Quality gate (post-rescan)**
 
-- If clean: "Rescan complete. Zero new findings. All security issues have been resolved."
+Run the same gate again against the rescan, per the rule that it runs after every scan and
+rescan alike. The autonomous cap still applies per config across this whole task (scan +
+rescan together), not per gate invocation — don't treat the rescan as a fresh budget for a
+second config-fix iteration.
+
+**9. Report**
+
+- If clean **and no gate gaps remain open**: "Rescan complete. Zero new findings. All security issues have been resolved."
+- If clean **but gate gaps remain open** (cap reached with config-class gaps still unresolved, or an environment-class gap that recurred): report the gaps by reason identifier, the coverage evidence, and the remaining next steps. Do not say "all security issues have been resolved" or otherwise imply the app is done and secure while a gap is open.
 - If findings remain: "Rescan found [N] remaining issues that require manual review:" and list them.
 - If findings were filtered by triage state: "Skipped [X] findings already triaged as RISK_ACCEPTED / FALSE_POSITIVE."
-- If findings were marked FALSE_POSITIVE in Step 5: "Marked [N] findings as false positive — review at https://app.stackhawk.com/scans/\<scanId\>".
+- If findings were marked FALSE_POSITIVE in step 6: "Marked [N] findings as false positive — review at https://app.stackhawk.com/scans/\<scanId\>".
 
 ---
 
@@ -102,4 +124,6 @@ Decision table for when you're tempted to skip rescan:
 - **Max one fix-rescan cycle per task.** If the rescan still has findings after fixing, report the remaining issues rather than looping indefinitely. The user can ask for a follow-up.
 - **Always announce what you're doing.** The developer should see "Running security scan...", "Found N vulnerabilities, fixing...", "Rescanning to verify..." in the output.
 - **Interruptible.** If the user interrupts or says to stop, stop immediately.
-- **Don't block on scan failures.** If `hawk scan` exits with code 1 (config error, app unreachable), report the error and suggest fixes rather than retrying in a loop.
+- **Don't block on scan failures.** If `hawk scan` exits with code 1 (config error, app unreachable), report the error rather than retrying in a loop — with one exception: an environment-class failure (connection refused, timeout, unreachable) gets exactly one free retry after verifying the app is up. If the same environment-class signal recurs on that retry, report it and stop; don't retry a second time.
+- **Report gate gaps — never silently accept exit 0 from a thin scan.**
+- **Never claim "done and secure" while gate gaps are open.**

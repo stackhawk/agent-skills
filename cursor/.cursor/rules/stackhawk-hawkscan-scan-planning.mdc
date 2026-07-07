@@ -146,9 +146,9 @@ so the rationale for what scans first is visible, not implicit.
 For each surface:
 
 1. Wire the spec you found or confirmed in discovery: `openApiConf` for REST,
-   `graphqlConf` for GraphQL, `grpcConf` + the `.proto` for gRPC. Use
-   `hawk config show <field-path> --text` for the exact field shape — don't hand-write
-   the block from memory.
+   `graphqlConf` for GraphQL, `grpcConf` + the `.proto` for gRPC, `soapConf` + the WSDL for
+   SOAP. Use `hawk config show <field-path> --text` for the exact field shape — don't
+   hand-write the block from memory.
 2. Configure auth per Phase 1c in SKILL.md — one auth block per surface if surfaces have
    different login mechanisms (common when a gateway and an upstream service use different
    credential types).
