@@ -1,6 +1,6 @@
 {
   "name": "wingman",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "StackHawk umbrella plugin \u2014 installs the default StackHawk skill set (hawkscan, api, data-seed, optimize) in one command for the combined hawk CLI.",
   "author": {
     "name": "StackHawk",

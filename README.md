@@ -123,16 +123,17 @@ Installs `hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, and 
 
 #### OpenCode
 
-Skills are auto-discovered from `.opencode/skills/`. Clone and copy:
+Skills are auto-discovered from `.opencode/skills/`. Clone and copy (`-L` dereferences
+the repo's internal skill symlinks so the copies work standalone):
 
 ```bash
 git clone https://github.com/stackhawk/agent-skills.git
 mkdir -p .opencode/skills
-cp -r agent-skills/.opencode/skills/* .opencode/skills/
+cp -rL agent-skills/.opencode/skills/* .opencode/skills/
 
 # Global install (all projects):
 mkdir -p ~/.config/opencode/skills
-cp -r agent-skills/.opencode/skills/* ~/.config/opencode/skills/
+cp -rL agent-skills/.opencode/skills/* ~/.config/opencode/skills/
 ```
 
 Installs `hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, and `stackhawk-optimize`.
