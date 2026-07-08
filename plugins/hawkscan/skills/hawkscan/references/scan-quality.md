@@ -67,11 +67,12 @@ Run all four after every scan. Each has its own command, pass condition, and a s
 reason identifier used when reporting a gap — this gate's own reporting (Step 4.5 in
 SKILL.md) uses these identifiers directly, so keep them exactly as written here across any
 edits to this file: `coverage-gap`, `spec-not-wired`, `surface-unscanned`,
-`auth-validate-failed`, `auth-wall`, `all-4xx`, `env-unreachable`.
+`auth-validate-failed`, `auth-wall`, `all-4xx`, `base-path-mismatch`, `env-unreachable`.
 
 | # | Check | What it measures | Command(s) | Pass condition | Reason identifier(s) |
 |---|-------|-------------------|------------|-----------------|------------------------|
 | 1 | Coverage | Scanned URIs vs. the expectation derived above | `hawk op scan uris <scanId> --format json` diffed against the expectation list | **Never fails the gate.** Always computed and reported as evidence, e.g. "14 of 41 planned routes untouched," with the untouched routes listed | `coverage-gap` (evidence only) |
+| 1b | Base-path resolve | Whether spec-derived paths actually resolve against the app, or systematically 404 because the config and spec disagree on the base/context path | In the scanned-URI list, look for the same route appearing both prefixed and un-prefixed (e.g. `/api/v1/authors` **and** bare `/authors`), or a cluster of spec paths all 404 while a prefixed variant succeeds; confirm with a curl of `host + spec-path` vs the prefixed variant | No systematic base-path 404 pattern — spec paths resolve to real routes. This **does** fail the gate (structural). Fix per `openapi-specs.md` "Base path and context path" | `base-path-mismatch` |
 | 2 | Auth | Live auth validation before the scan; auth-wall signals during it | `hawk validate auth <surface config>.yml` pre-scan (against the config being gated — repos with multiple per-surface configs validate each one); `hawk op scan metrics <scanId>` for auth-wall flags | `validate auth` exited 0, and no auth-wall flag on any surface that has `authentication:` configured | `auth-validate-failed`, `auth-wall` |
 | 3 | Surface-completeness | Every surface discovery found has a config, that config actually ran, and any spec found for it is wired into that config | `hawk op scan config <scanId>` (effective config the scan ran with); fall back to reading the local `.yml` files | Every discovered surface maps to a config that exists, ran this scan, and has its spec wired if one exists | `surface-unscanned`, `spec-not-wired` |
 | 4 | Health | Connection-failure spikes, timeout streaks, app unreachable mid-scan; all-4xx response patterns on a configured surface | `hawk op scan metrics <scanId>` for flags; `hawk op scan get <scanId>` for `url_count` and status summary | No connection-failure spike, no timeout streak, no mid-scan unreachability, and no configured surface returning all 4xx | `env-unreachable`, `all-4xx` |
@@ -82,8 +83,9 @@ edits to this file: `coverage-gap`, `spec-not-wired`, `surface-unscanned`,
 - **Config-class** — `spec-not-wired`, `surface-unscanned`, `auth-validate-failed` (the fix
   lives in the config's `authentication:` block), `auth-wall` while the app is demonstrably
   up, `all-4xx` on a configured surface (this is usually auth-shaped: the surface is
-  reachable but every request is being rejected). These route into the normal bounded
-  config iteration described below.
+  reachable but every request is being rejected), and `base-path-mismatch` (the fix is
+  aligning `app.host` and the spec's base/context path — `openapi-specs.md`). These route
+  into the normal bounded config iteration described below.
 - **Environment-class** — `env-unreachable`, covering connection-failure spikes, timeout
   streaks, and the app going unreachable mid-scan. **Never touch the config for these.**
   Verify the app is up using the same playbook as SKILL.md's Step 1c / Step 6 exit-1
