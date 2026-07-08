@@ -1,6 +1,6 @@
 {
   "name": "hawkscan",
-  "version": "2.1.3",
+  "version": "2.2.0",
   "description": "Configure, run, and interpret HawkScan DAST results. Generates stackhawk.yml configs, runs scans via CLI or Docker, and transforms security findings into prioritized fix tasks for your coding agent.",
   "author": {
     "name": "StackHawk",

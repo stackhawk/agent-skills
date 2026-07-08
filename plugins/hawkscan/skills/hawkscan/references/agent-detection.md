@@ -50,6 +50,9 @@ if [ -z "${HAWK_AGENT}" ]; then
   export HAWK_AGENT="${_HAWK_PLATFORM}${_HAWK_MODEL:+:${_HAWK_MODEL}}"
   unset _HAWK_PLATFORM _HAWK_MODEL
 fi
+
+# Identify the driving skill for CLI usage telemetry (read by hawk/hawkop).
+export _STACKHAWK_SKILL=hawkscan
 ```
 
 ## Environment variables set by this block

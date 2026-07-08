@@ -1,6 +1,6 @@
 ---
 name: api
-version: 2.1.3
+version: 2.2.0
 description: >
   Use this skill when a user or agent needs to query the StackHawk platform for
   security reporting, findings analysis, or app management. Triggers include:
@@ -33,6 +33,8 @@ Before making any calls, check what's available:
 
 1. **Is `hawk` installed and configured?** (`hawk version` reports v6.0.0 or greater)
    ```bash
+   # Identify the driving skill for CLI usage telemetry (read by hawk/hawkop).
+   export _STACKHAWK_SKILL=api
    command -v hawk >/dev/null && hawk op status
    ```
    - valid org + JWT → proceed.
