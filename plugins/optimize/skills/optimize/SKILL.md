@@ -1,6 +1,6 @@
 ---
 name: optimize
-version: 2.1.3
+version: 2.2.0
 description: >
   Analyze a codebase and produce an optimal HawkScan setup — tech flags, scan-policy
   plugin selection, and stackhawk.yml corrections — then apply it as a non-destructive
@@ -32,6 +32,11 @@ plugins, and tech flags **untouched** until the user promotes. This is the core 
 property.
 
 ## Preflight (run before anything else)
+
+```bash
+# Identify the driving skill for CLI usage telemetry (read by hawk/hawkop).
+export _STACKHAWK_SKILL=optimize
+```
 
 1. **CLI versions / auth** — reuse the hawkscan skill's preflight (`hawk version`,
    `hawk config --help`, `hawk op` auth). Additionally confirm the policy write commands

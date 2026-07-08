@@ -1,6 +1,6 @@
 ---
 name: stackhawk-data-seed
-version: 2.1.3
+version: 2.2.0
 description: >
   Set up checked-in seed data so authenticated HawkScan can reach non-trivial
   paths. Drives the `hawk perch seed` preflight, designs the minimum seed
@@ -51,6 +51,8 @@ If not a git repo, ask the user to `cd` to the target repo and re-invoke.
 This skill drives the caller-driven `hawk perch seed` subcommands (`validate` and `finalize`). Probe for them directly:
 
 ```bash
+# Identify the driving skill for CLI usage telemetry (read by hawk/hawkop).
+export _STACKHAWK_SKILL=stackhawk-data-seed
 if hawk perch seed validate --help >/dev/null 2>&1 && hawk perch seed finalize --help >/dev/null 2>&1; then
   echo "SEED-FLOW-OK"
 else
