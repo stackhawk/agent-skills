@@ -143,6 +143,14 @@ SPA frontend goes last (per the SPA guidance above, it typically finds only head
 issues). This order is not cosmetic — state it explicitly in the summary you show the user,
 so the rationale for what scans first is visible, not implicit.
 
+**Naming and platform mapping for multi-surface repos:** a single-surface repo uses plain
+`stackhawk.yml`. With multiple surfaces, name each config `stackhawk-<surface>.yml` (e.g.
+`stackhawk-rest.yml`, `stackhawk-graphql.yml`) and run each scan as
+`hawk scan stackhawk-<surface>.yml`. All surfaces share one `applicationId`; give each
+surface its own environment (e.g. `dev-rest`, `dev-graphql`). Findings compare scan-to-scan
+within an environment, so per-surface envs keep each surface's history coherent instead of
+interleaving a REST scan's baseline with a GraphQL scan's.
+
 For each surface:
 
 1. Wire the spec you found or confirmed in discovery: `openApiConf` for REST,
