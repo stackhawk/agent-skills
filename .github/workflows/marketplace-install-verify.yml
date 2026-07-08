@@ -19,15 +19,18 @@ name: Marketplace Install Verify
 #          end-to-end remote UX once generated catalogs are merged to the marketplace main.
 #
 # The catalog plugin sources are REMOTE sources (url/repo + path + ref + sha), so
-# each tool clones agent-skills to fetch the plugin. CI has no SSH key. Claude Code
-# and Codex catalogs use "git-subdir" with an explicit HTTPS url, so those jobs need
-# no workaround — the claude-code job deliberately does NOT rewrite git SSH->HTTPS,
-# because that rewrite would mask a regression back to an SSH-only source type (this
-# is how a previous "github"-source SSH-only bug went undetected: CI always rewrote
-# SSH->HTTPS, so `plugin install` never hit the SSH path a real no-SSH-keys customer
-# does). Copilot's catalog still uses a "github" source (its schema doesn't accept
-# git-subdir) but that install path already goes over HTTPS without a config
-# rewrite, so its job doesn't need one either.
+# each tool clones agent-skills to fetch the plugin. CI has no SSH key.
+#
+# The claude-code and copilot jobs deliberately do NOT rewrite git SSH->HTTPS,
+# unlike codex/agy below. That rewrite would mask a regression back to an SSH-only
+# source type (this is how a previous "github"-source SSH-only bug in Claude Code
+# went undetected: CI always rewrote SSH->HTTPS, so `plugin install` never hit the
+# SSH path a real no-SSH-keys customer does). Claude Code's catalog now uses
+# "git-subdir" with an explicit HTTPS url, sidestepping that path entirely; Copilot's
+# catalog still uses a "github" source (its schema doesn't accept git-subdir) but
+# that install already goes over HTTPS without a config rewrite. Codex's catalog is
+# also git-subdir/HTTPS and likely doesn't need its rewrite step either, but that
+# hasn't been verified — left in place rather than assumed safe.
 
 on:
   workflow_dispatch:
