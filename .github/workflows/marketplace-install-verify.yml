@@ -18,9 +18,16 @@ name: Marketplace Install Verify
 #   remote: `<tool> marketplace add owner/repo` — the literal user command. Proves the
 #          end-to-end remote UX once generated catalogs are merged to the marketplace main.
 #
-# The catalog plugin sources are REMOTE github sources (repo + path + ref + sha), so
-# each tool clones agent-skills to fetch the plugin. CI has no SSH key, so every
-# catalog job rewrites git SSH->HTTPS first.
+# The catalog plugin sources are REMOTE sources (url/repo + path + ref + sha), so
+# each tool clones agent-skills to fetch the plugin. CI has no SSH key. Claude Code
+# and Codex catalogs use "git-subdir" with an explicit HTTPS url, so those jobs need
+# no workaround — the claude-code job deliberately does NOT rewrite git SSH->HTTPS,
+# because that rewrite would mask a regression back to an SSH-only source type (this
+# is how a previous "github"-source SSH-only bug went undetected: CI always rewrote
+# SSH->HTTPS, so `plugin install` never hit the SSH path a real no-SSH-keys customer
+# does). Copilot's catalog still uses a "github" source (its schema doesn't accept
+# git-subdir) but that install path already goes over HTTPS without a config
+# rewrite, so its job doesn't need one either.
 
 on:
   workflow_dispatch:
@@ -72,8 +79,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # need tags for `git describe` in local mode
-      - name: Rewrite git SSH->HTTPS
-        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
       - name: Install Claude Code CLI (native)
         run: |
           curl -fsSL https://claude.ai/install.sh | bash
@@ -190,8 +195,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: Rewrite git SSH->HTTPS
-        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
       - uses: actions/setup-node@v6
         with:
           node-version: "20"

@@ -1,6 +1,6 @@
 ---
 name: skill-authoring
-version: 2.1.1
+version: 2.1.2
 description: >
   Guides authoring and maintaining agent skills in this repository — enforcing
   Anthropic best practices, bumping versions, regenerating Cursor rules, and
