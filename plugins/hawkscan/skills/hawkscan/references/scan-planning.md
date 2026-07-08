@@ -65,17 +65,24 @@ technique:
 | REST — Django | `urls.py` | count `path(`/`re_path(` entries: `grep -rc 'path(' **/urls.py` |
 | REST — Go (gin/mux/chi) | `router.GET(`, `r.HandleFunc(`, `mux.NewRouter()` | `grep -rEo '\.(GET\|POST\|PUT\|DELETE\|PATCH)\(' .` |
 | REST — .NET | `[HttpGet]`, `[HttpPost]`, `[Route(...)]` attributes | `grep -rEo '\[Http(Get\|Post\|Put\|Delete\|Patch)\]' .` |
-| REST — OpenAPI spec | checked-in `openapi.{json,yaml,yml}`, `swagger*.{json,yaml}`; or served at `/v3/api-docs`, `/swagger.json`, `/openapi.json` once the app is running | count `paths:` entries: `yq '.paths | keys | length' openapi.yaml` (or the JSON equivalent) |
+| REST — OpenAPI spec | checked-in `openapi.{json,yaml,yml}`, `swagger*.{json,yaml}`; or served at `/v3/api-docs`, `/swagger.json`, `/openapi.json` once the app is running | count `paths:` entries: `yq '.paths | keys | length' openapi.yaml` (or the JSON equivalent). **A found spec is a hypothesis, not a win — see `openapi-specs.md` for getting an *accurate* one.** |
 | GraphQL | schema files (`*.graphql`, `*.gql`); server libs in manifests (`graphql`, `apollo-server`, `graphql-yoga`, `graphene`, etc.); a `/graphql` endpoint | count root fields: `grep -A50 'type Query' schema.graphql \| grep -cE '^\s+\w+'` (repeat for `type Mutation`) |
 | gRPC | `.proto` files; `grpc`/`protobuf` deps in the manifest | count `rpc` methods per service: `grep -c '^\s*rpc ' *.proto` |
 | JSON-RPC / SOAP | fixed-path JSON-RPC dispatcher; WSDL files (`*.wsdl`), SOAP endpoint patterns | count `<operation` elements in the WSDL, or dispatcher method registrations |
 | SPA (React, Vue, Angular, Svelte, Next, Nuxt) | client-rendered JS framework in the manifest; routes not present in the initial HTML | not route-counted the same way — see below |
 
-For every surface, explicitly record whether an OpenAPI/schema/proto source is
-**instrumented** (checked in, or served and reachable) or **missing**. That instrumented/
-missing verdict, together with the route count and how it was derived, is the contract the
-quality gate reuses after the scan to diff actual coverage against this expectation — write
-it down precisely enough that someone re-running the same grep gets the same number.
+For every surface, record whether an OpenAPI/schema/proto source is **verified-accurate**
+(present *and* proven to resolve against the running app), **stale/unverified** (a spec
+exists but its paths haven't been proven to match the app — the default state of any
+checked-in file), or **missing**. Do not collapse the first two: a checked-in `openapi.yaml`
+whose paths don't resolve is functionally missing and produces a wall of 404s. For REST
+specifically, getting to *verified-accurate* — preferring a spec the framework serves from
+the running app, suggesting the code/build change that makes it accurate, and running the
+mandatory resolve-check — is its own procedure in `openapi-specs.md`; use it rather than
+treating "a spec file exists" as done. That verdict, together with the route count and how it
+was derived, is the contract the quality gate reuses after the scan to diff actual coverage
+against this expectation — write it down precisely enough that someone re-running the same
+grep gets the same number.
 
 **SPA handling:** when a surface is a client-rendered JS front end, decide whether a backing
 API also lives in this repo. The backing API is almost always the higher-DAST-value target —
@@ -91,10 +98,13 @@ its auth can't be exercised (no test credential, no way to obtain a token outsid
 flow), recommend a concrete code change instead of guessing at a scan configuration that
 won't actually reach the API surface. Typical recommendations:
 
-- **No OpenAPI spec found.** Recommend enabling a spec-generation library already idiomatic
-  for the stack: `springdoc-openapi` for Spring, `swagger-jsdoc`/`@nestjs/swagger` for
-  Node, `drf-yasg`/`drf-spectacular` for Django REST Framework, `swashbuckle` for .NET.
-  Point at the smallest change that exposes `/v3/api-docs` or an equivalent static file.
+- **No accurate OpenAPI spec.** This covers both "no spec at all" and "a spec exists but its
+  paths don't resolve against the app" — treat them the same. The highest-value recommendation
+  is a small code/build change that makes the framework *generate and serve* an accurate spec
+  (idiomatic tooling exists for most stacks). The full framework-generic procedure — probe for
+  a served spec, the per-stack tooling matrix, how to write a concrete suggestion, and the
+  base-path/resolve verification — is in `openapi-specs.md`. Do that rather than wiring a
+  stale checked-in file and hoping.
 - **No test credential exists.** Recommend a test-only token issuer or seed script (a
   dev-only endpoint or fixture that mints a valid session/JWT) gated behind an environment
   check so it never ships to production.
@@ -150,7 +160,10 @@ For each surface:
 1. Wire the spec you found or confirmed in discovery: `openApiConf` for REST,
    `graphqlConf` for GraphQL, `grpcConf` + the `.proto` for gRPC, `soapConf` + the WSDL for
    SOAP. Use `hawk config show <field-path> --text` for the exact field shape — don't
-   hand-write the block from memory.
+   hand-write the block from memory. For REST, the spec must be *verified-accurate* before
+   it's wired: get it and prove it resolves per `openapi-specs.md` (a wrong spec silently
+   404s every operation), and make sure `app.host` and the spec agree on the base/context
+   path.
 2. Configure auth per Phase 1c in SKILL.md — one auth block per surface if surfaces have
    different login mechanisms (common when a gateway and an upstream service use different
    credential types).

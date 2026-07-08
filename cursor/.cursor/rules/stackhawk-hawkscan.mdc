@@ -191,6 +191,10 @@ Do not proceed to Step 3 until validation passes.
 → API-type-specific config (OpenAPI, GraphQL, gRPC, seed paths, spider tuning):
   [`references/config-patterns.md`](references/config-patterns.md)
 
+→ Getting an **accurate** OpenAPI spec (prefer a framework-served spec, suggest the
+  code/build change that generates one, verify it resolves before scanning — a wrong spec
+  silently 404s every path): [`references/openapi-specs.md`](references/openapi-specs.md)
+
 ### Phase 1c: Authentication Configuration
 
 Use `hawk config show` to fetch the canonical recipe for the app's auth pattern.
@@ -339,7 +343,7 @@ and fixed; a thin scan that missed surface can still have found something real.
 Run the four structural checks and derive the expectation fresh each time, exactly as
 `references/scan-quality.md` describes — coverage, auth, surface-completeness, and health.
 On config-class gaps (`spec-not-wired`, `surface-unscanned`, `auth-validate-failed`,
-`auth-wall`, `all-4xx`), loop back to Step 2b with an additive-only fix, batch every gap
+`auth-wall`, `all-4xx`, `base-path-mismatch`), loop back to Step 2b with an additive-only fix, batch every gap
 into one edit pass, and rescan once. Iteration cap: 2 interactive / 1 autonomous, per
 config, counted in rescans. On environment-class gaps (`env-unreachable`), never edit
 config — verify the app is up, retry once for free, and stop if it recurs. Multi-config
