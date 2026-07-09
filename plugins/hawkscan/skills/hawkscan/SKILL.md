@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 2.3.2
+version: 2.3.3
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Performs
@@ -34,11 +34,19 @@ This skill requires **hawk v6.0.0 or newer**. Verify:
 ```bash
 hawk version
 hawk config --help >/dev/null 2>&1 || echo "MISSING: hawk config — upgrade hawk to v6.0.0+"
+hawk skills status
 ```
 
 If hawk is older than `6.0.0` or `hawk config --help` fails, stop and tell the user to
 upgrade before proceeding. Do not inline auth recipes from memory — they live in
 `hawk config show` and are stale by design when hardcoded.
+
+**`hawk skills status`** reports whether the installed StackHawk agent skills are current.
+If it lists anything out of date, surface the exact upgrade command it prints (e.g.
+`/plugin marketplace update stackhawk && /plugin update hawkscan`) and recommend the user
+update before continuing — a stale skill may be missing fixes for the very issues you'll hit.
+It's a recommendation, not a hard stop: proceed if the user prefers. (If the subcommand isn't
+recognized, the installed hawk predates it — skip this check.)
 
 See `references/installation.md` for upgrade and install instructions.
 
