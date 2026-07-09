@@ -9,11 +9,12 @@ person's account), mints **short-lived** tokens (~1h) **per workflow run**, is r
 (`contents:read`), and the token is auto-revoked when the job ends. A PAT would expire, be tied to
 a user, and need manual rotation.
 
-**Key fact that makes this cheap:** the claude-code adapter clones with a plain
-`git clone https://github.com/stackhawk-research/<repo>.git` (`evals/harnesses/claude-code/adapter.py:138`),
-then `git fetch origin <pin>` + `git checkout <pin>`. Git applies an `insteadOf` URL rewrite on
-**every** transport operation, so a workflow-level `git config --global url.<token@…>.insteadOf`
-authenticates both the clone and the pin fetch **with zero adapter code change.**
+**How the token reaches the clone:** the claude-code adapter clones the target
+(`git clone` + `git fetch origin <pin>` + `git checkout <pin>`) in
+`evals/harnesses/claude-code/adapter.py`. When `RESEARCH_REPO_TOKEN` is set, the adapter embeds it
+in the clone URL for its own clone/fetch, then **scrubs it** (drops the remote, pops it from the
+agent env, redacts it from errors) before the discovery agent runs — see "Workflow wiring" below.
+The token is never written to `~/.gitconfig` or left in `.git/config`.
 
 The two related files in this directory:
 - `research-repo-reader-app.manifest.json` — the GitHub App manifest (source of truth for the App's name/permissions).
