@@ -75,7 +75,7 @@ Populate the JSON result with:
 # Sonnet, not haiku: the answer-key judge GATES discovery verdicts via must-hit
 # factors, and haiku false-failed semantically-correct matches (e.g. "Rails 8.0
 # Hotwire" vs "Rails 8.0 ... Hotwire"). A gating judge needs a reliable grader.
-DEFAULT_GRADER_MODEL = "claude-sonnet-4-6"
+DEFAULT_GRADER_MODEL = "claude-sonnet-5"
 GRADER_BUDGET_USD = "0.25"
 
 
