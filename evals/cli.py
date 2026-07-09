@@ -87,6 +87,7 @@ def main() -> None:
             trace = (f"# {p.id} (returncode={run.returncode})\n"
                      f"## error\n{run.error or ''}\n"
                      f"## stderr_tail\n{run.stderr_tail}\n"
+                     f"## guard_denials\n" + "\n".join(run.guard_denials) + "\n"
                      f"## output_text\n{run.output_text}\n"
                      f"## bash_commands\n" + "\n".join(run.bash_commands) + "\n")
             (out_dir / f"{p.id}.trace.txt").write_text(trace)

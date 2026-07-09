@@ -82,6 +82,11 @@ def run_process_checks(run: ParsedRun, checks: list[dict]) -> list[ProcessCheckR
         else:
             passed = signal_hit is not None and (anti_hit is None if antis else True)
 
+        # Surface WHAT the read-only guard denied so a guard_clean failure is
+        # diagnosable from the artifact without re-running the (costly) cell.
+        if ctype == "guard_clean" and run.guard_denials:
+            anti_hit = "; ".join(d.strip() for d in run.guard_denials)[:500]
+
         results.append(ProcessCheckResult(
             id=check["id"], passed=passed,
             severity=check.get("severity", "warning"),
