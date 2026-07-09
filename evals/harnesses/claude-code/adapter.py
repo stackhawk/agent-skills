@@ -150,7 +150,7 @@ class ClaudeCodeAdapter:
                 # with --dangerously-skip-permissions and the guard does not block file
                 # reads, so we must not leave the token resident: after checkout we drop
                 # the remote (scrubs it from .git/config) and strip it from the agent's
-                # env, and redact it from any surfaced error. See RESEARCH_REPO_AUTH.md.
+                # env, and redact it from any surfaced error.
                 token = os.environ.get("RESEARCH_REPO_TOKEN", "").strip()
                 clone_url = target_repo.url
                 # Only attach the token to the org it is scoped to. It's an

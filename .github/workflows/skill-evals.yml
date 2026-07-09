@@ -122,7 +122,7 @@ jobs:
       # short-lived, read-only GitHub App installation token and hand it to the eval as
       # RESEARCH_REPO_TOKEN. The adapter injects it into its OWN clone/fetch only, then
       # scrubs it from disk + env before the (--dangerously-skip-permissions) agent runs,
-      # so it is never resident during exploration. See .github/RESEARCH_REPO_AUTH.md.
+      # so it is never resident during exploration.
       # Best-effort: if the secrets are absent (e.g. a fork PR) the token is empty and the
       # discovery cells fall back to plumbing-failed "go investigate" signals while the
       # rest of the hawkscan suite still runs.
