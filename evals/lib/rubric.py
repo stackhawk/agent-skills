@@ -72,7 +72,10 @@ Populate the JSON result with:
 # Cheap, capable grader by default — judging a transcript against a rubric is a
 # structured classification task. Budget must cover the full prompt (transcript +
 # rubric + schema); 0.10 hit error_max_budget_usd, so use a roomier cap.
-DEFAULT_GRADER_MODEL = "claude-haiku-4-5-20251001"
+# Sonnet, not haiku: the answer-key judge GATES discovery verdicts via must-hit
+# factors, and haiku false-failed semantically-correct matches (e.g. "Rails 8.0
+# Hotwire" vs "Rails 8.0 ... Hotwire"). A gating judge needs a reliable grader.
+DEFAULT_GRADER_MODEL = "claude-sonnet-4-6"
 GRADER_BUDGET_USD = "0.25"
 
 
