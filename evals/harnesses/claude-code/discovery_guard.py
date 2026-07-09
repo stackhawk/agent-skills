@@ -29,7 +29,11 @@ def main():
            or re.search(r"\b(bootrun|runserver|uvicorn|gunicorn|hypercorn|nodemon)\b", low) \
            or re.search(r"spring-boot:run|flask\s+run|mix\s+phx\.server|air\b|./gradlew\s+bootrun", low):
             deny("starting the app/server/container is out of scope for read-only discovery")
-        if re.search(r"\b(rm|mv|tee|dd)\b|>\s*\S|>>", cmd):
+        # Deny destructive commands and redirections that WRITE A REAL FILE. Explicitly
+        # allow stderr/stdout suppression (`2>/dev/null`, `>/dev/null`) and fd-dups
+        # (`2>&1`, `>&2`), which are read-only exploration idioms, not mutations.
+        if re.search(r"\b(rm|mv|tee|dd)\b", cmd) \
+           or re.search(r">>?\s*(?!/dev/null\b)(?!&\d)\S", cmd):
             deny("file mutation not allowed")
         classic_net_tools = r"\b(curl|wget|nc|ncat|telnet|ssh|scp|rsync|sftp)\b"
         interpreter_tools = r"\b(python3?|node|nodejs|ruby|perl|php|pip3?|npm|npx|gem)\b"

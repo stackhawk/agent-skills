@@ -137,6 +137,43 @@ class DiscoveryGuardEgress(unittest.TestCase):
         result = run_guard(event)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_allows_stderr_suppression_to_devnull(self):
+        event = {"tool_name": "Bash",
+                 "tool_input": {"command": "grep -r foo . 2>/dev/null"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_allows_fd_dup_redirect(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "cat x 2>&1"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_allows_stdout_and_stderr_to_devnull(self):
+        event = {"tool_name": "Bash",
+                 "tool_input": {"command": "find . -name '*.yml' >/dev/null 2>&1"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_denies_redirect_to_file(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "echo hi > out.txt"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_denies_append_to_file(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "echo hi >> log.txt"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_denies_rm(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "rm -rf build"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_denies_tee_write(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "echo x | tee out.txt"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 2, result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
