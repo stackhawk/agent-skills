@@ -135,7 +135,6 @@ def grade_rubric(run: ParsedRun, skill: str, run_id: str, *,
 # checks (must-hit factor -> blocking; soft factor -> warning).
 # ---------------------------------------------------------------------------
 
-MUST_HIT = {"technology", "api_style", "host"}
 FACTORS = ["technology", "run_command", "host", "api_style", "spa", "auth"]
 
 
@@ -181,17 +180,21 @@ def _judge_factors(parsed: dict, key: dict, *, grader_model=None, timeout=120) -
 def judge_answer_key(run: ParsedRun, answer_key_path: str, *,
                      grader_model=None, timeout=120) -> list[ProcessCheckResult]:
     """Score each DISCOVERY factor against the answer key -> per-factor checks.
-    must-hit factor -> blocking severity; soft factor -> warning."""
+
+    All factors are WARNING severity: the judge informs the discovery *score* but does
+    not hard-gate the verdict (the deterministic signal-presence + read-only checks
+    gate that). LLM-judged answer completeness varies run-to-run, so it tracks
+    discovery health as a score trend rather than a flaky binary pass/fail. Answer-key
+    `must_hit` flags are retained as documentation of which factors matter most."""
     key = json.loads(Path(answer_key_path).read_text())
     parsed = parse_discovery_block(run.output_text)
     verdicts = _judge_factors(parsed, key, grader_model=grader_model, timeout=timeout)
     out: list[ProcessCheckResult] = []
     for f, spec in key["factors"].items():
         passed = bool(verdicts.get(f, False))
-        must = spec.get("must_hit", f in MUST_HIT)
         out.append(ProcessCheckResult(
             id=f"answer_key:{f}", passed=passed,
-            severity="blocking" if must else "warning",
+            severity="warning",
             signal_found=(parsed.get(f) if passed else None),
             anti_found=(f"expected≈{spec['value']!r} got {parsed.get(f, '(missing)')!r}"
                         if not passed else None),

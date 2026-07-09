@@ -29,8 +29,9 @@ class JudgeAnswerKey(unittest.TestCase):
         self.assertEqual(d["technology"], "Go")
         self.assertEqual(d["api_style"], "REST")
 
-    def test_must_hit_mismatch_is_blocking_fail(self):
-        # api_style expected gRPC, agent said REST -> blocking fail
+    def test_factor_mismatch_is_scored_warning_not_blocking(self):
+        # api_style expected gRPC, agent said REST -> fails, but as a scored
+        # WARNING (judge informs score; deterministic checks gate the verdict).
         replies = {"technology": True, "run_command": True, "host": True,
                    "api_style": False, "spa": True, "auth": True}
         with TemporaryDirectory() as d:
@@ -40,7 +41,9 @@ class JudgeAnswerKey(unittest.TestCase):
                 results = rubric.judge_answer_key(ParsedRun(output_text=DISCOVERY), str(kp))
         by_id = {r.id: r for r in results}
         self.assertFalse(by_id["answer_key:api_style"].passed)
-        self.assertEqual(by_id["answer_key:api_style"].severity, "blocking")
+        self.assertEqual(by_id["answer_key:api_style"].severity, "warning")
+        # even the "must_hit" factors are warning now
+        self.assertTrue(all(r.severity == "warning" for r in results))
         self.assertTrue(by_id["answer_key:technology"].passed)
 
     def test_all_correct_all_pass(self):
