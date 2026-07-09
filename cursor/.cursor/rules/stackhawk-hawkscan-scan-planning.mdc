@@ -107,10 +107,12 @@ won't actually reach the API surface. Typical recommendations:
 - **No accurate OpenAPI spec.** This covers both "no spec at all" and "a spec exists but its
   paths don't resolve against the app" — treat them the same. The highest-value recommendation
   is a small code/build change that makes the framework *generate and serve* an accurate spec
-  (idiomatic tooling exists for most stacks). The full framework-generic procedure — probe for
-  a served spec, the per-stack tooling matrix, how to write a concrete suggestion, and the
-  base-path/resolve verification — is in `openapi-specs.md`. Do that rather than wiring a
-  stale checked-in file and hoping.
+  (idiomatic tooling exists for most stacks). Before deriving one by hand, also check whether
+  the project publishes a spec *outside* the repo (a docs site, a `<project>/api-docs` repo, a
+  release asset) — mature OSS projects often do. The full framework-generic procedure — probe
+  for a served spec, the per-stack tooling matrix, how to write a concrete suggestion, the
+  external-spec check, and the base-path/resolve verification — is in `openapi-specs.md`. Do
+  that rather than wiring a stale checked-in file, or falling back to `seedPaths`, and hoping.
 - **No test credential exists.** Recommend a test-only token issuer or seed script (a
   dev-only endpoint or fixture that mints a valid session/JWT) gated behind an environment
   check so it never ships to production.
