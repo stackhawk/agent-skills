@@ -27,12 +27,22 @@ def main():
         if re.search(r"\b(docker|docker-compose|podman|nerdctl)\b", low) \
            or re.search(r"\b(npm|pnpm|yarn)\s+(start|run\s+dev|run\s+serve|serve)\b", low) \
            or re.search(r"\b(bootrun|runserver|uvicorn|gunicorn|hypercorn|nodemon)\b", low) \
-           or re.search(r"spring-boot:run|flask\s+run|mix\s+phx\.server|air\b|./gradlew\s+bootrun", low):
+           or re.search(r"spring-boot:run|flask\s+run|mix\s+phx\.server|air\b|./gradlew\s+bootrun", low) \
+           or re.search(r"\bphp\s+artisan\s+serve\b", low) \
+           or re.search(r"\b(bin/)?rails\s+(server|s)\b", low) \
+           or re.search(r"\b(go|cargo|dotnet)\s+run\b", low) \
+           or re.search(r"\bjava\s+-jar\b", low):
             deny("starting the app/server/container is out of scope for read-only discovery")
         # Deny destructive commands and redirections that WRITE A REAL FILE. Explicitly
         # allow stderr/stdout suppression (`2>/dev/null`, `>/dev/null`) and fd-dups
         # (`2>&1`, `>&2`), which are read-only exploration idioms, not mutations.
-        if re.search(r"\b(rm|mv|tee|dd)\b", cmd) \
+        # `patch` is matched only at a command position so reading a `*.patch` file
+        # (e.g. `cat foo.patch`) is not falsely denied.
+        if re.search(r"\b(rm|mv|cp|tee|dd)\b", cmd) \
+           or re.search(r"(?:^|[|;&]\s*)patch\b", low) \
+           or re.search(r"\b(sed|perl)\s+-i\b", low) \
+           or re.search(r"\bgit\s+apply\b", low) \
+           or re.search(r"\b(curl|wget)\b[^|;&]*\s-(o|O)\b", cmd) \
            or re.search(r">>?\s*(?!/dev/null\b)(?!&\d)\S", cmd):
             deny("file mutation not allowed")
         classic_net_tools = r"\b(curl|wget|nc|ncat|telnet|ssh|scp|rsync|sftp)\b"

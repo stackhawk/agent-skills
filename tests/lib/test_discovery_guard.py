@@ -174,6 +174,51 @@ class DiscoveryGuardEgress(unittest.TestCase):
         result = run_guard(event)
         self.assertEqual(result.returncode, 2, result.stderr)
 
+    # --- extended app-start launchers ---
+    def test_denies_php_artisan_serve(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "php artisan serve"}}
+        self.assertEqual(run_guard(event).returncode, 2)
+
+    def test_denies_rails_server(self):
+        for c in ("bin/rails server", "rails s"):
+            event = {"tool_name": "Bash", "tool_input": {"command": c}}
+            self.assertEqual(run_guard(event).returncode, 2, c)
+
+    def test_denies_go_and_cargo_run(self):
+        for c in ("go run ./cmd/memos", "cargo run", "dotnet run", "java -jar app.jar"):
+            event = {"tool_name": "Bash", "tool_input": {"command": c}}
+            self.assertEqual(run_guard(event).returncode, 2, c)
+
+    # --- extended mutation vectors ---
+    def test_denies_sed_in_place(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "sed -i 's/a/b/' f.txt"}}
+        self.assertEqual(run_guard(event).returncode, 2)
+
+    def test_denies_cp_overwrite(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "cp a.txt b.txt"}}
+        self.assertEqual(run_guard(event).returncode, 2)
+
+    def test_denies_git_apply(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "git apply patch.diff"}}
+        self.assertEqual(run_guard(event).returncode, 2)
+
+    def test_denies_curl_output_to_file(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "curl -o x.tgz http://localhost/x"}}
+        self.assertEqual(run_guard(event).returncode, 2)
+
+    # --- false-positive guards for the new patterns ---
+    def test_allows_reading_a_patch_file(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "cat fixes/foo.patch"}}
+        self.assertEqual(run_guard(event).returncode, 0, run_guard(event).stderr)
+
+    def test_allows_grepping_the_word_patch(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "grep -r patch README.md"}}
+        self.assertEqual(run_guard(event).returncode, 0, run_guard(event).stderr)
+
+    def test_allows_go_without_run(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "go version"}}
+        self.assertEqual(run_guard(event).returncode, 0, run_guard(event).stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

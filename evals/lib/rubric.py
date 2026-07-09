@@ -171,7 +171,14 @@ def _judge_factors(parsed: dict, key: dict, *, grader_model=None, timeout=120) -
            "--json-schema", json.dumps(schema), "--max-budget-usd", GRADER_BUDGET_USD,
            "--model", grader_model or DEFAULT_GRADER_MODEL]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    envelope = json.loads(proc.stdout)
+    if not proc.stdout.strip():
+        raise RuntimeError(f"judge produced no output (exit {proc.returncode}): "
+                           f"{(proc.stderr or '')[-200:].strip()}")
+    try:
+        envelope = json.loads(proc.stdout)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"judge produced non-JSON output (exit {proc.returncode}): "
+                           f"{proc.stdout[:200]!r}") from e
     raw = envelope.get("result", envelope) if isinstance(envelope, dict) else envelope
     result = raw if isinstance(raw, dict) else _extract_json_object(raw)
     return {f: bool(v) for f, v in result.get("factors", {}).items()}

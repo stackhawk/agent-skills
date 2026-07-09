@@ -16,6 +16,11 @@ from evals.lib.observe import observe_suffix
 # generous cap (accuracy over cost); cost_usd is still recorded per cell.
 DISCOVERY_MAX_BUDGET_USD = 2.0
 
+
+def _scrub(text: str, secret: str) -> str:
+    """Redact a secret from text before it lands in a surfaced error / artifact."""
+    return text.replace(secret, "***") if secret else text
+
 CLI_SIGNALS = {
     # Scan-distinctive commands only. `hawk version`/`hawk config`/`hawk init` are
     # generic preflight an agent runs while merely *assessing* the environment (even
@@ -140,17 +145,34 @@ class ClaudeCodeAdapter:
         try:
             if target_repo is not None:
                 # Populate the cell cwd with the real target repo (read-only run).
+                # A cross-org read token (RESEARCH_REPO_TOKEN) is injected into the
+                # clone URL for the adapter's OWN clone/fetch only. The agent then runs
+                # with --dangerously-skip-permissions and the guard does not block file
+                # reads, so we must not leave the token resident: after checkout we drop
+                # the remote (scrubs it from .git/config) and strip it from the agent's
+                # env, and redact it from any surfaced error. See RESEARCH_REPO_AUTH.md.
+                token = os.environ.get("RESEARCH_REPO_TOKEN", "").strip()
+                clone_url = target_repo.url
+                if token and clone_url.startswith("https://github.com/"):
+                    clone_url = "https://x-access-token:" + token + "@" + clone_url[len("https://"):]
                 clone = subprocess.run(
-                    ["git", "clone", "--depth", "1", target_repo.url, tmpdir],
+                    ["git", "clone", "--depth", "1", clone_url, tmpdir],
                     capture_output=True, text=True, timeout=300)
                 if clone.returncode != 0:
-                    return ParsedRun(error=f"clone failed: {clone.stderr[-300:].strip()}")
+                    return ParsedRun(error=f"clone failed: {_scrub(clone.stderr, token)[-300:].strip()}")
                 co = subprocess.run(["git", "-C", tmpdir, "fetch", "--depth", "1",
                                      "origin", target_repo.pin], capture_output=True, text=True)
+                if co.returncode != 0:
+                    return ParsedRun(error=f"fetch failed: {_scrub(co.stderr, token)[-300:].strip()}")
                 checkout = subprocess.run(["git", "-C", tmpdir, "checkout", target_repo.pin],
                                           capture_output=True, text=True)
                 if checkout.returncode != 0:
-                    return ParsedRun(error=f"checkout failed: {checkout.stderr[-300:].strip()}")
+                    return ParsedRun(error=f"checkout failed: {_scrub(checkout.stderr, token)[-300:].strip()}")
+                # Scrub the token from disk before the agent runs: dropping the remote
+                # removes the token-bearing URL from .git/config (discovery is read-only,
+                # so the remote is not needed after checkout).
+                subprocess.run(["git", "-C", tmpdir, "remote", "remove", "origin"],
+                               capture_output=True, text=True)
                 # Wire the read-only PreToolUse guard via an isolated config dir.
                 cfgdir = tempfile.mkdtemp(prefix=f"hawkcfg_{run_id}_")
                 guard_src = Path(__file__).resolve().parent / "discovery_guard.py"
@@ -185,6 +207,9 @@ class ClaudeCodeAdapter:
                 cmd.append("--bare")
 
             env = dict(os.environ)
+            # Never expose the clone token to the agent subprocess (it explores with
+            # --dangerously-skip-permissions and could otherwise read it from the env).
+            env.pop("RESEARCH_REPO_TOKEN", None)
             if cfgdir:
                 env["CLAUDE_CONFIG_DIR"] = cfgdir
             try:
