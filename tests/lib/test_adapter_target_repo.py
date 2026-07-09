@@ -32,6 +32,9 @@ class AdapterTargetRepo(unittest.TestCase):
         self.assertTrue(any("deadbeef" in c for c in cmds),
                         "expected a git checkout of the pin")
         self.assertTrue(run.guard_denials, "guard denials should be captured")
+        claude_cmd = next(c for c in cmds if c.strip().startswith("claude "))
+        self.assertIn("--max-budget-usd 2.0", claude_cmd,
+                      "target_repo cells get the higher discovery budget, not the 0.2 cap")
 
     def test_checkout_failure_returns_error(self):
         calls = []
@@ -67,6 +70,9 @@ class AdapterTargetRepo(unittest.TestCase):
         cmds = [" ".join(c[0]) if isinstance(c[0], list) else c[0] for c in calls]
         self.assertFalse(any("clone" in c for c in cmds), "no clone without target_repo")
         self.assertEqual(run.guard_denials, [])
+        claude_cmd = next(c for c in cmds if c.strip().startswith("claude "))
+        self.assertIn("--max-budget-usd 0.2", claude_cmd,
+                      "scan cells keep the passed-in runtime budget cap")
 
 
 if __name__ == "__main__":

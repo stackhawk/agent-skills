@@ -11,6 +11,11 @@ from evals.lib.models import ParsedRun
 from evals.lib.triggers import explicit_decision, decide_trigger
 from evals.lib.observe import observe_suffix
 
+# Runtime cost cap for target_repo (discovery) cells. Real-repo exploration plus a full
+# DISCOVERY block far exceeds a single-shot scan prompt's spend, so these cells get a
+# generous cap (accuracy over cost); cost_usd is still recorded per cell.
+DISCOVERY_MAX_BUDGET_USD = 2.0
+
 CLI_SIGNALS = {
     # Scan-distinctive commands only. `hawk version`/`hawk config`/`hawk init` are
     # generic preflight an agent runs while merely *assessing* the environment (even
@@ -162,8 +167,13 @@ class ClaudeCodeAdapter:
                 effective_prompt = prompt if full_auto else prompt + observe_suffix(skill)
 
             cmd = ["claude", "-p", effective_prompt, "--output-format", "stream-json",
-                   "--verbose", "--no-session-persistence",
-                   "--max-budget-usd", str(max_budget)]
+                   "--verbose", "--no-session-persistence"]
+            # target_repo (discovery) cells get a much higher cap: exploring a real repo
+            # and emitting a full DISCOVERY block needs far more room than a single-shot
+            # scan prompt, and we value discovery accuracy over per-cell cost. cost_usd is
+            # still recorded per cell so we can keep an eye on spend.
+            cell_budget = DISCOVERY_MAX_BUDGET_USD if target_repo is not None else max_budget
+            cmd += ["--max-budget-usd", str(cell_budget)]
             if model:
                 cmd += ["--model", model]
             if load_skill:
