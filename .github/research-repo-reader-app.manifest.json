@@ -1,0 +1,16 @@
+{
+  "name": "StackHawk Research Repo Reader",
+  "description": "Read-only clone access to stackhawk-research eval target repos for the agent-skills CI evals (hawkscan app-discovery cells). Mints short-lived, least-privilege installation tokens per workflow run.",
+  "url": "https://github.com/stackhawk/agent-skills",
+  "redirect_url": "https://github.com/organizations/stackhawk-research/settings/apps",
+  "public": false,
+  "hook_attributes": {
+    "url": "https://example.com/unused",
+    "active": false
+  },
+  "default_events": [],
+  "default_permissions": {
+    "contents": "read",
+    "metadata": "read"
+  }
+}

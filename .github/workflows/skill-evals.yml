@@ -117,22 +117,36 @@ jobs:
           hawk op --help
         continue-on-error: true  # absence is captured per-prompt in the eval traces
 
+      # The hawkscan suite's app-discovery cells clone internal repos from the SEPARATE
+      # stackhawk-research org, which the repo-scoped GITHUB_TOKEN cannot read. These two
+      # steps mint a short-lived, read-only GitHub App installation token and rewrite git
+      # so the adapter's plain `git clone https://github.com/stackhawk-research/…` (and its
+      # pin fetch) authenticate. See .github/RESEARCH_REPO_AUTH.md.
+      # Both are best-effort: if the secrets are absent (e.g. a fork PR), the token step is
+      # skipped and those cells fall back to plumbing-failed "go investigate" signals while
+      # the rest of the hawkscan suite still runs.
+      - name: Mint stackhawk-research read token
+        id: research-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RESEARCH_APP_ID }}
+          private-key: ${{ secrets.RESEARCH_APP_PRIVATE_KEY }}
+          owner: stackhawk-research
+        continue-on-error: true
+
+      - name: Authenticate git for stackhawk-research clones
+        if: steps.research-token.outputs.token != ''
+        env:
+          GH_APP_TOKEN: ${{ steps.research-token.outputs.token }}
+        run: |
+          git config --global \
+            url."https://x-access-token:${GH_APP_TOKEN}@github.com/stackhawk-research/".insteadOf \
+            "https://github.com/stackhawk-research/"
+
       # No --bare: --bare is "minimal mode" where skills only resolve via an
       # explicit /skill-name and do NOT auto-trigger from their description, so
       # natural-language prompts never fire the skill (all false-negatives).
       # Full plugin mode is also the realistic user experience (hooks + skill).
-      # NOTE: the hawkscan suite's app-discovery cells (ids firefly-iii/wikijs/
-      # memos/dawarich) clone internal repos from the SEPARATE stackhawk-research
-      # org. This public ubuntu-latest runner only has the repo-scoped GITHUB_TOKEN,
-      # which cannot read another org's internal repos, so those cells surface as
-      # plumbing-failed cells (a "go investigate" signal in the report) until a
-      # cross-org read credential exists. They do NOT red the whole job unless every
-      # hawkscan prompt fails to run. To enable them, either:
-      #   (a) run this job on the self-hosted `agent-skills-amd-4cpu` runner and pull
-      #       a PAT from AWS SSM (see release.yml's update-marketplace job), or
-      #   (b) add a RESEARCH_REPO_TOKEN secret (fine-grained PAT / GitHub App) with
-      #       read on stackhawk-research and use it as the git clone credential.
-      # Locally and via workflow_dispatch on an authenticated runner they run for real.
       - name: Run ${{ matrix.skill }} evals (${{ matrix.model }})
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
