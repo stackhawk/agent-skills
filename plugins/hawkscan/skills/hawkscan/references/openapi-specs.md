@@ -52,8 +52,15 @@ down this list; stop at the first that yields a spec that passes verification.
 3. **Only a static spec is checked in.** Verify it's current (path count matches the route
    grep from discovery; paths resolve — see verification). If it's stale, prefer regenerating
    via step 1/2. If you must use it, wire `openApiConf.filePath: <file>` and verify.
-4. **No spec and no tooling for this stack.** Derive one by hand from the route inventory —
-   see "Deriving a spec by hand".
+4. **A spec is published *outside* the repo.** Mature projects often maintain an accurate spec
+   somewhere other than the app repo — check before giving up: a docs site (e.g.
+   `api-docs.<project>.org`, a ReDoc/Swagger-UI page), a dedicated `<project>/api-docs` or
+   `<project>-openapi` repo, a spec published as a release asset or package, or a link in the
+   README/docs. This is exactly Firefly III's situation — no spec in-repo, but a complete one
+   at `firefly-iii/api-docs`. Fetch it, pin the version to match the app, wire `filePath`, and
+   verify it resolves (an external spec can lag the running app).
+5. **No spec anywhere and no tooling for this stack.** Derive one by hand from the route
+   inventory — see "Deriving a spec by hand".
 
 ## Framework spec-generation matrix
 
@@ -158,3 +165,10 @@ complete:
 
 A hand-derived spec is a maintenance liability — always prefer suggesting the framework
 tooling (step 2) so the spec regenerates from code instead of drifting.
+
+**A hand-derived spec still beats `hawk.spider.seedPaths`.** seedPaths only lists URLs to
+visit — no methods, no request bodies, no path/query parameters — so a seedPaths-only scan
+can GET a handful of collection endpoints but never exercises POST/PUT/PATCH, parameterized
+routes, or request-body validation. That is why a spec-less scan collapses to a fraction of
+the real surface (in dogfood: 22 scanned URIs against 254 routes). Only use seedPaths as a
+supplement to a spec, or as a genuine last resort when even a hand-derived spec is impossible.

@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 2.3.0
+version: 2.3.1
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Performs
@@ -65,6 +65,8 @@ The `api` skill wraps read-only StackHawk platform lookups via the `hawk` CLI (`
 | Get effective scan config     | `hawk op scan config <scanId>` (hawk op ≥ 0.11.7; skip if absent)                  |
 
 These reads require the combined `hawk` CLI; the `api` skill covers setup (`hawk init --browser` or the `HAWK_API_KEY` env var).
+
+**Selecting an app by UUID:** `--app` takes an application *name*. When you hold a UUID (e.g. from `stackhawk.yml`'s `applicationId`), pass it as `--app-id <uuid>` — passing a UUID to `--app` errors with "Application not found" on current released hawk. (Newer hawk also accepts a UUID on `--app`; `--app-id` works on both, so prefer it when you have an ID.) Also parse `--format json` output defensively — a "skills out of date" banner may precede the JSON.
 
 The `stackhawk-data-seed` skill sets up checked-in backend seed data via `hawk perch seed`.
 Hand off to it when authentication fails because the backend has no valid credential
@@ -202,9 +204,15 @@ Do not proceed to Step 3 until validation passes.
 → API-type-specific config (OpenAPI, GraphQL, gRPC, seed paths, spider tuning):
   [`references/config-patterns.md`](references/config-patterns.md)
 
-→ Getting an **accurate** OpenAPI spec (prefer a framework-served spec, suggest the
-  code/build change that generates one, verify it resolves before scanning — a wrong spec
-  silently 404s every path): [`references/openapi-specs.md`](references/openapi-specs.md)
+**REST surface? Get an accurate OpenAPI spec BEFORE the first scan — this is not optional.**
+A REST scan with no spec (spider/`seedPaths` only) reaches a small fraction of the API; a
+scan with a *wrong* spec 404s every path. Do not skip to a scan on the assumption a spec is
+missing or "good enough" — **open and follow [`references/openapi-specs.md`](references/openapi-specs.md)** to
+work its preference order (a spec the running app serves → a code/build change that generates
+one → a spec published outside the repo → hand-derived), then run its resolve-check
+(`host + spec-path` returns real routes, not 404s) before scanning. Reaching for
+`hawk.spider.seedPaths` instead of a spec is a last resort, not a shortcut — read that file
+first. Same idea for GraphQL/gRPC: wire the schema/proto, don't scan blind.
 
 ### Phase 1c: Authentication Configuration
 
@@ -269,7 +277,7 @@ Review the config against the current app state:
 
 - **Gate reported gaps?** Tune what the gate names (wire spec, enable ajax spider, fix
   auth) — additive-only; see [`references/scan-quality.md`](references/scan-quality.md).
-- **Low path count?** Check in order: SPA/JS app → enable `hawk.spider.ajax: true`; API spec available → wire `openApiConf`/`graphqlConf`; specific known-deep paths → add `seedPaths`. Omit `seedPaths` unless there is a specific reason — they're rarely needed when Ajax Spider or a spec is configured.
+- **Low path count?** For a REST surface the fix is almost always an accurate spec — get one per `references/openapi-specs.md` (a wired, resolving `openApiConf` is worth far more than any spider tuning). Then: SPA/JS app → `hawk.spider.ajax: true`; GraphQL → wire `graphqlConf`. `hawk.spider.seedPaths` is a last resort (URLs only — no methods/bodies/params, so it can't reach POST/PUT or parameterized routes); prefer even a hand-derived spec over it, and omit it entirely once a spec is wired.
 - **Auth failing?** Verify `authentication` block; re-fetch the relevant recipe via `hawk config show <section> --text` (Phase 1c).
 - **Too noisy / too slow?** Add `app.excludePaths` or `app.includePaths`; tune `hawk.spider.maxDurationMinutes`.
 - **New API type added?** Add corresponding `graphqlConf`, `openApiConf`, etc.
