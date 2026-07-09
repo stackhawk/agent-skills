@@ -43,7 +43,7 @@ Flag names are **dot-namespaced** (e.g., `Language.Java.Spring`), **case-sensiti
 hawk op app tech-flags get --app <APP_NAME> --format json
 ```
 
-`--app <APP_NAME>` accepts the application name. The `hawk op` commands also accept `--app-id <UUID>` if you prefer to use the application ID directly.
+`--app <NAME|UUID>` accepts either the application name or its UUID — pass whichever you have.
 
 Returns a JSON object with all available flags and their current true/false state:
 
