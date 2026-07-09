@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 2.3.1
+version: 2.3.2
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Performs
@@ -51,13 +51,13 @@ The `api` skill wraps read-only StackHawk platform lookups via the `hawk` CLI (`
 | Purpose                       | Command                                                                          |
 |-------------------------------|----------------------------------------------------------------------------------|
 | Check if App exists           | `hawk op app list --format json`                                                  |
-| Check if Env exists           | `hawk op env list --app <APP_ID> --format json`                                   |
-| Get findings with triage      | `hawk op scan get --app <NAME> --detail full --format json`                       |
+| Check if Env exists           | `hawk op env list --app <NAME\|UUID> --format json`                               |
+| Get findings with triage      | `hawk op scan get --app <NAME\|UUID> --detail full --format json`                 |
 | List ASM repos                | `hawk op repo list --format json`                                                 |
 | Link app to ASM repo          | `hawk op repo link --repo-id <ID> --app-id <ID>`                                  |
-| Get tech flags                | `hawk op app tech-flags get --app <NAME> --format json`                           |
-| Disable all tech flags        | `hawk op app tech-flags disable-all --app <NAME> --yes`                           |
-| Set specific tech flags       | `hawk op app tech-flags set --app <NAME> Key=true`                                |
+| Get tech flags                | `hawk op app tech-flags get --app <NAME\|UUID> --format json`                     |
+| Disable all tech flags        | `hawk op app tech-flags disable-all --app <NAME\|UUID> --yes`                     |
+| Set specific tech flags       | `hawk op app tech-flags set --app <NAME\|UUID> Key=true`                          |
 | Triage a finding              | `hawk op scan triage --scan <ID> --hash <HASH> --status false-positive --note ""` |
 | Bulk triage from file         | `hawk op scan triage --scan <ID> --from-file triage.yaml`                         |
 | Annotate w/o triage perm      | `hawk op finding note --scan <ID> --hash <HASH> --note "..."`                     |
@@ -66,7 +66,7 @@ The `api` skill wraps read-only StackHawk platform lookups via the `hawk` CLI (`
 
 These reads require the combined `hawk` CLI; the `api` skill covers setup (`hawk init --browser` or the `HAWK_API_KEY` env var).
 
-**Selecting an app by UUID:** `--app` takes an application *name*. When you hold a UUID (e.g. from `stackhawk.yml`'s `applicationId`), pass it as `--app-id <uuid>` — passing a UUID to `--app` errors with "Application not found" on current released hawk. (Newer hawk also accepts a UUID on `--app`; `--app-id` works on both, so prefer it when you have an ID.) Also parse `--format json` output defensively — a "skills out of date" banner may precede the JSON.
+**Selecting an app:** `--app` takes an application **name or UUID** — pass whichever you have (e.g. the `applicationId` from `stackhawk.yml`, or the app's name). No separate flag is needed. Also parse `--format json` output defensively — a "skills out of date" banner may precede the JSON.
 
 The `stackhawk-data-seed` skill sets up checked-in backend seed data via `hawk perch seed`.
 Hand off to it when authentication fails because the backend has no valid credential
