@@ -42,7 +42,10 @@ The App lives in `stackhawk-research`, but its App ID + private key are used fro
 
 ## Workflow wiring (`.github/workflows/skill-evals.yml`, `eval-claude-code` job)
 
-Two steps run after checkout and before the `Run … evals` step:
+One step mints the token; it is then handed to the eval as a step-scoped env var. The adapter
+(not git's global config) injects it into its own clone/fetch and scrubs it before the agent runs
+— so the token is never resident on disk or in the agent's env while the discovery agent explores
+under `--dangerously-skip-permissions`.
 
 ```yaml
       - name: Mint stackhawk-research read token
@@ -57,24 +60,29 @@ Two steps run after checkout and before the `Run … evals` step:
           # workflow change. Add `repositories: a,b,c` here only to re-scope down.
         continue-on-error: true   # absent secrets must not red the job
 
-      - name: Authenticate git for stackhawk-research clones
-        if: steps.research-token.outputs.token != ''
+      - name: Run <skill> evals ...
         env:
-          GH_APP_TOKEN: ${{ steps.research-token.outputs.token }}
-        run: |
-          git config --global \
-            url."https://x-access-token:${GH_APP_TOKEN}@github.com/stackhawk-research/".insteadOf \
-            "https://github.com/stackhawk-research/"
+          # ... ANTHROPIC_API_KEY / HAWK_API_KEY ...
+          RESEARCH_REPO_TOKEN: ${{ steps.research-token.outputs.token }}
+        run: uv run evals --harness claude-code --skill <skill> ...
 ```
 
+How the adapter uses it (`evals/harnesses/claude-code/adapter.py`, `target_repo` cells only):
+1. If `RESEARCH_REPO_TOKEN` is set **and** the target URL is under
+   `https://github.com/stackhawk-research/` (the org the token is scoped to), embed it in the
+   clone URL for the adapter's own `clone` + pin `fetch`.
+2. After checkout, `git remote remove origin` — scrubs the token-bearing URL from `.git/config`.
+3. `env.pop("RESEARCH_REPO_TOKEN")` before spawning `claude`, and redact the token from any
+   surfaced clone/fetch error. So it is not in `~/.gitconfig`, `.git/config`, or the agent env.
+
 Notes:
-- `create-github-app-token` **masks** the token in logs and **revokes** it in a post-job step. Do
-  not `echo` `$GH_APP_TOKEN`.
-- No change to `adapter.py`. The `insteadOf` prefix matches every `stackhawk-research` `.git` URL
-  and is re-applied on the pin `fetch`, so both authenticate.
-- The `if:` guard means when the secrets are missing (e.g. a fork PR) the rewrite step is skipped
-  and behavior is identical to today — the discovery cells fall back to plumbing-failed "go
-  investigate" signals while the rest of the hawkscan suite still runs.
+- `create-github-app-token` **masks** the token in logs and **revokes** it in a post-job step.
+- When the secrets are missing (e.g. a fork PR) `RESEARCH_REPO_TOKEN` is empty, the adapter clones
+  anonymously, and the discovery cells fall back to plumbing-failed "go investigate" signals while
+  the rest of the hawkscan suite still runs.
+- Known follow-up: the token is passed in the adapter's `git clone` argv (visible via `ps` for that
+  subprocess's lifetime). Low risk on ephemeral single-tenant GitHub-hosted runners; routing it
+  through `GIT_ASKPASS` / a credential helper would remove that last surface.
 
 ## Run it (the pre-merge smoke gate for PR #69)
 

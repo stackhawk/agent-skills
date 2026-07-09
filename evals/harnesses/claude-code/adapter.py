@@ -153,7 +153,10 @@ class ClaudeCodeAdapter:
                 # env, and redact it from any surfaced error. See RESEARCH_REPO_AUTH.md.
                 token = os.environ.get("RESEARCH_REPO_TOKEN", "").strip()
                 clone_url = target_repo.url
-                if token and clone_url.startswith("https://github.com/"):
+                # Only attach the token to the org it is scoped to. It's an
+                # org-scoped installation token; putting it on any other host/org
+                # would break that clone rather than degrade to an anonymous one.
+                if token and clone_url.startswith("https://github.com/stackhawk-research/"):
                     clone_url = "https://x-access-token:" + token + "@" + clone_url[len("https://"):]
                 clone = subprocess.run(
                     ["git", "clone", "--depth", "1", clone_url, tmpdir],
