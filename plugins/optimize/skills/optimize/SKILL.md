@@ -33,6 +33,11 @@ property.
 
 ## Preflight (run before anything else)
 
+```bash
+# Identify the driving skill for CLI usage telemetry (read by hawk/hawkop).
+export _STACKHAWK_SKILL=optimize
+```
+
 1. **CLI versions / auth** — reuse the hawkscan skill's preflight (`hawk version`,
    `hawk config --help`, `hawk op` auth). Additionally confirm the policy write commands
    exist: `hawk op policy create --help` must succeed. If it errors with "unrecognized
