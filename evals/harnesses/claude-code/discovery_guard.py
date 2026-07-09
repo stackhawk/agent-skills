@@ -45,7 +45,7 @@ def main():
            or re.search(r"\b(curl|wget)\b[^|;&]*\s-(o|O)\b", cmd) \
            or re.search(r">>?\s*(?!/dev/null\b)(?!&\d)\S", cmd):
             deny("file mutation not allowed")
-        classic_net_tools = r"\b(curl|wget|nc|ncat|telnet|ssh|scp|rsync|sftp)\b"
+        classic_net_tools = r"\b(curl|wget|nc|ncat|telnet|ssh|scp|rsync|sftp|ftp)\b"
         interpreter_tools = r"\b(python3?|node|nodejs|ruby|perl|php|pip3?|npm|npx|gem)\b"
         user_at_host = r"[\w.+-]+@([a-z0-9.-]+(?:\.[a-z]{2,})?)"
         if re.search(classic_net_tools, low):
