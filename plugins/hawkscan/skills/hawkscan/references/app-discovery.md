@@ -1,10 +1,9 @@
 # App Discovery — Docs-First Source Table
 
-This file's discovery procedure has been superseded by `references/scan-planning.md` — see
-Step 1a in SKILL.md for the full workflow (per-surface detection, route-inventory
-derivation, gap recommendations, and the user-confirmed summary required before the first
-scan). What remains here is the docs-first source table below, which SKILL.md links to
-directly and which stands on its own.
+The full discovery workflow lives in `references/scan-planning.md` — see Step 1a in SKILL.md
+(per-surface detection, route-inventory derivation, gap recommendations, and the
+user-confirmed summary required before the first scan). This file holds the docs-first source
+table below, which SKILL.md links to directly and which stands on its own.
 
 ## Read the repo's own docs first
 

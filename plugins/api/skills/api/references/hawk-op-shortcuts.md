@@ -47,8 +47,7 @@ hawk op status         # Confirm auth
 ```
 
 `hawk init` writes credentials to `~/.hawk/hawk.properties`.  
-`hawk op` reads that file plus the `HAWK_API_KEY` env var. The legacy
-standalone-binary config file is no longer used.
+`hawk op` reads that file plus the `HAWK_API_KEY` env var.
 
 **CI/CD only:** For pipeline use, set `HAWK_API_KEY` directly as a secret.
 Org ID and output format can be set via env vars:
@@ -297,4 +296,4 @@ call — useful when building a reporting pipeline.
 - **`--app` takes a name or a UUID.** A UUID resolves exactly; a name resolves by
   case-insensitive exact match. If a name matches **more than one** app, `hawk op` errors and
   lists the matches — disambiguate by passing that app's UUID to `--app` (grab it from
-  `hawk op app list`). (`--app-id` still works as a deprecated hidden alias but isn't needed.)
+  `hawk op app list`).

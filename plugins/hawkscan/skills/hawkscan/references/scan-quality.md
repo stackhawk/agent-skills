@@ -29,7 +29,7 @@ across every config is an interactive operation only; never trigger one autonomo
 - [Derive the expectation (fresh, every scan)](#derive-the-expectation-fresh-every-scan)
 - [The five checks](#the-five-checks)
 - [On gaps: iterate the config](#on-gaps-iterate-the-config)
-- [Reporting rules (replace the old autonomy lock)](#reporting-rules-replace-the-old-autonomy-lock)
+- [Reporting rules](#reporting-rules)
 - [Degradation](#degradation)
 
 ---
@@ -57,9 +57,10 @@ it against. Build that expectation the same way every time, right after the scan
   Spring, `swagger-jsdoc`/`@nestjs/swagger` for Node, `drf-yasg`/`drf-spectacular` for
   Django REST Framework, `swashbuckle` for .NET). Surface the recommendation; don't apply it
   unrequested.
-- `hawk op scan uris` and `hawk op scan config` require hawk op ≥ 0.11.7. Older CLIs fall
-  back per the Degradation section below — detect the gap by the subcommand erroring or not
-  existing, don't ask the user which version they have.
+- `hawk op scan uris` and `hawk op scan config` ship with the combined `hawk` CLI the
+  preflight already requires. If either subcommand errors or isn't recognized on the
+  installed CLI, fall back per the Degradation section below — detect it by the command
+  failing, don't ask the user which version they have.
 
 ## The five checks
 
@@ -136,7 +137,7 @@ clean one.
 Environment-class gaps never enter this loop at all — see the Signal classes note above:
 verify the app, retry once for free, and stop if it recurs.
 
-## Reporting rules (replace the old autonomy lock)
+## Reporting rules
 
 - **Findings are always reported and always fixable**, independent of gate state. The gate
   never withholds, delays, or downgrades a finding — a scan that under-covered the surface
@@ -144,10 +145,10 @@ verify the app, retry once for free, and stop if it recurs.
 - **Never say the scan is "done and secure"** (or any equivalent framing) while a
   config-class or environment-class gap is still open. Say plainly what was scanned, what
   wasn't, and why — the reason identifiers exist so this statement is specific, not vague.
-- **The autonomous post-code-change loop no longer treats exit 0 as silent success.** It
-  runs this gate after its scan, and if gaps remain once the autonomous iteration cap (1) is
-  reached, it reports them explicitly — reason identifiers, coverage route-diff evidence,
-  and next steps — instead of accepting a clean exit code at face value.
+- **The autonomous post-code-change loop reports gate gaps rather than treating exit 0 as
+  success.** It runs this gate after its scan, and if gaps remain once the autonomous
+  iteration cap (1) is reached, it reports them explicitly — reason identifiers, coverage
+  route-diff evidence, and next steps — instead of accepting a clean exit code at face value.
 - **Performance-class signals are never gate gaps.** If health metrics point at slowness
   rather than unreachability or all-4xx, that's an `optimize` suggestion, not a quality-gate
   reason identifier.
@@ -157,9 +158,9 @@ verify the app, retry once for free, and stop if it recurs.
 
 ## Degradation
 
-`hawk op scan uris` and `hawk op scan config` need hawk op ≥ 0.11.7. Detect the absence by
-the subcommand erroring or not existing at all — don't ask the user to check their version,
-just degrade silently and keep going:
+`hawk op scan uris` and `hawk op scan config` ship with the combined `hawk` CLI. If either
+subcommand errors or isn't recognized on the installed CLI, degrade silently and keep going —
+detect it by the command failing, don't ask the user to check their version:
 
 - **Coverage (check 1)** degrades from a full scanned-vs-expected route diff to a single
   before/after number: `url_count` from `hawk op scan get <scanId>`. You lose the
@@ -169,7 +170,7 @@ just degrade silently and keep going:
   confirm a surface's config exists and its spec block is present, and use the
   `hawk validate config` output for each file to confirm the config is structurally sound.
 - **Auth and health (checks 2 and 4)** are unaffected — `hawk op scan metrics` and
-  `hawk validate auth` work on all hawk op versions and remain the primary signal either way.
+  `hawk validate auth` remain the primary signal either way.
 
 `hawk op scan stats` does not exist yet (it's a follow-up ticket) but will eventually add
 measured, per-path engine statistics rather than the grep- and `url_count`-based estimates
