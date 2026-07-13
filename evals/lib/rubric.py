@@ -15,7 +15,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from evals.lib.models import ParsedRun, RubricResult, RubricCheckResult
+from evals.lib.models import ParsedRun, RubricResult, RubricCheckResult, ProcessCheckResult
 
 EVALS_DIR = Path(__file__).resolve().parent.parent  # repo/evals
 
@@ -72,7 +72,10 @@ Populate the JSON result with:
 # Cheap, capable grader by default — judging a transcript against a rubric is a
 # structured classification task. Budget must cover the full prompt (transcript +
 # rubric + schema); 0.10 hit error_max_budget_usd, so use a roomier cap.
-DEFAULT_GRADER_MODEL = "claude-haiku-4-5-20251001"
+# Sonnet, not haiku: the answer-key judge GATES discovery verdicts via must-hit
+# factors, and haiku false-failed semantically-correct matches (e.g. "Rails 8.0
+# Hotwire" vs "Rails 8.0 ... Hotwire"). A gating judge needs a reliable grader.
+DEFAULT_GRADER_MODEL = "claude-sonnet-5"
 GRADER_BUDGET_USD = "0.25"
 
 
@@ -124,3 +127,83 @@ def grade_rubric(run: ParsedRun, skill: str, run_id: str, *,
               for c in result.get("checks", [])]
     return RubricResult(overall_pass=bool(result.get("overall_pass")),
                         score=int(result.get("score", 0)), checks=checks)
+
+
+# ---------------------------------------------------------------------------
+# Answer-key judge: scores an agent's DISCOVERY block against a per-repo
+# answer key via a skill-blind claude call, producing per-factor process
+# checks (must-hit factor -> blocking; soft factor -> warning).
+# ---------------------------------------------------------------------------
+
+FACTORS = ["technology", "run_command", "host", "api_style", "spa", "auth"]
+
+
+def parse_discovery_block(text: str) -> dict:
+    """Extract the factor lines after the literal 'DISCOVERY:' marker."""
+    out: dict[str, str] = {}
+    lines = text.splitlines()
+    start = next((i for i, ln in enumerate(lines) if ln.strip().upper().startswith("DISCOVERY:")), None)
+    if start is None:
+        return out
+    for ln in lines[start + 1:]:
+        if ":" not in ln:
+            continue
+        key, _, val = ln.partition(":")
+        key = key.strip().lower()
+        if key in FACTORS:
+            out[key] = val.strip()
+    return out
+
+
+def _judge_factors(parsed: dict, key: dict, *, grader_model=None, timeout=120) -> dict:
+    """Ask a skill-blind claude judge whether each parsed factor matches the key.
+    Returns {factor: bool}. Uses --json-schema for a structured reply."""
+    factors = key["factors"]
+    ask = {f: {"expected": factors[f]["value"], "got": parsed.get(f, "(missing)")}
+           for f in factors}
+    schema = {"type": "object", "properties": {"factors": {"type": "object",
+              "additionalProperties": {"type": "boolean"}}}, "required": ["factors"]}
+    prompt = ("You are grading an app-discovery result. For each factor, decide if the "
+              "agent's 'got' value is semantically correct given the 'expected' answer "
+              "(ignore wording, focus on meaning; a missing or wrong value is false). "
+              "Return JSON {\"factors\": {<factor>: true|false}}.\n\n" + json.dumps(ask, indent=2))
+    cmd = ["claude", "-p", prompt, "--output-format", "json", "--no-session-persistence",
+           "--json-schema", json.dumps(schema), "--max-budget-usd", GRADER_BUDGET_USD,
+           "--model", grader_model or DEFAULT_GRADER_MODEL]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    if not proc.stdout.strip():
+        raise RuntimeError(f"judge produced no output (exit {proc.returncode}): "
+                           f"{(proc.stderr or '')[-200:].strip()}")
+    try:
+        envelope = json.loads(proc.stdout)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"judge produced non-JSON output (exit {proc.returncode}): "
+                           f"{proc.stdout[:200]!r}") from e
+    raw = envelope.get("result", envelope) if isinstance(envelope, dict) else envelope
+    result = raw if isinstance(raw, dict) else _extract_json_object(raw)
+    return {f: bool(v) for f, v in result.get("factors", {}).items()}
+
+
+def judge_answer_key(run: ParsedRun, answer_key_path: str, *,
+                     grader_model=None, timeout=120) -> list[ProcessCheckResult]:
+    """Score each DISCOVERY factor against the answer key -> per-factor checks.
+
+    All factors are WARNING severity: the judge informs the discovery *score* but does
+    not hard-gate the verdict (the deterministic signal-presence + read-only checks
+    gate that). LLM-judged answer completeness varies run-to-run, so it tracks
+    discovery health as a score trend rather than a flaky binary pass/fail. Answer-key
+    `must_hit` flags are retained as documentation of which factors matter most."""
+    key = json.loads(Path(answer_key_path).read_text())
+    parsed = parse_discovery_block(run.output_text)
+    verdicts = _judge_factors(parsed, key, grader_model=grader_model, timeout=timeout)
+    out: list[ProcessCheckResult] = []
+    for f, spec in key["factors"].items():
+        passed = bool(verdicts.get(f, False))
+        out.append(ProcessCheckResult(
+            id=f"answer_key:{f}", passed=passed,
+            severity="warning",
+            signal_found=(parsed.get(f) if passed else None),
+            anti_found=(f"expected≈{spec['value']!r} got {parsed.get(f, '(missing)')!r}"
+                        if not passed else None),
+        ))
+    return out

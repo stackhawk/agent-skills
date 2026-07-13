@@ -117,6 +117,24 @@ jobs:
           hawk op --help
         continue-on-error: true  # absence is captured per-prompt in the eval traces
 
+      # The hawkscan suite's app-discovery cells clone internal repos from the SEPARATE
+      # stackhawk-research org, which the repo-scoped GITHUB_TOKEN cannot read. Mint a
+      # short-lived, read-only GitHub App installation token and hand it to the eval as
+      # RESEARCH_REPO_TOKEN. The adapter injects it into its OWN clone/fetch only, then
+      # scrubs it from disk + env before the (--dangerously-skip-permissions) agent runs,
+      # so it is never resident during exploration.
+      # Best-effort: if the secrets are absent (e.g. a fork PR) the token is empty and the
+      # discovery cells fall back to plumbing-failed "go investigate" signals while the
+      # rest of the hawkscan suite still runs.
+      - name: Mint stackhawk-research read token
+        id: research-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RESEARCH_APP_ID }}
+          private-key: ${{ secrets.RESEARCH_APP_PRIVATE_KEY }}
+          owner: stackhawk-research
+        continue-on-error: true
+
       # No --bare: --bare is "minimal mode" where skills only resolve via an
       # explicit /skill-name and do NOT auto-trigger from their description, so
       # natural-language prompts never fire the skill (all false-negatives).
@@ -126,6 +144,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
           HAWK_FORMAT: json
+          RESEARCH_REPO_TOKEN: ${{ steps.research-token.outputs.token }}
         run: |
           uv run evals --harness claude-code --skill ${{ matrix.skill }} \
             --model ${{ matrix.model }} --max-budget 0.15 ${{ inputs.rubric && '--rubric' || '' }}
