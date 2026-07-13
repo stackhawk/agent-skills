@@ -27,7 +27,7 @@ across every config is an interactive operation only; never trigger one autonomo
 
 ## Contents
 - [Derive the expectation (fresh, every scan)](#derive-the-expectation-fresh-every-scan)
-- [The four checks](#the-four-checks)
+- [The five checks](#the-five-checks)
 - [On gaps: iterate the config](#on-gaps-iterate-the-config)
 - [Reporting rules (replace the old autonomy lock)](#reporting-rules-replace-the-old-autonomy-lock)
 - [Degradation](#degradation)
@@ -61,9 +61,9 @@ it against. Build that expectation the same way every time, right after the scan
   back per the Degradation section below — detect the gap by the subcommand erroring or not
   existing, don't ask the user which version they have.
 
-## The four checks
+## The five checks
 
-Run all four after every scan. Each has its own command, pass condition, and a stable
+Run all five after every scan. Each has its own command, pass condition, and a stable
 reason identifier used when reporting a gap — this gate's own reporting (Step 4.5 in
 SKILL.md) uses these identifiers directly, so keep them exactly as written here across any
 edits to this file: `coverage-gap`, `spec-not-wired`, `surface-unscanned`,
@@ -151,7 +151,7 @@ verify the app, retry once for free, and stop if it recurs.
 - **Performance-class signals are never gate gaps.** If health metrics point at slowness
   rather than unreachability or all-4xx, that's an `optimize` suggestion, not a quality-gate
   reason identifier.
-- Keep every reported gap tied to one of the seven reason identifiers above so this gate's
+- Keep every reported gap tied to one of the eight reason identifiers above so this gate's
   own reporting stays specific rather than parsing prose — the identifiers must stay stable
   across edits to this file.
 

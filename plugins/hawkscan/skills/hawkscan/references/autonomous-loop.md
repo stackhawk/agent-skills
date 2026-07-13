@@ -50,9 +50,10 @@ Capture `scan.id` from the JSON output — you'll need it for rescan.
 
 **5. Quality gate**
 
-Before triaging findings, run the quality gate (`scan-quality.md`'s four checks — coverage,
-auth, surface-completeness, health) against this scan. On config-class gaps
-(`spec-not-wired`, `surface-unscanned`, `auth-validate-failed`, `auth-wall`, `all-4xx`), loop
+Before triaging findings, run the quality gate (`scan-quality.md`'s five checks — coverage,
+base-path resolve, auth, surface-completeness, health) against this scan. On config-class gaps
+(`spec-not-wired`, `surface-unscanned`, `auth-validate-failed`, `auth-wall`, `all-4xx`,
+`base-path-mismatch`), loop
 back to config tuning with a single additive-only batched fix and rescan once — the
 autonomous cap here is **1** config-fix iteration (interactive workflows get 2; this
 unattended loop gets 1). On environment-class gaps (`env-unreachable`: connection failures,

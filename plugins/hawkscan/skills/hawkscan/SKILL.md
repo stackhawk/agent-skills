@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 2.3.3
+version: 2.3.4
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Performs
@@ -367,8 +367,9 @@ straight to Step 6's diagnosis / the environment-class path instead. It is a fee
 into config tuning, **not a governor**: gate state never blocks a finding from being reported
 and fixed; a thin scan that missed surface can still have found something real.
 
-Run the four structural checks and derive the expectation fresh each time, exactly as
-`references/scan-quality.md` describes — coverage, auth, surface-completeness, and health.
+Run the five checks and derive the expectation fresh each time, exactly as
+`references/scan-quality.md` describes — coverage (evidence-only), base-path resolve, auth,
+surface-completeness, and health.
 On config-class gaps (`spec-not-wired`, `surface-unscanned`, `auth-validate-failed`,
 `auth-wall`, `all-4xx`, `base-path-mismatch`), loop back to Step 2b with an additive-only fix, batch every gap
 into one edit pass, and rescan once. Iteration cap: 2 interactive / 1 autonomous, per
