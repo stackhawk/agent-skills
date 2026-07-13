@@ -153,7 +153,15 @@ class CodexAdapter:
                               loose_hit=loose)
 
     def launch(self, prompt, skill, run_id, plugin_dirs, *, model, load_skill,
-               max_budget, bare, full_auto) -> ParsedRun:
+               max_budget, bare, full_auto, target_repo=None) -> ParsedRun:
+        if target_repo is not None:
+            # Discovery (target_repo) cells clone a real repo and explore it for
+            # real; that path is wired only for the claude-code harness (only its
+            # CI job mints RESEARCH_REPO_TOKEN to read the stackhawk-research repos).
+            # Fail the cell cleanly here rather than run the agent against an empty
+            # cwd -- mirrors claude-code's own "clone failed" fallback, so the rest
+            # of the suite still runs.
+            return ParsedRun(error="discovery (target_repo) cells run only on the claude-code harness")
         tmpdir = tempfile.mkdtemp(prefix=f"hawkeval_{run_id}_")
         try:
             # In CI the bubblewrap sandbox can't initialize (Ubuntu 24.04 blocks
