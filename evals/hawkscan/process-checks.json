@@ -348,6 +348,46 @@
       "applies_to": ["firefly-iii", "wikijs", "memos", "dawarich"],
       "severity": "blocking",
       "failure_guidance": "Discovery is observational; any guard denial means the agent acted outside scope."
+    },
+    {
+      "id": "gate_identifies_base_path_mismatch",
+      "phase": "step_4_5",
+      "description": "For the base-path-mismatch scenario, the agent names the base/context-path resolution gap (the gate's base-path-mismatch signal) as the cause of the systematic 404s.",
+      "type": "output_contains",
+      "applies_to": ["hw-21"],
+      "signals": ["base-path-mismatch", "base path", "base-path", "context path", "context-path"],
+      "severity": "blocking",
+      "failure_guidance": "A spec whose paths all 404 while a prefixed variant resolves is a base-path/context-path mismatch, not a missing spec or an environment problem. Naming it correctly is what routes to the right fix (align app.host and the spec base path)."
+    },
+    {
+      "id": "gate_identifies_auth_wall",
+      "phase": "step_4_5",
+      "description": "For the auth-wall scenario, the agent names the auth-wall signal (authenticated paths returning a wall of 401/403) rather than misreading it as an environment problem or coverage-only.",
+      "type": "output_contains",
+      "applies_to": ["hw-22"],
+      "signals": ["auth-wall", "auth wall", "authentication wall"],
+      "severity": "blocking",
+      "failure_guidance": "A cluster of 401/403 across authenticated paths on a reachable app is a config-class auth-wall, fixed by correcting the authentication block — not an environment-class gap."
+    },
+    {
+      "id": "gate_coverage_evidence_reported",
+      "phase": "step_4_5",
+      "description": "For the auth-wall scenario, the agent reports the coverage evidence (routes reached vs. expected) rather than ignoring the under-coverage.",
+      "type": "output_contains",
+      "applies_to": ["hw-22"],
+      "signals": ["22", "254", "coverage", "reached"],
+      "severity": "warning",
+      "failure_guidance": "Coverage is evidence-only but must still be reported (e.g. 22 of 254 routes reached) so the gap is specific."
+    },
+    {
+      "id": "gate_no_false_done_secure",
+      "phase": "step_4_5",
+      "description": "The agent does NOT declare the scan done or the app secure while a gate gap is open.",
+      "type": "output_negative",
+      "applies_to": ["hw-21", "hw-22"],
+      "anti_patterns": ["done and secure", "complete and secure", "scan is complete and the app is secure"],
+      "severity": "warning",
+      "failure_guidance": "The gate reporting rule forbids claiming the scan is done or the app secure while a config- or environment-class gap remains open."
     }
   ]
 }
