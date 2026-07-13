@@ -58,8 +58,8 @@ The `api` skill wraps read-only StackHawk platform lookups via the `hawk` CLI (`
 | Triage a finding              | `hawk op scan triage --scan <ID> --hash <HASH> --status false-positive --note ""` |
 | Bulk triage from file         | `hawk op scan triage --scan <ID> --from-file triage.yaml`                         |
 | Annotate w/o triage perm      | `hawk op finding note --scan <ID> --hash <HASH> --note "..."`                     |
-| Get scanned URIs              | `hawk op scan uris <scanId> --format json` (skip if the subcommand errors)         |
-| Get effective scan config     | `hawk op scan config <scanId>` (skip if the subcommand errors)                     |
+| Get scanned URIs              | `hawk op scan uris <scanId> --format json` (hawk op ≥ 0.11.7; skip if absent)      |
+| Get effective scan config     | `hawk op scan config <scanId>` (hawk op ≥ 0.11.7; skip if absent)                  |
 
 These reads require the combined `hawk` CLI; the `api` skill covers setup (`hawk init --browser` or the `HAWK_API_KEY` env var).
 
@@ -370,7 +370,7 @@ At the cap, or once checks are clean, proceed to Step 4 regardless — findings 
 reported and fixable. Never say a scan is "done and secure" while a gate gap is open; state
 plainly what was scanned, what wasn't, and why, using the reason identifiers.
 
-→ Full check definitions, commands, degradation when a subcommand is unavailable, and the
+→ Full check definitions, commands, degradation without hawk op ≥ 0.11.7, and the
   iteration/reporting rules: [`references/scan-quality.md`](references/scan-quality.md)
 
 ---

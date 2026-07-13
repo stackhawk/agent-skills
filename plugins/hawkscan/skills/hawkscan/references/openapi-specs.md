@@ -137,17 +137,14 @@ source. This is the check that catches base-path mismatch, stale specs, and wron
 
 1. **Count sanity.** Spec operation count should be in the same ballpark as the route grep
    from discovery. A spec with far fewer/more paths than the code has is suspect.
-2. **Resolve check.** Take 2–3 real operation paths **from the spec you're wiring** and
-   request each **as the scanner will build it** — effective `host` + operation path — against
-   the running app, both as the spec declares it and with the app's detected base/context path
-   prepended. Substitute your own values for the placeholders; do not run them literally:
+2. **Resolve check.** Take 2–3 spec paths and request them **as the scanner will build them**
+   — effective `host` + operation path — against the running app:
    ```bash
-   # <spec-path>  = an operation path copied from the spec       (e.g. /authors)
-   # <base-path>  = the app's detected base/context path, or empty if none  (e.g. /api/v1)
-   curl -s -o /dev/null -w "%{http_code} %{url_effective}\n" "$SCAN_HOST<spec-path>"
-   curl -s -o /dev/null -w "%{http_code} %{url_effective}\n" "$SCAN_HOST<base-path><spec-path>"
+   # effective base the scan uses (app.host, incl. any path component)
+   curl -s -o /dev/null -w "%{http_code} %{url_effective}\n" "$SCAN_HOST/authors"
+   curl -s -o /dev/null -w "%{http_code} %{url_effective}\n" "$SCAN_HOST/api/v1/authors"
    ```
-   If the spec-derived URL 404s while the base/context-path-prefixed variant returns a real
+   If the spec-derived URL 404s while a base/context-path-prefixed variant returns a real
    status (200/401/403), the base path is wrong — fix `app.host` or the spec before scanning.
    A raw container 404 (e.g. Tomcat's default page) rather than an application response is a
    strong tell that the request never reached the app's routing.

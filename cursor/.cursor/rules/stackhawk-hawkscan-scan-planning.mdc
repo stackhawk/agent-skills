@@ -61,10 +61,7 @@ For anything the docs didn't answer, find the surfaces the way a developer would
 manifests, entry points, and route definitions. Identify **every** distinct API surface in
 the repo — a service can have more than one (e.g. a REST API plus an internal gRPC service).
 For each surface found, record its type and derive a route inventory using the matching
-technique. The commands below are **illustrative starting points**, not fixed incantations:
-point them at the repo's real source root and its actual spec/schema filenames — don't run
-`src/`, `openapi.yaml`, or `schema.graphql` literally — and adjust the pattern to what the
-code actually uses.
+technique:
 
 | Surface | Detection | Route inventory / derivation |
 |---------|-----------|-------------------------------|
@@ -187,13 +184,9 @@ For each surface:
 
 **Before the first scan of a fresh repo, present a one-screen summary and get the user's
 confirmation.** The summary should state, per surface: the surface type, which config file
-covers it, the scan order and why, the auth approach, the expected route count with how it
-was derived (the same grep/spec-count evidence gathered above), and — for any REST surface
-with a wired spec — the result of the mandatory resolve-check (e.g. "3/3 sample spec paths
-resolved against host"; see `openapi-specs.md`). The resolve-check is the one thing that
-catches a base-path mismatch before it wastes a whole scan, so its result belongs in the
-summary rather than left to chance. Confirming this up front is cheap; discovering the scan
-order, auth assumption, or a spec that 404s every path was wrong after a scan has already
+covers it, the scan order and why, the auth approach, and the expected route count with how
+it was derived (the same grep/spec-count evidence gathered above). Confirming this up front
+is cheap; discovering the scan order or auth assumption was wrong after a scan has already
 run is not.
 
 ## Cross-checking
