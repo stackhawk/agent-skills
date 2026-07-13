@@ -106,6 +106,32 @@ immediately before the first `##` section. Format:
 
 Shorter files may omit the ToC.
 
+### Examples vs. placeholders (avoid literal-match traps)
+
+Agents copy **runnable code blocks verbatim** far more readily than they adapt them. A
+concrete app-specific value baked into a command is therefore a trap: the agent runs it
+literally against a different codebase and silently does the wrong thing (curls a route that
+doesn't exist, greps a directory that isn't there).
+
+The rule that prevents this:
+
+- **Runnable code blocks use `<placeholder>`s that fail loudly if pasted as-is.** Prefer
+  `curl "$HOST<spec-path>"` over `curl "$HOST/authors"` — a literal paste of the placeholder
+  form breaks visibly, while a literal paste of `/authors` hits the wrong route silently. Put
+  the concrete value in an adjacent comment as a clearly-labeled `e.g.`
+- **Concrete examples live in prose or comments, marked `e.g.`** There they aid comprehension
+  without being executable, so literal-matching them is harmless.
+- **Literal values are fine only when they are genuinely universal** — e.g. probing the real,
+  fixed served-spec paths (`/openapi.json`, `/v3/api-docs`) is correct precisely because those
+  are the same across every app of that framework. If a value changes per codebase, it is a
+  placeholder, not a literal.
+- **Command tables (grep/derivation recipes) are illustrative starting points.** Say so once
+  near the table, and point them at the repo's real source root and filenames rather than a
+  literal `src/` or `openapi.yaml`.
+
+The test: *"if an agent runs this exact text against a completely different repo, does it fail
+loudly or mislead silently?"* Silent-mislead means parameterize it.
+
 ---
 
 ## Creating a New Plugin
