@@ -47,7 +47,10 @@ states:
 | `docs/` setup / quickstart / architecture pages | deeper API and service-boundary detail |
 
 Harvest: run command + host/port, which API surfaces exist and where their source lives
-(useful in a monorepo), and any documented spec location or dev/test credential.
+(useful in a monorepo), and any documented spec location or dev/test credential. Read these
+from the docs and config — discovery never starts the app to learn them. A
+`docker-compose.yml` port mapping or an `.env`/`.env.example` `APP_URL` gives you the host
+and port without running anything; starting the app is a scan-time step, not a discovery one.
 
 ### Pass 2 — explore code per surface type
 

@@ -136,6 +136,12 @@ command, host/port, and auth shape needed to reach each one. Prefer the repo's o
 over guessing, explore code to fill gaps, and ask the user directly for whatever remains
 unresolved — never stall or invent.
 
+**Discovery is read-only and static.** Determine the run command, host, and port by
+*reading* config and docs — `docker-compose.yml` port mappings, `.env`/`.env.example`
+(e.g. `APP_URL`), the README — not by launching anything. You never need to start the app,
+run a container, or bring up a server to discover *what* to scan; standing up the target is
+a scan-time step (Step 1c), not part of discovery.
+
 → Full discovery workflow — per-surface detection, route-inventory derivation, gap
   recommendations, and the user-confirmed summary required before the first scan:
   [`references/scan-planning.md`](references/scan-planning.md)
