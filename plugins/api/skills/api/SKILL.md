@@ -40,8 +40,7 @@ Before making any calls, check what's available:
    - valid org + JWT → proceed.
    - installed but unconfigured → `hawk init --browser` (interactive; the combined binary
      has no `hawk op init` — `hawk init` writes `~/.hawk/hawk.properties`, which
-     `hawk op` reads along with the `HAWK_API_KEY` env var; the legacy
-     standalone-binary config file is no longer used).
+     `hawk op` reads along with the `HAWK_API_KEY` env var).
    - not installed → instruct the user to install the `hawk` CLI (docs:
      [docs.stackhawk.com](https://docs.stackhawk.com)) and stop; do **not** fall back to curl.
 
