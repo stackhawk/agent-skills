@@ -62,6 +62,13 @@ it against. Build that expectation the same way every time, right after the scan
   installed CLI, fall back per the Degradation section below — detect it by the command
   failing, don't ask the user which version they have.
 
+Because the no-spec expectation is re-derived with the **same** per-framework greps discovery
+uses, the gate inherits discovery's blind spots: a surface neither discovery nor this
+re-derivation detects (a second gRPC service, a dynamically-mounted router) won't be flagged
+as unscanned — the gate can't miss-diff against a surface it never counted. This is why the
+user-confirmed discovery summary (`scan-planning.md`) is the real backstop for surface
+completeness, not the gate alone.
+
 ## The five checks
 
 Run all five after every scan. Each has its own command, pass condition, and a stable
