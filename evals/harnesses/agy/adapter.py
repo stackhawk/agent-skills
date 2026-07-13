@@ -148,7 +148,16 @@ class AgyAdapter:
         max_budget: float,
         bare: bool,
         full_auto: bool,
+        target_repo=None,
     ) -> ParsedRun:
+        if target_repo is not None:
+            # Discovery (target_repo) cells clone a real repo and explore it for
+            # real; that path is wired only for the claude-code harness (only its
+            # CI job mints RESEARCH_REPO_TOKEN to read the stackhawk-research repos).
+            # Fail the cell cleanly here rather than run the agent against an empty
+            # cwd -- mirrors claude-code's own "clone failed" fallback, so the rest
+            # of the suite still runs. (agy is text-only, so it cannot explore anyway.)
+            return ParsedRun(error="discovery (target_repo) cells run only on the claude-code harness")
         # Skills are installed globally via `agy plugin install` in CI;
         # load_skill toggling is a no-op here.
         tmpdir = tempfile.mkdtemp(prefix=f"hawkeval_{run_id}_")

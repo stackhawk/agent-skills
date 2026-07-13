@@ -111,5 +111,43 @@ class AdapterTargetRepo(unittest.TestCase):
                       "scan cells keep the passed-in runtime budget cap")
 
 
+class NonClaudeAdapterTargetRepo(unittest.TestCase):
+    """The non-claude adapters must ACCEPT the target_repo kwarg (the CLI passes
+    it on every launch) and short-circuit discovery cells cleanly. Regression for
+    the PLUMBING FAILURE where cli.py passed target_repo=... to launch() but only
+    claude-code's signature accepted it, so every cell on codex/cursor/agy raised
+    TypeError and 0/N ran cleanly."""
+
+    ADAPTERS = ("codex", "cursor", "agy")
+
+    def test_launch_accepts_target_repo_kwarg(self):
+        # No target_repo: launch() must accept the keyword without raising a
+        # TypeError just for its presence in the signature. We don't run the
+        # agent here; a raised TypeError would name the bad kwarg.
+        import inspect
+        for name in self.ADAPTERS:
+            adapter = get_adapter(name)
+            params = inspect.signature(adapter.launch).parameters
+            self.assertIn("target_repo", params,
+                          f"{name} adapter.launch must accept target_repo")
+
+    def test_discovery_cell_short_circuits_without_shelling_out(self):
+        tr = TargetRepo(url="https://github.com/stackhawk-research/x.git", pin="deadbeef")
+        for name in self.ADAPTERS:
+            adapter = get_adapter(name)
+            calls = []
+            with mock.patch("subprocess.run",
+                            lambda cmd, *a, **k: calls.append(cmd)):
+                run = adapter.launch("discover", "hawkscan", "x", ["/plug"],
+                                     model=None, load_skill=True, max_budget=0.2,
+                                     bare=False, full_auto=False, target_repo=tr)
+            self.assertIsNotNone(run.error,
+                                 f"{name}: discovery cell should return an error, not run")
+            self.assertIn("claude-code", run.error,
+                          f"{name}: error should explain discovery is claude-code only")
+            self.assertEqual(calls, [],
+                             f"{name}: must not shell out for an unsupported discovery cell")
+
+
 if __name__ == "__main__":
     unittest.main()
