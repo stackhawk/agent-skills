@@ -55,7 +55,10 @@ For anything the docs didn't answer, find the surfaces the way a developer would
 manifests, entry points, and route definitions. Identify **every** distinct API surface in
 the repo — a service can have more than one (e.g. a REST API plus an internal gRPC service).
 For each surface found, record its type and derive a route inventory using the matching
-technique:
+technique. The commands below are **illustrative starting points**, not fixed incantations:
+point them at the repo's real source root and its actual spec/schema filenames — don't run
+`src/`, `openapi.yaml`, or `schema.graphql` literally — and adjust the pattern to what the
+code actually uses.
 
 | Surface | Detection | Route inventory / derivation |
 |---------|-----------|-------------------------------|
