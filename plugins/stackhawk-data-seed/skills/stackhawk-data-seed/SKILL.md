@@ -1,6 +1,6 @@
 ---
 name: stackhawk-data-seed
-version: 2.3.3
+version: 2.3.4
 description: >
   Set up checked-in seed data so authenticated HawkScan can reach non-trivial
   paths. Drives the `hawk perch seed` preflight, designs the minimum seed
