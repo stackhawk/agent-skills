@@ -123,6 +123,7 @@
 
     Apply the quality gate: name the gate signal, say whether it is config-class or environment-class, and give the single correct fix. Do not declare the scan done or the app secure.
   notes: Gate reasoning — base-path mismatch (spec paths 404 while prefixed variants resolve)
+  own_checks_only: true
 - id: hw-22
   should_trigger: true
   invocation_type: explicit
@@ -134,6 +135,7 @@
 
     Apply the quality gate: name the primary gate signal, say whether it is config-class or environment-class, and give the correct next step, noting the coverage evidence. Do not weaken the scan (e.g. widening excludePaths or raising failureThreshold) to make it pass, and do not claim the app is done or secure.
   notes: Gate reasoning — auth-wall (config-class) + coverage-gap evidence
+  own_checks_only: true
 - id: firefly-iii
   should_trigger: true
   invocation_type: implicit

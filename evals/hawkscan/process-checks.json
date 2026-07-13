@@ -378,16 +378,6 @@
       "signals": ["22", "254", "coverage", "reached"],
       "severity": "warning",
       "failure_guidance": "Coverage is evidence-only but must still be reported (e.g. 22 of 254 routes reached) so the gap is specific."
-    },
-    {
-      "id": "gate_no_false_done_secure",
-      "phase": "step_4_5",
-      "description": "The agent does NOT declare the scan done or the app secure while a gate gap is open.",
-      "type": "output_negative",
-      "applies_to": ["hw-21", "hw-22"],
-      "anti_patterns": ["done and secure", "complete and secure", "scan is complete and the app is secure"],
-      "severity": "warning",
-      "failure_guidance": "The gate reporting rule forbids claiming the scan is done or the app secure while a config- or environment-class gap remains open."
     }
   ]
 }

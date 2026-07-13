@@ -70,6 +70,13 @@ def main() -> None:
                         run.error = run.error or f"judge failed: {type(e).__name__}: {e}"
                 res = grade_discovery(p, run, cfg.checks, judge_checks,
                                       platform=args.harness, skill=args.skill)
+            elif p.own_checks_only:
+                # Reasoning-only cell (e.g. post-scan gate): grade on its own
+                # applies_to checks + expected, not the global scan-flow checks
+                # (preflight/step1/scan) that a paper exercise never performs.
+                from evals.lib.grading import grade_discovery
+                res = grade_discovery(p, run, cfg.checks, [],
+                                      platform=args.harness, skill=args.skill)
             else:
                 did = adapter.detect_trigger(run, args.skill)
                 res = grade(p, run, cfg.checks, platform=args.harness, skill=args.skill,
