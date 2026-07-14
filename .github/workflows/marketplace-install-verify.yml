@@ -137,7 +137,7 @@ jobs:
           fetch-depth: 0
       - name: Rewrite git SSH->HTTPS
         run: git config --global url."https://github.com/".insteadOf "git@github.com:"
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
       - name: Install Codex CLI
@@ -198,7 +198,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
       - name: Install GitHub Copilot CLI
