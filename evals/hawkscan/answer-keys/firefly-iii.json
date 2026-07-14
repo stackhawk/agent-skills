@@ -7,14 +7,14 @@
       "evidence": "composer.json: \"php\": \">=8.5\", \"laravel/framework\": \"^13\"."
     },
     "run_command": {
-      "value": "Official Docker image `fireflyiii/core` via docker compose against a database (MySQL/MariaDB/PostgreSQL/SQLite), served on container port 8080; or local dev with `php artisan serve` (Laravel dev server on 127.0.0.1:8000). A database is required.",
+      "value": "In-repo local dev: `composer install`, generate app + Passport keys, run migrations (a database is required — MySQL/MariaDB/PostgreSQL/SQLite), then `php artisan serve` (Laravel dev server on 127.0.0.1:8000). Production packaging ships as the separate `fireflyiii/core` Docker image (container port 8080); there is no docker-compose in this repo. Either identifying the in-repo `artisan serve` path OR the external Docker image is a correct answer.",
       "must_hit": false,
-      "evidence": "docker-compose examples; php artisan serve"
+      "evidence": "No docker-compose/Dockerfile in the repo; `php artisan serve` for local dev; `fireflyiii/core` image is built/published from separate packaging."
     },
     "host": {
-      "value": "http://localhost:8080 (official Docker image) or http://127.0.0.1:8000 (php artisan serve). APP_URL defaults to http://localhost.",
+      "value": "http://127.0.0.1:8000 (`php artisan serve`, the in-repo local run) OR http://localhost:8080 (the separate `fireflyiii/core` Docker image). APP_URL defaults to http://localhost. Any of these is correct.",
       "must_hit": true,
-      "evidence": ".env.example APP_URL=http://localhost (line 301)."
+      "evidence": ".env.example APP_URL=http://localhost; Laravel dev server default 127.0.0.1:8000; fireflyiii/core image exposes 8080."
     },
     "api_style": {
       "value": "REST. Base path /api/v1/. The OpenAPI/Swagger spec ships in the separate firefly-iii/api-docs repo, not served from this app.",
