@@ -173,5 +173,6 @@ tooling (step 2) so the spec regenerates from code instead of drifting.
 visit — no methods, no request bodies, no path/query parameters — so a seedPaths-only scan
 can GET a handful of collection endpoints but never exercises POST/PUT/PATCH, parameterized
 routes, or request-body validation. That is why a spec-less scan collapses to a fraction of
-the real surface (in dogfood: 22 scanned URIs against 254 routes). Only use seedPaths as a
-supplement to a spec, or as a genuine last resort when even a hand-derived spec is impossible.
+the real surface — on a typical REST API that can be well under 10% of the routes reached.
+Only use seedPaths as a supplement to a spec, or as a genuine last resort when even a
+hand-derived spec is impossible.
