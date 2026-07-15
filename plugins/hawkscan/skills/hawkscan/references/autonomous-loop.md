@@ -8,11 +8,13 @@
 
 ## The Loop steps
 
-After completing a code change, announce and execute these steps in order.
+After completing a code change, announce and execute these steps in order. Narrate every
+phase with the `StackHawk | ` prefix (SKILL.md **Progress output**) so the loop is never
+silent — ASCII only, no emoji.
 
 **1. Announce**
 
-Say: "Implementation complete. Running security scan against the application."
+Say: `StackHawk | Implementation complete - running a security scan against the app`
 
 **2. Configure**
 
@@ -42,11 +44,14 @@ timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — en
 
 **4. Scan**
 
+Announce before launching: `StackHawk | Scanning <host> - this takes a few minutes; scan progress streams below`. Run it synchronously and let hawk's own progress print (don't suppress it):
+
 ```bash
 hawk scan --json-output
 ```
 
-Capture `scan.id` from the JSON output — you'll need it for rescan.
+Capture `scan.id` from the JSON output — you'll need it for rescan. Then announce completion:
+`StackHawk | Scan complete - <url_count> URLs scanned (scan <scanId>)`.
 
 **5. Quality gate**
 
@@ -61,7 +66,8 @@ timeouts, app unreachable mid-scan), never edit the config: verify the app is up
 scan once for free, and if the same environment-class signal recurs on the retry, report it
 as an environment problem and stop — do not retry again or reach for a config edit. At the
 cap, or once the gate is clean, proceed to the next step regardless — findings are always
-reported and fixable independent of gate state.
+reported and fixable independent of gate state. Announce the gate result:
+`StackHawk | Quality gate: coverage <n>/<m>, auth <ok|gap>, <no gaps|reason-id>`.
 
 **6. If findings exist**
 
@@ -70,7 +76,7 @@ Run the Step 5 triage filter first (per-path `status` field):
 - Prioritize `ASSIGNED` paths before `NEW` of the same severity
 - Fix `NEW` paths in severity order
 
-Announce: "Found [N] actionable vulnerabilities (+ [M] skipped due to prior triage). Fixing all actionable ones."
+Announce: `StackHawk | [N] actionable findings (+ [M] skipped via prior triage) - fixing all`
 
 **Fix ALL findings — not just ones related to your recent changes.** DAST scans the entire running application. Pre-existing vulnerabilities are just as exploitable as new ones.
 
@@ -80,7 +86,8 @@ Commit format: `fix: resolve [CWE-XXX] [vulnerability type] found by HawkScan`
 
 **7. Rescan**
 
-Rescan is the default for all fix-verify cycles:
+Rescan is the default for all fix-verify cycles. Announce before launching:
+`StackHawk | Rescanning to verify fixes - a few minutes; progress streams below`.
 
 ```bash
 hawk rescan --scan-id <SCAN_ID> --json-output
@@ -111,9 +118,9 @@ second config-fix iteration.
 
 **9. Report**
 
-- If clean **and no gate gaps remain open**: "Rescan complete. Zero new findings. All security issues have been resolved."
+- If clean **and no gate gaps remain open**: `StackHawk | Rescan clean - 0 new findings; all security issues resolved on the scanned surface`
 - If clean **but gate gaps remain open** (cap reached with config-class gaps still unresolved, or an environment-class gap that recurred): report the gaps by reason identifier, the coverage evidence, and the remaining next steps. Do not say "all security issues have been resolved" or otherwise imply the app is done and secure while a gap is open.
-- If findings remain: "Rescan found [N] remaining issues that require manual review:" and list them.
+- If findings remain: `StackHawk | Rescan: [N] issues remain and need manual review` — then list them.
 - If findings were filtered by triage state: "Skipped [X] findings already triaged as RISK_ACCEPTED / FALSE_POSITIVE."
 - If findings were marked FALSE_POSITIVE in step 6: "Marked [N] findings as false positive — review at https://app.stackhawk.com/scans/\<scanId\>".
 
@@ -123,7 +130,7 @@ second config-fix iteration.
 
 - **One scan at a time per app/env.** Never dispatch a second `hawk scan` or `hawk rescan` while one is still running. Run scan commands synchronously — never with `&` or `nohup`. Wait for the exit code.
 - **Max one fix-rescan cycle per task.** If the rescan still has findings after fixing, report the remaining issues rather than looping indefinitely. The user can ask for a follow-up.
-- **Always announce what you're doing.** The developer should see "Running security scan...", "Found N vulnerabilities, fixing...", "Rescanning to verify..." in the output.
+- **Always announce what you're doing** with the `StackHawk | ` prefix at every phase (SKILL.md **Progress output**) — the developer should see scan start, gate result, findings, and rescan stream by, never a silent gap. ASCII only, no emoji.
 - **Interruptible.** If the user interrupts or says to stop, stop immediately.
 - **Don't block on scan failures.** If `hawk scan` exits with code 1 (config error, app unreachable), report the error rather than retrying in a loop — with one exception: an environment-class failure (connection refused, timeout, unreachable) gets exactly one free retry after verifying the app is up. If the same environment-class signal recurs on that retry, report it and stop; don't retry a second time.
 - **Report gate gaps — never silently accept exit 0 from a thin scan.**

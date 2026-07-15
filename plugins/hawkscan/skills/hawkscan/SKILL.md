@@ -99,6 +99,20 @@ names deliberately. Findings have a lifecycle (NEW, FALSE_POSITIVE, RISK_ACCEPTE
 
 ---
 
+## Progress output
+
+Keep the terminal informed so a running loop never looks silent. Prefix every status line with
+`StackHawk | ` — **ASCII only, no emoji** (must render in Cursor, Windows `cmd`, and PowerShell;
+keep the branded lines themselves plain ASCII). Emit one short line **entering each phase** —
+discovery, config, scan, quality gate, findings, each fix batch, rescan, report — with what's
+happening plus the key number (routes, coverage, findings). Before a scan/rescan, note it takes
+a few minutes and let hawk's own progress stream through (don't suppress it); announce
+completion after. Status output, **not** a prompt — never pause for input. E.g.
+`StackHawk | Scanning http://localhost:8080 - a few minutes; progress streams below`, then
+`StackHawk | 3 findings (2 High, 1 Medium) - fixing all`. Per-phase lines: `references/autonomous-loop.md`.
+
+---
+
 ## Phase 0: App Setup & Verification
 
 Run Phase 0 **once** when onboarding a new application (`stackhawk.yml` being created for
@@ -182,7 +196,8 @@ strategy, frontend-vs-backend scenarios, and config templates:
    ```bash
    hawk create app --name "<repo-name>" --env <env-name>
    ```
-   Resolve `<env-name>` with the Env Name Algorithm above. Announce the created app ID and URL.
+   Resolve `<env-name>` with the Env Name Algorithm above. Announce it (Progress output):
+   `StackHawk | Created app <name> (<appId>) - <url>`.
 6. **Env exists?** Determine env name via Env Name Algorithm. Run
    `hawk op env list --app <APP_ID> --format json`. Reuse if exists; otherwise run
    `hawk op env create --app <APP_ID> --env <name> --host <url>`.
@@ -477,7 +492,7 @@ initialized; skill is active.
 **Guard rails summary:**
 - One scan at a time — never run `hawk scan` or `hawk rescan` with `&` or `nohup`
 - Max one fix-rescan cycle per task — if findings remain after fixing, report them
-- Always announce: "Running security scan...", "Found N vulnerabilities, fixing...", "Rescanning..."
+- Always narrate with the `StackHawk | ` prefix at every phase (see **Progress output**) — never let the loop run silent
 - Interruptible — stop immediately if the user says to
 - Report gate gaps — never silently accept exit 0 from a thin scan
 - Never claim "done and secure" while gate gaps are open
