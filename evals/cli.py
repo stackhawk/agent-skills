@@ -46,6 +46,12 @@ def main() -> None:
     out_dir = RESULTS_ROOT / args.harness / "results" / args.skill
     out_dir.mkdir(parents=True, exist_ok=True)
     for p in prompts:
+        if p.target_repo is not None and args.harness != "claude-code":
+            # Discovery (target_repo) cells clone + read-only-guard a real repo, which
+            # only the claude-code harness supports; codex/cursor/agy short-circuit them.
+            # Skip entirely so an un-run cell renders as "not present" in the matrix,
+            # not a phantom blocking failure that tanks the score for those harnesses.
+            continue
         try:
             run = adapter.launch(p.prompt, args.skill, p.id, plugin_dirs,
                                  model=args.model, load_skill=True,
