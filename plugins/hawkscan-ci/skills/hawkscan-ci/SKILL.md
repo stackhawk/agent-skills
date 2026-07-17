@@ -2,18 +2,20 @@
 name: hawkscan-ci
 version: 2.3.4
 description: >
-  Use when the user wants to configure HawkScan in their CI/CD pipeline —
-  triggers on "set up hawkscan in CI", "add stackhawk to my pipeline",
-  "scan in CI", "configure github actions / gitlab / jenkins / circleci
-  for hawkscan", "wire hawkscan into ci/cd", or any provider-named
-  variant. Provider-agnostic: detects the CI system from repo files,
-  edits the pipeline file in place to add a HawkScan job, prompts the
-  user to set HAWK_API_KEY in their CI's native secrets engine (or an
-  organizationally-approved external secrets manager), and wires
-  commit-SHA + branch traceability. Defers every local-scan concern
-  (stackhawk.yml, auth, findings, triage) to the hawkscan skill —
-  requires a working local scan path before activating. Explicit
-  trigger only; no autonomous code-change hook.
+  Use when the user wants to WIRE HawkScan into a CI/CD pipeline config
+  file — triggers on "set up hawkscan in CI", "add stackhawk to my
+  pipeline", "scan in CI", "configure github actions / gitlab / jenkins /
+  circleci for hawkscan", "wire hawkscan into ci/cd", or any provider-named
+  variant. Provider-agnostic: detects the CI system from repo files, edits
+  the pipeline file in place to add a HawkScan job, prompts for HAWK_API_KEY
+  storage in the CI's native secrets store (or an approved external
+  manager), and wires commit-SHA + branch traceability. If no local
+  stackhawk.yml exists yet, still trigger and route the local-config work to
+  the hawkscan skill. Do NOT trigger for: documentation-only changes (e.g.
+  editing a README about CI scanning); informational or research questions
+  ("what CI providers does HawkScan support?"); or running / performing a
+  scan — a local scan is the hawkscan skill, whereas this skill only edits
+  CI pipeline config. Explicit trigger only; no autonomous code-change hook.
 ---
 
 # HawkScan CI Skill
