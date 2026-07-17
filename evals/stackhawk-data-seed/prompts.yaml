@@ -78,3 +78,17 @@
   invocation_type: negative
   prompt: Start the docker-compose stack and run the integration tests
   notes: Environment startup — skill explicitly forbids running services
+- id: ds-17
+  should_trigger: true
+  invocation_type: explicit
+  own_checks_only: true
+  prompt: |
+    Using the stackhawk-data-seed skill's Phase 2 (minimum-seed design), propose the seed for this service. You do NOT have shell or CLI access in this exercise — reason over the digest below and output only the proposal (do not write files or run commands).
+
+    Repo digest:
+    - PostgreSQL datastore. Tables: `users` (id, email, password_hash, org_id), `organizations` (id, name), `api_keys` (id, user_id, token_hash).
+    - Auth: POST /login takes {email, password} and returns a bearer JWT. Routes under /api/v1 require that bearer token.
+    - No fixtures/seed checked in; users and organizations are empty on a fresh database.
+
+    Propose the MINIMUM seed an authenticated HawkScan needs to reach the API: which entities and how many, and the one credential HawkScan would authenticate with. Present it for confirmation before emitting anything.
+  notes: Phase-2 reasoning fixture — minimal-seed proposal from an inline digest (own_checks_only; no live repo / hawk perch needed)
