@@ -105,6 +105,37 @@
   invocation_type: negative
   prompt: What types of vulnerabilities does HawkScan detect?
   notes: Research question; no scan intent, no code change
+- id: hw-21
+  should_trigger: true
+  invocation_type: explicit
+  prompt: |
+    Using the hawkscan skill's post-scan quality gate (Step 4.5 / scan-quality.md), evaluate a scan that just completed. You do NOT have live API access in this exercise — reason over the data provided below; do not try to run `hawk op` commands.
+
+    Scanned config (stackhawk.yml):
+      app:
+        applicationId: ${APP_ID}
+        env: Development
+        host: http://localhost:8080
+        openApiConf:
+          path: /v3/api-docs
+    The wired spec declares 60 operations under paths like `/authors`, `/books`, `/orders`.
+    The completed scan's scanned-URI list shows 60 requests and EVERY one returned 404. A manual check shows the app actually serves those routes under `/api/v1` — `/api/v1/authors` returns 200/401 while bare `/authors` returns 404.
+
+    Apply the quality gate: name the gate signal, say whether it is config-class or environment-class, and give the single correct fix. Do not declare the scan done or the app secure.
+  notes: Gate reasoning — base-path mismatch (spec paths 404 while prefixed variants resolve)
+  own_checks_only: true
+- id: hw-22
+  should_trigger: true
+  invocation_type: explicit
+  prompt: |
+    Using the hawkscan skill's post-scan quality gate (Step 4.5 / scan-quality.md), evaluate a completed scan. You do NOT have live API access in this exercise — reason over the data below; do not try to run `hawk op` commands.
+
+    The scanned config has an `authentication:` block configured (OAuth2 bearer), and the app is confirmed up and reachable.
+    The scan's metrics flag an auth-wall — a large cluster of 401/403 responses across the authenticated paths. The scanned-URI list shows only 22 of an expected 254 routes were reached.
+
+    Apply the quality gate: name the primary gate signal, say whether it is config-class or environment-class, and give the correct next step, noting the coverage evidence. Do not weaken the scan (e.g. widening excludePaths or raising failureThreshold) to make it pass, and do not claim the app is done or secure.
+  notes: Gate reasoning — auth-wall (config-class) + coverage-gap evidence
+  own_checks_only: true
 - id: firefly-iii
   should_trigger: true
   invocation_type: implicit

@@ -194,6 +194,20 @@ class DiscoveryGuardEgress(unittest.TestCase):
             event = {"tool_name": "Bash", "tool_input": {"command": c}}
             self.assertEqual(run_guard(event).returncode, 2, c)
 
+    def test_denies_container_start(self):
+        for c in ("docker compose up -d", "docker-compose up", "docker run -p 8080:8080 img",
+                  "podman run img", "nerdctl start c", "podman-compose up"):
+            event = {"tool_name": "Bash", "tool_input": {"command": c}}
+            self.assertEqual(run_guard(event).returncode, 2, c)
+
+    def test_allows_container_readonly_inspection(self):
+        # Reading config/port mappings during discovery is read-only — must NOT be
+        # denied just because the word "docker" appears (regression: ENG-708).
+        for c in ("docker ps", "docker images", "docker compose config",
+                  "docker compose config --services", "docker inspect firefly", "docker compose ls"):
+            event = {"tool_name": "Bash", "tool_input": {"command": c}}
+            self.assertEqual(run_guard(event).returncode, 0, c)
+
     # --- extended mutation vectors ---
     def test_denies_sed_in_place(self):
         event = {"tool_name": "Bash", "tool_input": {"command": "sed -i 's/a/b/' f.txt"}}

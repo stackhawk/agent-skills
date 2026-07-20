@@ -24,7 +24,14 @@ def main():
             deny("hawk scan is out of scope for discovery")
         if re.search(r"\bgit\s+(commit|push)\b", low):
             deny("git commit/push not allowed")
-        if re.search(r"\b(docker|docker-compose|podman|nerdctl)\b", low) \
+        # Only deny commands that actually START a container/app — not read-only
+        # inspection (`docker ps`, `docker images`, `docker compose config`, `docker
+        # inspect`), which the agent legitimately uses to read port mappings and
+        # config during discovery. Matching the bare word `docker` denied those too.
+        if re.search(r"\bdocker\s+(run|start|create|compose\s+up|compose\s+run)\b", low) \
+           or re.search(r"\bdocker-compose\s+(up|run|start)\b", low) \
+           or re.search(r"\b(podman|nerdctl)\s+(run|start|create)\b", low) \
+           or re.search(r"\bpodman-compose\s+(up|run|start)\b", low) \
            or re.search(r"\b(npm|pnpm|yarn)\s+(start|run\s+dev|run\s+serve|serve)\b", low) \
            or re.search(r"\b(bootrun|runserver|uvicorn|gunicorn|hypercorn|nodemon)\b", low) \
            or re.search(r"spring-boot:run|flask\s+run|mix\s+phx\.server|air\b|./gradlew\s+bootrun", low) \

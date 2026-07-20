@@ -17,7 +17,7 @@ on:
         required: true
         default: "all"
         type: choice
-        options: [all, claude-code, codex, agy, cursor]
+        options: [all, claude-code, codex, cursor]  # agy disabled (OAuth-only, can't auth in CI)
       rubric:
         description: "Also run the qualitative rubric grader (extra ANTHROPIC_API_KEY cost)"
         required: false
@@ -256,105 +256,109 @@ jobs:
           retention-days: 30
 
   # ── Antigravity (agy) — replaces Gemini ───────────────────────────────────
-  eval-agy:
-    name: agy / ${{ matrix.skill }} / ${{ matrix.model }}
-    runs-on: ubuntu-latest
-    needs: validate-config
-    if: |
-      inputs.platform == 'all' ||
-      inputs.platform == 'agy'
-    strategy:
-      fail-fast: false
-      matrix:
-        skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize]
-        model: [default]
+  # --- eval-agy DISABLED: agy is OAuth-only and cannot authenticate in headless CI.
+  # Re-enable by uncommenting the job below, re-adding `agy` to the platform options,
+  # and adding `eval-agy` back to the report job's `needs:` list. See git history.
 
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v5
-      - name: Install Claude Code CLI (native, rubric grader)
-        run: |
-          curl -fsSL https://claude.ai/install.sh | bash
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Install agy CLI
-        run: |
-          # /cli/install.sh is the real bootstrapper; /install-cli returns the
-          # site's HTML landing page (piping that into bash is what broke before).
-          curl -fsSL https://antigravity.google/cli/install.sh | bash
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"   # installer drops `agy` here
-        continue-on-error: true  # don't abort the job — evals records any launch failure
-
-      - name: Verify agy CLI
-        run: agy --version
-        continue-on-error: true  # if unavailable, the eval run captures it as a per-prompt error
-
-      - name: Install StackHawk plugins
-        env:
-          # NOTE: agy ignores API-key env vars and forces interactive Google OAuth
-          # (verified empirically; upstream antigravity-cli#78 open). This mapping is
-          # kept for if/when key auth lands; headless CI needs the OAuth-token
-          # injection below.
-          ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}
-        run: |
-          echo y | agy plugin install plugins/hawkscan
-          echo y | agy plugin install plugins/api
-          echo y | agy plugin install plugins/stackhawk-data-seed
-          echo y | agy plugin install plugins/hawkscan-ci
-          echo y | agy plugin install plugins/optimize
-        continue-on-error: true  # depends on agy CLI; best-effort so evals still runs
-
-      # HawkScan 6 ships as a single self-contained native binary (no JDK) that
-      # provides BOTH scanning (`hawk`) and the platform/API CLI (`hawk op …`).
-      # Install it from the download manifest (source of truth for version + URL)
-      # into /usr/local/bin (already on PATH). One install covers the hawkscan
-      # skill's CLI path AND the api skill + hawkscan Step-1 dedup checks.
-      - name: Install hawk CLI (combined binary, manifest-driven)
-        run: |
-          set -euo pipefail
-          MANIFEST=https://download.stackhawk.com/hawkdocs/hawk.manifest.json
-          url="$(curl -fsSL "$MANIFEST" | jq -r '.latest.assets[]
-            | select(.asset.group == "linux-x64" and (.url | endswith("/hawk"))) | .url')"
-          [ -n "$url" ] || { echo "ERROR: no linux-x64 hawk binary in manifest"; exit 1; }
-          echo "Installing hawk from $url"
-          curl -fsSL "$url" -o /tmp/hawk
-          chmod +x /tmp/hawk
-          sudo mv /tmp/hawk /usr/local/bin/hawk
-        continue-on-error: true  # absence is captured per-prompt in the eval traces
-      - name: Verify hawk CLI
-        run: |
-          hawk version
-          hawk op --help
-        continue-on-error: true  # absence is captured per-prompt in the eval traces
-
-      - name: Run ${{ matrix.skill }} evals
-        env:
-          # agy ignores API-key env vars and forces OAuth (upstream #78); kept for
-          # if/when key auth lands. Headless CI needs OAuth-token injection (TODO).
-          ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # rubric grader (claude)
-          HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
-          HAWK_FORMAT: json
-        run: |
-          MODEL_ARGS=()
-          if [ "${{ matrix.model }}" != "default" ]; then MODEL_ARGS=(--model "${{ matrix.model }}"); fi
-          RUBRIC=""; if [ "${{ inputs.rubric }}" = "true" ]; then RUBRIC="--rubric"; fi
-          uv run evals --harness agy --skill ${{ matrix.skill }} "${MODEL_ARGS[@]}" $RUBRIC
-        # No continue-on-error: the CLI now decides job color (exit 1 only on a
-        # PLUMBING FAILURE — 0 prompts ran cleanly). agy can't auth in headless CI
-        # (OAuth-only, upstream #78), so it exits 1 here and the job goes RED, which
-        # is correct: red = "couldn't run, needs work." The digest still renders agy's
-        # 🚫 cell because Upload results + the report job are both `if: always()`.
-
-      - name: Upload results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: eval-agy-${{ matrix.skill }}-${{ matrix.model }}
-          path: evals/harnesses/agy/results/${{ matrix.skill }}/
-          retention-days: 30
-
-  # ── Cursor ────────────────────────────────────────────────────────────────
+#   eval-agy:
+#     name: agy / ${{ matrix.skill }} / ${{ matrix.model }}
+#     runs-on: ubuntu-latest
+#     needs: validate-config
+#     # agy is OAuth-only and cannot authenticate in headless CI (always red), so it is
+#     # EXCLUDED from `all` — run it explicitly with platform: agy only when needed.
+#     if: inputs.platform == 'agy'
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize]
+#         model: [default]
+# 
+#     steps:
+#       - uses: actions/checkout@v7
+#       - uses: astral-sh/setup-uv@v5
+#       - name: Install Claude Code CLI (native, rubric grader)
+#         run: |
+#           curl -fsSL https://claude.ai/install.sh | bash
+#           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+# 
+#       - name: Install agy CLI
+#         run: |
+#           # /cli/install.sh is the real bootstrapper; /install-cli returns the
+#           # site's HTML landing page (piping that into bash is what broke before).
+#           curl -fsSL https://antigravity.google/cli/install.sh | bash
+#           echo "$HOME/.local/bin" >> "$GITHUB_PATH"   # installer drops `agy` here
+#         continue-on-error: true  # don't abort the job — evals records any launch failure
+# 
+#       - name: Verify agy CLI
+#         run: agy --version
+#         continue-on-error: true  # if unavailable, the eval run captures it as a per-prompt error
+# 
+#       - name: Install StackHawk plugins
+#         env:
+#           # NOTE: agy ignores API-key env vars and forces interactive Google OAuth
+#           # (verified empirically; upstream antigravity-cli#78 open). This mapping is
+#           # kept for if/when key auth lands; headless CI needs the OAuth-token
+#           # injection below.
+#           ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}
+#         run: |
+#           echo y | agy plugin install plugins/hawkscan
+#           echo y | agy plugin install plugins/api
+#           echo y | agy plugin install plugins/stackhawk-data-seed
+#           echo y | agy plugin install plugins/hawkscan-ci
+#           echo y | agy plugin install plugins/optimize
+#         continue-on-error: true  # depends on agy CLI; best-effort so evals still runs
+# 
+#       # HawkScan 6 ships as a single self-contained native binary (no JDK) that
+#       # provides BOTH scanning (`hawk`) and the platform/API CLI (`hawk op …`).
+#       # Install it from the download manifest (source of truth for version + URL)
+#       # into /usr/local/bin (already on PATH). One install covers the hawkscan
+#       # skill's CLI path AND the api skill + hawkscan Step-1 dedup checks.
+#       - name: Install hawk CLI (combined binary, manifest-driven)
+#         run: |
+#           set -euo pipefail
+#           MANIFEST=https://download.stackhawk.com/hawkdocs/hawk.manifest.json
+#           url="$(curl -fsSL "$MANIFEST" | jq -r '.latest.assets[]
+#             | select(.asset.group == "linux-x64" and (.url | endswith("/hawk"))) | .url')"
+#           [ -n "$url" ] || { echo "ERROR: no linux-x64 hawk binary in manifest"; exit 1; }
+#           echo "Installing hawk from $url"
+#           curl -fsSL "$url" -o /tmp/hawk
+#           chmod +x /tmp/hawk
+#           sudo mv /tmp/hawk /usr/local/bin/hawk
+#         continue-on-error: true  # absence is captured per-prompt in the eval traces
+#       - name: Verify hawk CLI
+#         run: |
+#           hawk version
+#           hawk op --help
+#         continue-on-error: true  # absence is captured per-prompt in the eval traces
+# 
+#       - name: Run ${{ matrix.skill }} evals
+#         env:
+#           # agy ignores API-key env vars and forces OAuth (upstream #78); kept for
+#           # if/when key auth lands. Headless CI needs OAuth-token injection (TODO).
+#           ANTIGRAVITY_API_KEY: ${{ secrets.AGY_API_KEY }}
+#           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # rubric grader (claude)
+#           HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
+#           HAWK_FORMAT: json
+#         run: |
+#           MODEL_ARGS=()
+#           if [ "${{ matrix.model }}" != "default" ]; then MODEL_ARGS=(--model "${{ matrix.model }}"); fi
+#           RUBRIC=""; if [ "${{ inputs.rubric }}" = "true" ]; then RUBRIC="--rubric"; fi
+#           uv run evals --harness agy --skill ${{ matrix.skill }} "${MODEL_ARGS[@]}" $RUBRIC
+#         # No continue-on-error: the CLI now decides job color (exit 1 only on a
+#         # PLUMBING FAILURE — 0 prompts ran cleanly). agy can't auth in headless CI
+#         # (OAuth-only, upstream #78), so it exits 1 here and the job goes RED, which
+#         # is correct: red = "couldn't run, needs work." The digest still renders agy's
+#         # 🚫 cell because Upload results + the report job are both `if: always()`.
+# 
+#       - name: Upload results
+#         if: always()
+#         uses: actions/upload-artifact@v7
+#         with:
+#           name: eval-agy-${{ matrix.skill }}-${{ matrix.model }}
+#           path: evals/harnesses/agy/results/${{ matrix.skill }}/
+#           retention-days: 30
+# 
+#   # ── Cursor ────────────────────────────────────────────────────────────────
   eval-cursor:
     name: cursor / ${{ matrix.skill }} / ${{ matrix.model }}
     runs-on: ubuntu-latest
@@ -438,7 +442,7 @@ jobs:
   # ── PR comment ────────────────────────────────────────────────────────────
   report:
     name: Eval report (run summary + PR comment)
-    needs: [validate-config, eval-claude-code, eval-codex, eval-agy, eval-cursor]
+    needs: [validate-config, eval-claude-code, eval-codex, eval-cursor]
     if: always()
     runs-on: ubuntu-latest
     permissions:

@@ -53,8 +53,7 @@ hawk op status         # Confirm auth
 ```
 
 `hawk init` writes credentials to `~/.hawk/hawk.properties`.  
-`hawk op` reads that file plus the `HAWK_API_KEY` env var. The legacy
-standalone-binary config file is no longer used.
+`hawk op` reads that file plus the `HAWK_API_KEY` env var.
 
 **CI/CD only:** For pipeline use, set `HAWK_API_KEY` directly as a secret.
 Org ID and output format can be set via env vars:
@@ -109,8 +108,7 @@ extraction, no token handling.
 ### Latest scan for an app (overview + alerts)
 
 ```bash
-hawk op scan get --app "<APP_NAME>"
-hawk op scan get --app-id <APP_ID>
+hawk op scan get --app "<NAME|UUID>"    # --app takes a name or a UUID
 ```
 
 Wraps: `/scan/{orgId}` + `/scan/{scanId}/alerts`. Returns a scan header, alert
@@ -301,7 +299,7 @@ call — useful when building a reporting pipeline.
 - **Don't forget `--detail full` when you need the remediation/HTTP message payload.**
   The default `hawk op scan get` output is the overview — it won't include per-URI
   evidence.
-- **Don't combine `--app` (name) and `--app-id` (UUID) in the same command.**
-  Pick one. `--app` resolves by name (case-insensitive exact match); `--app-id` is exact by UUID.
-  If a name matches **more than one** app, `hawk op` errors and tells you to use `--app-id` —
-  fall back to `--app-id <UUID>` (grab the UUID from `hawk op app list`).
+- **`--app` takes a name or a UUID.** A UUID resolves exactly; a name resolves by
+  case-insensitive exact match. If a name matches **more than one** app, `hawk op` errors and
+  lists the matches — disambiguate by passing that app's UUID to `--app` (grab it from
+  `hawk op app list`).

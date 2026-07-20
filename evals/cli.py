@@ -46,6 +46,12 @@ def main() -> None:
     out_dir = RESULTS_ROOT / args.harness / "results" / args.skill
     out_dir.mkdir(parents=True, exist_ok=True)
     for p in prompts:
+        if p.target_repo is not None and args.harness != "claude-code":
+            # Discovery (target_repo) cells clone + read-only-guard a real repo, which
+            # only the claude-code harness supports; codex/cursor/agy short-circuit them.
+            # Skip entirely so an un-run cell renders as "not present" in the matrix,
+            # not a phantom blocking failure that tanks the score for those harnesses.
+            continue
         try:
             run = adapter.launch(p.prompt, args.skill, p.id, plugin_dirs,
                                  model=args.model, load_skill=True,
@@ -69,6 +75,13 @@ def main() -> None:
                     except Exception as e:  # judge is best-effort; don't abort the cell
                         run.error = run.error or f"judge failed: {type(e).__name__}: {e}"
                 res = grade_discovery(p, run, cfg.checks, judge_checks,
+                                      platform=args.harness, skill=args.skill)
+            elif p.own_checks_only:
+                # Reasoning-only cell (e.g. post-scan gate): grade on its own
+                # applies_to checks + expected, not the global scan-flow checks
+                # (preflight/step1/scan) that a paper exercise never performs.
+                from evals.lib.grading import grade_discovery
+                res = grade_discovery(p, run, cfg.checks, [],
                                       platform=args.harness, skill=args.skill)
             else:
                 did = adapter.detect_trigger(run, args.skill)

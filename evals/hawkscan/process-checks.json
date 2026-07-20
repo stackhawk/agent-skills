@@ -343,11 +343,52 @@
     {
       "id": "discovery_stayed_read_only",
       "phase": "app-discovery",
-      "description": "The read-only guard denied nothing (no writes/scans/app-start/remote push).",
+      "description": "Discovery took no HARD out-of-scope action — no file writes, no scans, no network egress, no remote push. A blocked-and-recovered app-start attempt is graded separately (discovery_no_app_start), not here.",
       "type": "guard_clean",
+      "guard_scope": "hard",
       "applies_to": ["firefly-iii", "wikijs", "memos", "dawarich"],
       "severity": "blocking",
-      "failure_guidance": "Discovery is observational; any guard denial means the agent acted outside scope."
+      "failure_guidance": "A write/scan/network-egress denial means discovery genuinely left its read-only lane — a real regression."
+    },
+    {
+      "id": "discovery_no_app_start",
+      "phase": "app-discovery",
+      "description": "The agent did not try to START the app/container during discovery — host/port and run command should be read from config, not learned by launching anything.",
+      "type": "guard_clean",
+      "guard_scope": "app_start",
+      "applies_to": ["firefly-iii", "wikijs", "memos", "dawarich"],
+      "severity": "warning",
+      "failure_guidance": "Weaker models reflexively try `php artisan serve` / `go run` / `docker run` to learn the host; the guard blocks it and discovery recovers, so this is a soft foul (warning), not a blocking failure. Ideal discovery derives host/port from docker-compose/.env/README instead."
+    },
+    {
+      "id": "gate_identifies_base_path_mismatch",
+      "phase": "step_4_5",
+      "description": "For the base-path-mismatch scenario, the agent names the base/context-path resolution gap (the gate's base-path-mismatch signal) as the cause of the systematic 404s.",
+      "type": "output_contains",
+      "applies_to": ["hw-21"],
+      "signals": ["base-path-mismatch", "base path", "base-path", "context path", "context-path"],
+      "severity": "blocking",
+      "failure_guidance": "A spec whose paths all 404 while a prefixed variant resolves is a base-path/context-path mismatch, not a missing spec or an environment problem. Naming it correctly is what routes to the right fix (align app.host and the spec base path)."
+    },
+    {
+      "id": "gate_identifies_auth_wall",
+      "phase": "step_4_5",
+      "description": "For the auth-wall scenario, the agent names the auth-wall signal (authenticated paths returning a wall of 401/403) rather than misreading it as an environment problem or coverage-only.",
+      "type": "output_contains",
+      "applies_to": ["hw-22"],
+      "signals": ["auth-wall", "auth wall", "authentication wall"],
+      "severity": "blocking",
+      "failure_guidance": "A cluster of 401/403 across authenticated paths on a reachable app is a config-class auth-wall, fixed by correcting the authentication block — not an environment-class gap."
+    },
+    {
+      "id": "gate_coverage_evidence_reported",
+      "phase": "step_4_5",
+      "description": "For the auth-wall scenario, the agent reports the coverage evidence (routes reached vs. expected) rather than ignoring the under-coverage.",
+      "type": "output_contains",
+      "applies_to": ["hw-22"],
+      "signals": ["22", "254", "coverage", "reached"],
+      "severity": "warning",
+      "failure_guidance": "Coverage is evidence-only but must still be reported (e.g. 22 of 254 routes reached) so the gap is specific."
     }
   ]
 }

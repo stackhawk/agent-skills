@@ -36,7 +36,7 @@ def test_main_survives_launch_crash(monkeypatch, tmp_path):
     assert (out / "cell.json").exists()
     assert (out / "summary.json").exists()
     cell = json.loads((out / "cell.json").read_text())
-    assert len(cell["results"]) == 24            # all hawkscan prompts graded
+    assert len(cell["results"]) == 26            # all hawkscan prompts graded
     # positive prompts failed with a harness note; at least one note mentions the crash
     assert any("command not found" in r.get("note", "") for r in cell["results"])
 

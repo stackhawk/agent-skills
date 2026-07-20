@@ -47,6 +47,7 @@ class PromptConfig(BaseModel):
     expected: list[ExpectedCheck] = []
     target_repo: TargetRepo | None = None      # clone into the cell cwd (read-only run)
     answer_key: str | None = None              # path, relative to the suite dir
+    own_checks_only: bool = False              # grade only this cell's applies_to checks (reasoning cells) — skip global scan-flow checks
 
 
 class Verdict(str, Enum):

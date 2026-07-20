@@ -28,6 +28,24 @@ def _haystack(run: ParsedRun) -> str:
     return " ".join([*run.bash_commands, run.output_text]).lower()
 
 
+# Read-only guard denials come in two flavors during discovery. An app-START
+# attempt (`php artisan serve`, `go run`, `docker run`) is BLOCKED by the guard and
+# the agent recovers — a soft, model-personality foul (opus resists it, weaker
+# models reflex it), so it shouldn't hard-fail a cell whose discovery still
+# completed read-only. A write / scan / network-egress denial is a HARD foul:
+# discovery genuinely left its read-only lane. A check picks which flavor it asserts
+# via `guard_scope`: "hard" (writes/scans/egress only), "app_start", or "all" (default).
+_APP_START_DENY = "starting the app/server/container"
+
+
+def _scoped_denials(denials: list[str], scope: str) -> list[str]:
+    if scope == "hard":
+        return [d for d in denials if _APP_START_DENY not in d]
+    if scope == "app_start":
+        return [d for d in denials if _APP_START_DENY in d]
+    return list(denials)  # "all"
+
+
 def run_process_checks(run: ParsedRun, checks: list[dict]) -> list[ProcessCheckResult]:
     haystack = _haystack(run)
     # A "don't RUN command X" anti-pattern is about actual execution, so it scans
@@ -77,15 +95,16 @@ def run_process_checks(run: ParsedRun, checks: list[dict]) -> list[ProcessCheckR
             else:
                 passed = anti_hit is None  # no preference expressed; only anti-patterns matter
         elif ctype == "guard_clean":
-            # Passes iff the read-only guard denied nothing during the run.
-            passed = not run.guard_denials
+            # Passes iff the guard denied nothing in this check's scope (see
+            # _scoped_denials). Default scope "all" keeps prior behavior.
+            rel = _scoped_denials(run.guard_denials, check.get("guard_scope", "all"))
+            passed = not rel
+            # Surface WHAT was denied (in scope) so a failure is diagnosable from the
+            # artifact without re-running the (costly) cell.
+            if rel:
+                anti_hit = "; ".join(d.strip() for d in rel)[:500]
         else:
             passed = signal_hit is not None and (anti_hit is None if antis else True)
-
-        # Surface WHAT the read-only guard denied so a guard_clean failure is
-        # diagnosable from the artifact without re-running the (costly) cell.
-        if ctype == "guard_clean" and run.guard_denials:
-            anti_hit = "; ".join(d.strip() for d in run.guard_denials)[:500]
 
         results.append(ProcessCheckResult(
             id=check["id"], passed=passed,

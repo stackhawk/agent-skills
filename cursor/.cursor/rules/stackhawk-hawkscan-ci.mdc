@@ -1,6 +1,6 @@
 ---
 description: >
-  Use when the user wants to configure HawkScan in their CI/CD pipeline — triggers on "set up hawkscan in CI", "add stackhawk to my pipeline", "scan in CI", "configure github actions / gitlab / jenkins / circleci for hawkscan", "wire hawkscan into ci/cd". Provider-agnostic: detects the CI system, edits the pipeline file in place to add a HawkScan job, prompts for HAWK_API_KEY storage (CI-native secrets store or external secrets manager), wires commit-SHA + branch traceability. Defers all local-scan concerns (stackhawk.yml, auth, findings, triage) to stackhawk-hawkscan.
+  Use when the user wants to WIRE HawkScan into a CI/CD pipeline config file — triggers on "set up hawkscan in CI", "add stackhawk to my pipeline", "scan in CI", "configure github actions / gitlab / jenkins / circleci for hawkscan", "wire hawkscan into ci/cd". Provider-agnostic: detects the CI system, edits the pipeline file in place to add a HawkScan job, prompts for HAWK_API_KEY storage (CI-native secrets store or external secrets manager), wires commit-SHA + branch traceability. Defers all local-scan concerns (stackhawk.yml, auth, findings, triage) to stackhawk-hawkscan. If no local stackhawk.yml exists yet, still trigger and route local-config work to stackhawk-hawkscan. Do NOT trigger for documentation-only changes, informational/research questions about CI, or running a local scan (that is stackhawk-hawkscan) — this skill only edits CI pipeline config.
 globs:
   - ".github/workflows/**"
   - ".gitlab-ci.yml"

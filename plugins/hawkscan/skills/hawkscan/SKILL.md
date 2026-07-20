@@ -1,19 +1,21 @@
 ---
 name: hawkscan
-version: 2.2.0
+version: 2.4.0
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
-  vulnerabilities (not just your changes), rescan to verify. Use when the user
-  asks to run or perform a security/DAST scan, to test an app or API for
-  vulnerabilities, or to verify a vulnerability is fixed; and AUTONOMOUSLY right
-  after you complete a code change (feature, bugfix, refactor) — "done" means
-  "done and secure," so run the loop without asking permission. Do NOT trigger
-  for: informational questions about what HawkScan is, detects, or how it works
-  (e.g. "what vulnerabilities does HawkScan find?"); editing stackhawk.yml or
-  other config without running a scan; querying existing findings, security
-  posture, untriaged counts, or scan history (use the stackhawk-api skill);
-  documentation-only changes; installing or setting up the CLI; or when the
-  user explicitly says to skip scanning.
+  vulnerabilities (not just your changes), rescan to verify. Performs
+  code-first discovery to configure high-value scans, and quality-gates every
+  scan against code-derived expectations before findings are parsed. Use when
+  the user asks to run or perform a security/DAST scan, to test an app or API
+  for vulnerabilities, or to verify a vulnerability is fixed; and AUTONOMOUSLY
+  right after you complete a code change (feature, bugfix, refactor) — "done"
+  means "done and secure," so run the loop without asking permission. Do NOT
+  trigger for: informational questions about what HawkScan is, detects, or how
+  it works (e.g. "what vulnerabilities does HawkScan find?"); editing
+  stackhawk.yml or other config without running a scan; querying existing
+  findings, security posture, untriaged counts, or scan history (use the
+  stackhawk-api skill); documentation-only changes; installing or setting up
+  the CLI; or when the user explicitly says to skip scanning.
 ---
 
 # HawkScan Skill
@@ -32,11 +34,19 @@ This skill requires **hawk v6.0.0 or newer**. Verify:
 ```bash
 hawk version
 hawk config --help >/dev/null 2>&1 || echo "MISSING: hawk config — upgrade hawk to v6.0.0+"
+hawk skills status
 ```
 
 If hawk is older than `6.0.0` or `hawk config --help` fails, stop and tell the user to
 upgrade before proceeding. Do not inline auth recipes from memory — they live in
 `hawk config show` and are stale by design when hardcoded.
+
+**`hawk skills status`** reports whether the installed StackHawk agent skills are current.
+If it lists anything out of date, surface the exact upgrade command it prints (e.g.
+`/plugin marketplace update stackhawk && /plugin update hawkscan`) and recommend the user
+update before continuing — a stale skill may be missing fixes for the very issues you'll hit.
+It's a recommendation, not a hard stop: proceed if the user prefers. (If the subcommand isn't
+recognized, the installed hawk predates it — skip this check.)
 
 See `references/installation.md` for upgrade and install instructions.
 
@@ -49,18 +59,22 @@ The `api` skill wraps read-only StackHawk platform lookups via the `hawk` CLI (`
 | Purpose                       | Command                                                                          |
 |-------------------------------|----------------------------------------------------------------------------------|
 | Check if App exists           | `hawk op app list --format json`                                                  |
-| Check if Env exists           | `hawk op env list --app <APP_ID> --format json`                                   |
-| Get findings with triage      | `hawk op scan get --app <NAME> --detail full --format json`                       |
+| Check if Env exists           | `hawk op env list --app <NAME\|UUID> --format json`                               |
+| Get findings with triage      | `hawk op scan get --app <NAME\|UUID> --detail full --format json`                 |
 | List ASM repos                | `hawk op repo list --format json`                                                 |
 | Link app to ASM repo          | `hawk op repo link --repo-id <ID> --app-id <ID>`                                  |
-| Get tech flags                | `hawk op app tech-flags get --app <NAME> --format json`                           |
-| Disable all tech flags        | `hawk op app tech-flags disable-all --app <NAME> --yes`                           |
-| Set specific tech flags       | `hawk op app tech-flags set --app <NAME> Key=true`                                |
+| Get tech flags                | `hawk op app tech-flags get --app <NAME\|UUID> --format json`                     |
+| Disable all tech flags        | `hawk op app tech-flags disable-all --app <NAME\|UUID> --yes`                     |
+| Set specific tech flags       | `hawk op app tech-flags set --app <NAME\|UUID> Key=true`                          |
 | Triage a finding              | `hawk op scan triage --scan <ID> --hash <HASH> --status false-positive --note ""` |
 | Bulk triage from file         | `hawk op scan triage --scan <ID> --from-file triage.yaml`                         |
 | Annotate w/o triage perm      | `hawk op finding note --scan <ID> --hash <HASH> --note "..."`                     |
+| Get scanned URIs              | `hawk op scan uris <scanId> --format json` (skip if the subcommand errors)         |
+| Get effective scan config     | `hawk op scan config <scanId>` (skip if the subcommand errors)                     |
 
 These reads require the combined `hawk` CLI; the `api` skill covers setup (`hawk init --browser` or the `HAWK_API_KEY` env var).
+
+**Selecting an app:** `--app` takes an application **name or UUID** — pass whichever you have (e.g. the `applicationId` from `stackhawk.yml`, or the app's name). No separate flag is needed. Also parse `--format json` output defensively — a "skills out of date" banner may precede the JSON.
 
 The `stackhawk-data-seed` skill sets up checked-in backend seed data via `hawk perch seed`.
 Hand off to it when authentication fails because the backend has no valid credential
@@ -82,6 +96,20 @@ Before running a scan, understand these four layered objects:
 names deliberately. Findings have a lifecycle (NEW, FALSE_POSITIVE, RISK_ACCEPTED, ASSIGNED) — respect it.
 
 → Deep reference: [`references/platform-model.md`](references/platform-model.md)
+
+---
+
+## Progress output
+
+Keep the terminal informed so a running loop never looks silent. Prefix every status line with
+`StackHawk | ` — **ASCII only, no emoji** (must render in Cursor, Windows `cmd`, and PowerShell;
+keep the branded lines themselves plain ASCII). Emit one short line **entering each phase** —
+discovery, config, scan, quality gate, findings, each fix batch, rescan, report — with what's
+happening plus the key number (routes, coverage, findings). Before a scan/rescan, note it takes
+a few minutes and let hawk's own progress stream through (don't suppress it); announce
+completion after. Status output, **not** a prompt — never pause for input. E.g.
+`StackHawk | Scanning http://localhost:8080 - a few minutes; progress streams below`, then
+`StackHawk | 3 findings (2 High, 1 Medium) - fixing all`. Per-phase lines: `references/autonomous-loop.md`.
 
 ---
 
@@ -125,32 +153,28 @@ enable only detected flags via `hawk op app tech-flags`; if none, skip.
 > 2. `CI=true` or `GITHUB_ACTIONS=true` → `CI`
 > 3. Git branch `main`/`master`/`production` → `Production`; `staging` → `Staging`; otherwise → `Development`
 
-### Step 1a: Understand the Application
+### Step 1a: Discover What to Scan
 
-Before generating config, build a working understanding of the target: **how it runs
-locally, how to reach its API, whether it's a SPA, and whether exercising it requires
-auth.** Work in three passes; stop as soon as you can answer all four:
+Before generating config, run code-first discovery: find every API surface in the repo
+(REST, GraphQL, gRPC, SPA, ...), derive a route inventory per surface, and get the run
+command, host/port, and auth shape needed to reach each one. Prefer the repo's own docs
+over guessing, explore code to fill gaps, and ask the user directly for whatever remains
+unresolved — never stall or invent.
 
-1. **Read what the repo already documents.** Most repos describe how to run themselves —
-   prefer their own words over guessing, and treat them as authoritative.
-   → Source files and what to harvest: [`references/app-discovery.md`](references/app-discovery.md)
+**Discovery is read-only and static.** Determine the run command, host, and port by
+*reading* config and docs — `docker-compose.yml` port mappings, `.env`/`.env.example`
+(e.g. `APP_URL`), the README — not by launching anything. You never need to start the app,
+run a container, or bring up a server to discover *what* to scan; standing up the target is
+a scan-time step (Step 1c), not part of discovery.
 
-2. **Explore to fill the gaps.** For anything the docs don't answer, investigate the repo
-   the way a developer would when handed an unfamiliar codebase — read the run/build
-   manifests, entry points, and route definitions — until you can state, concretely:
-   - **Run command + host/port** — how to start it locally and where it listens.
-   - **API style + base path** — REST (note an OpenAPI/Swagger spec if one is served or
-     checked in), GraphQL, gRPC, or a plain HTML web app.
-   - **SPA?** — a client-rendered JS front end changes what we scan.
-   - **Auth?** — does reaching the real endpoints require a login, and what shape does it
-     appear to use? This is an *understanding* signal only; picking, obtaining, and
-     configuring the credential is Step 1c / Phase 1c.
+→ Full discovery workflow — per-surface detection, route-inventory derivation, gap
+  recommendations, and the user-confirmed summary required before the first scan:
+  [`references/scan-planning.md`](references/scan-planning.md)
+→ Docs-first source table (which files to read and what to harvest):
+  [`references/app-discovery.md`](references/app-discovery.md)
 
-3. **Confirm the unknowns with the user.** Never stall or invent. Ask directly for
-   anything still unresolved — most often the start command, host/port, or the login. When
-   file access is limited, skip straight to asking for all four.
-
-Record the four answers — Step 1c and Step 2 consume them.
+Record what discovery produced — surfaces, run command, host/port, auth shape — Step 1c and
+Step 2 consume them.
 
 **SPA rule:** if the app is a client-rendered JS front end, never scan it without the Ajax
 Spider, and note that a separate backend API is usually the higher-value target. Full
@@ -172,7 +196,8 @@ strategy, frontend-vs-backend scenarios, and config templates:
    ```bash
    hawk create app --name "<repo-name>" --env <env-name>
    ```
-   Resolve `<env-name>` with the Env Name Algorithm above. Announce the created app ID and URL.
+   Resolve `<env-name>` with the Env Name Algorithm above. Announce it (Progress output):
+   `StackHawk | Created app <name> (<appId>) - <url>`.
 6. **Env exists?** Determine env name via Env Name Algorithm. Run
    `hawk op env list --app <APP_ID> --format json`. Reuse if exists; otherwise run
    `hawk op env create --app <APP_ID> --env <name> --host <url>`.
@@ -207,6 +232,16 @@ Do not proceed to Step 3 until validation passes.
 
 → API-type-specific config (OpenAPI, GraphQL, gRPC, seed paths, spider tuning):
   [`references/config-patterns.md`](references/config-patterns.md)
+
+**REST surface? Get an accurate OpenAPI spec BEFORE the first scan — this is not optional.**
+A REST scan with no spec (spider/`seedPaths` only) reaches a small fraction of the API; a
+scan with a *wrong* spec 404s every path. Do not skip to a scan on the assumption a spec is
+missing or "good enough" — **open and follow [`references/openapi-specs.md`](references/openapi-specs.md)** to
+work its preference order (a spec the running app serves → a code/build change that generates
+one → a spec published outside the repo → hand-derived), then run its resolve-check
+(`host + spec-path` returns real routes, not 404s) before scanning. Reaching for
+`hawk.spider.seedPaths` instead of a spec is a last resort, not a shortcut — read that file
+first. Same idea for GraphQL/gRPC: wire the schema/proto, don't scan blind.
 
 ### Phase 1c: Authentication Configuration
 
@@ -269,7 +304,9 @@ After seeding, re-run `hawk validate auth stackhawk.yml` and continue.
 
 Review the config against the current app state:
 
-- **Low path count?** Check in order: SPA/JS app → enable `hawk.spider.ajax: true`; API spec available → wire `openApiConf`/`graphqlConf`; specific known-deep paths → add `seedPaths`. Omit `seedPaths` unless there is a specific reason — they're rarely needed when Ajax Spider or a spec is configured.
+- **Gate reported gaps?** Tune what the gate names (wire spec, enable ajax spider, fix
+  auth) — additive-only; see [`references/scan-quality.md`](references/scan-quality.md).
+- **Low path count?** For a REST surface the fix is almost always an accurate spec — get one per `references/openapi-specs.md` (a wired, resolving `openApiConf` is worth far more than any spider tuning). Then: SPA/JS app → `hawk.spider.ajax: true`; GraphQL → wire `graphqlConf`. `hawk.spider.seedPaths` is a last resort (URLs only — no methods/bodies/params, so it can't reach POST/PUT or parameterized routes); prefer even a hand-derived spec over it, and omit it entirely once a spec is wired.
 - **Auth failing?** Verify `authentication` block; re-fetch the relevant recipe via `hawk config show <section> --text` (Phase 1c).
 - **Too noisy / too slow?** Add `app.excludePaths` or `app.includePaths`; tune `hawk.spider.maxDurationMinutes`.
 - **New API type added?** Add corresponding `graphqlConf`, `openApiConf`, etc.
@@ -339,6 +376,34 @@ hawk rescan --scan-id <SCAN_ID> --json-output      # fast fix verification — r
 | `0`  | Scan complete, no findings at or above `failureThreshold` |
 | `1`  | Scan failed (config error, app unreachable, auth failure) |
 | `42` | Scan complete, findings met or exceeded `failureThreshold` |
+
+---
+
+## Step 4.5: Quality Gate
+
+Run this gate after **every** scan — full scans and rescans alike, any exit code — before
+parsing findings into fix tasks. Exception: on exit 1 where no scan was actually started
+(config parse failure, app unreachable pre-scan), there is no `scanId` to gate against — skip
+straight to Step 6's diagnosis / the environment-class path instead. It is a feedback loop
+into config tuning, **not a governor**: gate state never blocks a finding from being reported
+and fixed; a thin scan that missed surface can still have found something real.
+
+Run the five checks and derive the expectation fresh each time, exactly as
+`references/scan-quality.md` describes — coverage (evidence-only), base-path resolve, auth,
+surface-completeness, and health.
+On config-class gaps (`spec-not-wired`, `surface-unscanned`, `auth-validate-failed`,
+`auth-wall`, `all-4xx`, `base-path-mismatch`), loop back to Step 2b with an additive-only fix, batch every gap
+into one edit pass, and rescan once. Iteration cap: 2 interactive / 1 autonomous, per
+config, counted in rescans. On environment-class gaps (`env-unreachable`), never edit
+config — verify the app is up, retry once for free, and stop if it recurs. Multi-config
+repos gate sequentially, one config at a time, immediately after that config's scan.
+
+At the cap, or once checks are clean, proceed to Step 4 regardless — findings are always
+reported and fixable. Never say a scan is "done and secure" while a gate gap is open; state
+plainly what was scanned, what wasn't, and why, using the reason identifiers.
+
+→ Full check definitions, commands, degradation when a subcommand is unavailable, and the
+  iteration/reporting rules: [`references/scan-quality.md`](references/scan-quality.md)
 
 ---
 
@@ -421,14 +486,16 @@ initialized; skill is active.
 
 **Skip for:** documentation-only changes; config edits without code changes; exploratory tasks; when the user explicitly says to skip.
 
-**The loop** (full 7-step detail with guard rails):
+**The loop** (full step-by-step detail with guard rails):
 → [`references/autonomous-loop.md`](references/autonomous-loop.md)
 
 **Guard rails summary:**
 - One scan at a time — never run `hawk scan` or `hawk rescan` with `&` or `nohup`
 - Max one fix-rescan cycle per task — if findings remain after fixing, report them
-- Always announce: "Running security scan...", "Found N vulnerabilities, fixing...", "Rescanning..."
+- Always narrate with the `StackHawk | ` prefix at every phase (see **Progress output**) — never let the loop run silent
 - Interruptible — stop immediately if the user says to
+- Report gate gaps — never silently accept exit 0 from a thin scan
+- Never claim "done and secure" while gate gaps are open
 
 ---
 
@@ -437,7 +504,7 @@ initialized; skill is active.
 - **Don't scan before the app is running.** HawkScan will exit 1 with a connection error.
 - **Try `https://` first — HawkScan accepts self-signed certificates.** Only fall back to `http://` if the scan actually fails to connect with a TLS error.
 - **Don't hardcode API keys or credentials in `stackhawk.yml`.** Use env vars.
-- **Low path count ≠ clean app.** Feed an API spec or auth config before concluding the app is secure. If auth succeeds but endpoints return empty data, seed the backend (Phase 1c.6).
+- **Never accept an exit-0 scan that fails the quality gate.** Untouched planned routes, auth-walls, or an unscanned surface mean config iteration, not done — see [`references/scan-quality.md`](references/scan-quality.md).
 - **Don't ignore exit code 42.** It's a deliberate signal that findings crossed the threshold — treat it as a build failure.
 - **String interpolation mid-value doesn't work.** `host: "https://${HOST}/api"` will NOT interpolate. Use `host: ${FULL_HOST_URL}`.
 - **Never refer to the scanner as ZAP.** The product is HawkScan / StackHawk. The underlying engine is HSTE, not ZAP. Neither "ZAP" nor "OWASP ZAP" should appear in output or instructions.
