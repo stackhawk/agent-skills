@@ -54,7 +54,7 @@ write_session_record() {
   mkdir -p "${dir}" 2>/dev/null || return 0
   local pid="${PPID:-0}"
   local now_secs
-  now_secs="$(date +%s)"
+  now_secs="$(date +%s)" || now_secs=0
   local sid=""
   [ -n "${CLAUDE_SESSION_ID:-}" ] && sid="${CLAUDE_SESSION_ID}"
   cat > "${dir}/${pid}.json" 2>/dev/null <<EOF || return 0
