@@ -22,14 +22,48 @@ escape_for_json() {
     printf '%s' "$s"
 }
 
+# Reverse escape_for_json: decode a raw (still JSON-escaped) substring pulled
+# out of a JSON blob back into its literal value. Needed because the pure-bash
+# extraction below is regex-based, not a real JSON parser — it hands back the
+# escaped bytes verbatim (e.g. `sess\"weird` for the value sess"weird), and
+# feeding that straight into escape_for_json a second time would double-escape
+# it (backslashes especially). Decoding here first keeps every extracted value
+# in the same "plain/decoded" shape jq -r would have produced, so a single
+# escape_for_json call at write time is always correct regardless of which
+# path (jq or fallback) produced the value.
+unescape_json_string() {
+  local s="$1"
+  local esc_bs=$'\x01' # placeholder so a decoded \\ doesn't get re-touched below
+  s="${s//\\\\/$esc_bs}"
+  s="${s//\\\"/\"}"
+  s="${s//\\n/$'\n'}"
+  s="${s//\\r/$'\r'}"
+  s="${s//\\t/$'\t'}"
+  s="${s//\\\//\/}"
+  s="${s//$esc_bs/\\}"
+  printf '%s' "$s"
+}
+
 # Extract a quoted-string field's value from a JSON blob via grep/sed
 # (pure-bash fallback path — no jq dependency assumed to exist repo-wide).
+#
+# The inner pattern `(\\.|[^"\\])*` is escape-aware: it accepts either an
+# escaped pair (backslash + any char, e.g. \" or \\) or any non-quote,
+# non-backslash byte. That lets the match run past an escaped `"` instead of
+# treating it as the closing quote (the bug: a naive `[^"]*` stops at the
+# first literal `"`, even an escaped one, silently truncating/corrupting the
+# value). The result is unescaped before being returned so callers always get
+# the plain decoded string.
 extract_string_field() {
   local json="$1" key="$2"
-  printf '%s' "$json" \
-    | grep -oE "\"${key}\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" \
+  local pattern raw
+  pattern="\"${key}\"[[:space:]]*:[[:space:]]*\"(\\\\.|[^\"\\\\])*\""
+  raw=$(printf '%s' "$json" \
+    | grep -oE "$pattern" \
     | head -1 \
-    | sed -E "s/\"${key}\"[[:space:]]*:[[:space:]]*\"//; s/\"\$//"
+    | sed -E "s/^\"${key}\"[[:space:]]*:[[:space:]]*\"//; s/\"\$//") || return 0
+  [ -n "$raw" ] || return 0
+  unescape_json_string "$raw"
 }
 
 # Extract a bare (unquoted) numeric field's value.
@@ -93,9 +127,14 @@ record_skill_activation() {
 
     local -a items=()
     if [ -n "$existing_arr" ]; then
+      # Escape-aware, same as extract_string_field: don't stop at an escaped
+      # quote inside an item, and decode each item back to its plain value.
       while IFS= read -r item; do
-        [ -n "$item" ] && items+=("$item")
-      done < <(printf '%s' "$existing_arr" | grep -oE '"[^"]*"' | tail -n +2 | sed -e 's/^"//' -e 's/"$//')
+        [ -n "$item" ] || continue
+        item="${item#\"}"
+        item="${item%\"}"
+        items+=("$(unescape_json_string "$item")")
+      done < <(printf '%s' "$existing_arr" | grep -oE '"(\\.|[^"\\])*"' | tail -n +2)
     fi
 
     local already_present="false" it
