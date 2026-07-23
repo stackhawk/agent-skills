@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# PostToolUse hook for hawkscan plugin
+# Fires after the Skill tool is used. Appends the invoked skill's name into
+# the per-session agent-detection record's skillsActivated array (deduped).
+#
+# PostToolUse stdin payload: {"session_id":..., "tool_name":"Skill",
+#   "tool_input":{"skill":"<name>","args":"..."}, "tool_response":{...}}
+#
+# Best-effort: never fails the hook — any parse/IO problem is swallowed and
+# the script always exits 0 (Task 12's review flagged an unguarded `date`
+# call as the class of bug to avoid here; every command below is guarded).
+
+set -euo pipefail
+
+escape_for_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+# Extract a quoted-string field's value from a JSON blob via grep/sed
+# (pure-bash fallback path — no jq dependency assumed to exist repo-wide).
+extract_string_field() {
+  local json="$1" key="$2"
+  printf '%s' "$json" \
+    | grep -oE "\"${key}\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" \
+    | head -1 \
+    | sed -E "s/\"${key}\"[[:space:]]*:[[:space:]]*\"//; s/\"\$//"
+}
+
+# Extract a bare (unquoted) numeric field's value.
+extract_number_field() {
+  local json="$1" key="$2"
+  printf '%s' "$json" \
+    | grep -oE "\"${key}\"[[:space:]]*:[[:space:]]*[0-9]+" \
+    | head -1 \
+    | grep -oE '[0-9]+$'
+}
+
+record_skill_activation() {
+  # No stdin (interactive terminal) -- not a tool-use context.
+  [ -t 0 ] && return 0
+
+  local tool_input=""
+  tool_input=$(cat 2>/dev/null) || return 0
+  [ -n "$tool_input" ] || return 0
+
+  # Extract the skill name from tool_input.skill.
+  local skill_name=""
+  if command -v jq >/dev/null 2>&1; then
+    skill_name=$(printf '%s' "$tool_input" | jq -r '.tool_input.skill // empty' 2>/dev/null) || skill_name=""
+  fi
+  if [ -z "$skill_name" ]; then
+    skill_name=$(extract_string_field "$tool_input" "skill") || skill_name=""
+  fi
+  [ -n "$skill_name" ] || return 0
+
+  local dir="${HOME}/.stackhawk/agent/sessions"
+  local pid="${PPID:-0}"
+  local record="${dir}/${pid}.json"
+  [ -f "$record" ] || return 0
+
+  local existing=""
+  existing=$(cat "$record" 2>/dev/null) || return 0
+  [ -n "$existing" ] || return 0
+
+  local new_json=""
+  if command -v jq >/dev/null 2>&1; then
+    new_json=$(printf '%s' "$existing" | jq --arg s "$skill_name" \
+      '.skillsActivated = ((.skillsActivated // []) + [$s] | unique)' 2>/dev/null) || new_json=""
+  fi
+
+  if [ -z "$new_json" ]; then
+    # Pure-bash fallback: rebuild the fixed-shape v1 record, recomputing only
+    # skillsActivated (dedup-append), preserving every other field verbatim.
+    local schema_version pid_field created_at writer host_session_id
+    schema_version=$(extract_number_field "$existing" "schemaVersion") || schema_version=""
+    pid_field=$(extract_number_field "$existing" "pid") || pid_field=""
+    created_at=$(extract_number_field "$existing" "createdAtSecs") || created_at=""
+    writer=$(extract_string_field "$existing" "writer") || writer=""
+    host_session_id=$(extract_string_field "$existing" "hostSessionId") || host_session_id=""
+    [ -n "$schema_version" ] || schema_version=1
+    [ -n "$pid_field" ] || pid_field="$pid"
+    [ -n "$created_at" ] || created_at=0
+    [ -n "$writer" ] || writer="claude-hook"
+
+    local existing_arr=""
+    existing_arr=$(printf '%s' "$existing" | grep -oE '"skillsActivated"[[:space:]]*:[[:space:]]*\[[^]]*\]') || existing_arr=""
+
+    local -a items=()
+    if [ -n "$existing_arr" ]; then
+      while IFS= read -r item; do
+        [ -n "$item" ] && items+=("$item")
+      done < <(printf '%s' "$existing_arr" | grep -oE '"[^"]*"' | tail -n +2 | sed -e 's/^"//' -e 's/"$//')
+    fi
+
+    local already_present="false" it
+    for it in "${items[@]:-}"; do
+      if [ "$it" = "$skill_name" ]; then
+        already_present="true"
+        break
+      fi
+    done
+    [ "$already_present" = "true" ] || items+=("$skill_name")
+
+    local arr_json="" first="true"
+    arr_json="["
+    for it in "${items[@]:-}"; do
+      [ -n "$it" ] || continue
+      if [ "$first" = "true" ]; then
+        first="false"
+      else
+        arr_json+=","
+      fi
+      arr_json+="\"$(escape_for_json "$it")\""
+    done
+    arr_json+="]"
+
+    new_json=$(cat <<EOF
+{
+  "schemaVersion": ${schema_version},
+  "platform": "claude-code",
+  "hostSessionId": "$(escape_for_json "$host_session_id")",
+  "pid": ${pid_field},
+  "createdAtSecs": ${created_at},
+  "writer": "$(escape_for_json "$writer")",
+  "skillsActivated": ${arr_json}
+}
+EOF
+) || return 0
+  fi
+
+  [ -n "$new_json" ] || return 0
+
+  local tmp="${record}.tmp.$$"
+  printf '%s\n' "$new_json" > "$tmp" 2>/dev/null || return 0
+  mv -f "$tmp" "$record" 2>/dev/null || { rm -f "$tmp" 2>/dev/null || true; return 0; }
+
+  return 0
+}
+
+record_skill_activation || true
+
+exit 0
