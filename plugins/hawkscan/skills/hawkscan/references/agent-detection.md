@@ -8,14 +8,13 @@
 
 ## HAWK_AGENT detection script
 
-Run this block before every scan to export `COMMIT_SHA`, `BRANCH_NAME`, and `HAWK_AGENT`.
-`COMMIT_SHA` and `BRANCH_NAME` populate the `_STACKHAWK_GIT_COMMIT_SHA` and `_STACKHAWK_GIT_BRANCH`
-tags in `stackhawk.yml` as before. `HAWK_AGENT` does **not** go into `stackhawk.yml` — it's
-delivered to hawk purely via the `_STACKHAWK_AGENT` environment variable, which the CLI's own
-detection logic reads with the correct precedence rules (an explicit env value wins; its absence
-falls through to the CLI's built-in detection instead of a literal `none`). Never write
-`_STACKHAWK_AGENT` as a tag in `stackhawk.yml` — a config-level tag would override the CLI's
-detection even when this block's value is wrong or unset.
+Run this block before every scan to export `COMMIT_SHA`, `BRANCH_NAME`, and `HAWK_AGENT`. These
+populate the `_STACKHAWK_AGENT`, `_STACKHAWK_GIT_COMMIT_SHA`, and `_STACKHAWK_GIT_BRANCH` tags in
+`stackhawk.yml`. `HAWK_AGENT` is also exported as `_STACKHAWK_AGENT` — a second delivery channel
+alongside the yml tag, read directly by the CLI's own detection precedence. The yml tag's
+`${HAWK_AGENT:none}` default is a sentinel: when this block didn't run (or ran before
+`HAWK_AGENT` was populated), hawk fills the blank/`none` value from its own built-in detection
+rather than trusting the literal default.
 
 > **WARNING:** Run this block verbatim — do not retype or paraphrase the `export` lines. A
 > session was observed hand-writing a malformed value (`claude-code/claude-opus-4-8` instead of
@@ -63,9 +62,9 @@ if [ -z "${HAWK_AGENT}" ] && [ -z "${_STACKHAWK_AGENT}" ]; then
   unset _HAWK_PLATFORM _HAWK_MODEL
 fi
 
-# Deliver the detected value via env — never write it into stackhawk.yml. The CLI's own
-# precedence rules take over from here (explicit env wins; absence falls through to the
-# CLI's built-in detection rather than a literal "none"). A pre-set _STACKHAWK_AGENT
+# Also deliver the detected value via env — a second channel alongside the yml tag. The
+# CLI's own precedence rules take over from here (explicit env wins; absence falls through
+# to the CLI's built-in detection rather than a literal "none"). A pre-set _STACKHAWK_AGENT
 # (e.g. from CI/CD) is never clobbered; the if-form stays safe under `set -e`.
 if [ -z "${_STACKHAWK_AGENT}" ]; then
   export _STACKHAWK_AGENT="${HAWK_AGENT}"
@@ -81,8 +80,8 @@ export _STACKHAWK_SKILL=hawkscan
 |---|---|---|
 | `COMMIT_SHA` | `git rev-parse HEAD` | `_STACKHAWK_GIT_COMMIT_SHA` tag |
 | `BRANCH_NAME` | current branch name | `_STACKHAWK_GIT_BRANCH` tag |
-| `HAWK_AGENT` | `<platform>:<model>` or `<platform>` | Source value copied into `_STACKHAWK_AGENT` env var |
-| `_STACKHAWK_AGENT` | copy of `HAWK_AGENT` | Read directly by the CLI's agent-detection precedence (never templated into `stackhawk.yml`) |
+| `HAWK_AGENT` | `<platform>:<model>` or `<platform>` | `_STACKHAWK_AGENT` tag in `stackhawk.yml` |
+| `_STACKHAWK_AGENT` | copy of `HAWK_AGENT` | Second channel — read directly by the CLI's agent-detection precedence |
 
 `HAWK_AGENT` format examples:
 - `claude-code:claude-sonnet-4-6` — Claude Code running Anthropic Sonnet

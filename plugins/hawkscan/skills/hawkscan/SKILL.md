@@ -125,13 +125,12 @@ to `owner/repo`), match against `hawk op repo list --format json` output, and ru
 into `stackhawk.yml`.
 → Full normalization rules and SSH/HTTPS edge cases: [`references/repo-linking.md`](references/repo-linking.md)
 
-**Phase 0b — Agent Tagging:** hawk's CLI detects the agent platform itself and stamps the
-`_STACKHAWK_AGENT` tag on the scan — the config must never override it. If `stackhawk.yml`
-already has a `_STACKHAWK_AGENT` entry under `tags:` (from an older config, or one hand-written
-by a prior session), remove it during this pass — a config-level tag takes precedence over the
-CLI's own detection and would block it, even when the value is a corrupted or default one. The
-`git_origin` tag (Phase 0a) and the `_STACKHAWK_GIT_COMMIT_SHA` / `_STACKHAWK_GIT_BRANCH` tags
-(see `references/agent-detection.md`) are unaffected — keep/add those exactly as today.
+**Phase 0b — Agent Tagging:** Add the `_STACKHAWK_AGENT` tag to `stackhawk.yml` once if missing:
+```yaml
+tags:
+  - name: _STACKHAWK_AGENT
+    value: ${HAWK_AGENT:none}
+```
 
 **Phase 0c — Scan Policy & Tech Flags (via optimize):** Set up the scan policy + tech flags
 through the **optimize skill's Setup mode** (non-destructive — builds a named scan policy and

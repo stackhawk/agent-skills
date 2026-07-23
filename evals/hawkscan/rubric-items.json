@@ -18,8 +18,8 @@
       "focus": "stackhawk.yml overall structure — indentation of tags block"
     },
     {
-      "id": "agent_tag_absent",
-      "description": "The tags block does NOT contain a _STACKHAWK_AGENT entry — the hawk CLI's built-in detection owns that tag and a config-level entry would override it. (git_origin and _STACKHAWK_GIT_* tags are still expected per their own items.)",
+      "id": "agent_tag_present",
+      "description": "A _STACKHAWK_AGENT tag with value ${HAWK_AGENT:none} is present in the tags block.",
       "focus": "stackhawk.yml tags block"
     },
     {

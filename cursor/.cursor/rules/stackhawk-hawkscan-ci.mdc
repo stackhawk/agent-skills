@@ -246,11 +246,10 @@ Provider expression cheat sheet:
 | Buildkite | `${BUILDKITE_COMMIT}` | `${BUILDKITE_BRANCH}` |
 | Others | see [`references/execution-shapes.md`](references/execution-shapes.md) | see [`references/execution-shapes.md`](references/execution-shapes.md) |
 
-**Do not set `HAWK_AGENT` or `_STACKHAWK_AGENT`.** Those variables attribute scans to the AI
-agent that triggered the work; a CI pipeline isn't an agent. `stackhawk.yml` never carries a
-`_STACKHAWK_AGENT` tag (the hawk CLI's own detection owns that tag), so there's nothing to
-override — leaving these env vars unset lets the CLI's built-in detection run for CI, which is
-the correct attribution. Leave it alone.
+**Do not set `HAWK_AGENT`.** That variable attributes scans to the AI
+agent that triggered the work; a CI pipeline isn't an agent. The
+`${HAWK_AGENT:none}` default already in `stackhawk.yml` resolves to
+`none` for CI runs, which is the correct attribution. Leave it alone.
 
 ### 5.4 — Fetch external secret (Path B only)
 
@@ -329,7 +328,7 @@ After writing/patching the workflow file:
 ## Common Mistakes to Avoid
 
 - **Don't generate `stackhawk.yml`.** That's the `hawkscan` skill's surface. If the config is missing, hand off.
-- **Don't set `HAWK_AGENT` or `_STACKHAWK_AGENT`.** CI pipelines aren't agents; `stackhawk.yml` never templates a `_STACKHAWK_AGENT` tag, so leaving these unset lets the hawk CLI's own detection resolve correctly without intervention.
+- **Don't set `HAWK_AGENT`.** CI pipelines aren't agents; the `${HAWK_AGENT:none}` default resolves correctly without intervention.
 - **Use `stackhawk/hawkscan:latest` for the scanner image.** It's a security scanner — CI should run the newest stable build for the best detection. Pin an explicit version only when an org reproducibility mandate requires it.
 - **Don't inline the API key.** Never, in any form. Always reference the provider's secret store or external secrets manager.
 - **Don't try to set the secret autonomously.** Prompt the user and tell them where to put it.
