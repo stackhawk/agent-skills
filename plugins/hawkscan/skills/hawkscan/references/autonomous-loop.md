@@ -22,12 +22,13 @@ Verify the App and Env exist via Step 1c checks 5–6 (prevents duplicate App cr
 
 If no `stackhawk.yml` exists: generate one (Step 2a) and **immediately run Phase 0** (repo linking, agent tagging, tech flag detection).
 
-If `stackhawk.yml` exists: ensure it has commit SHA tags **top-level** (not under `app:`) and the `_STACKHAWK_AGENT` tag:
+If `stackhawk.yml` exists: ensure it has commit SHA tags **top-level** (not under `app:`), and
+ensure it does **NOT** have a `_STACKHAWK_AGENT` tag — hawk's CLI detects the agent platform
+itself and stamps that tag; a config-level entry would override the CLI's own detection (see
+Phase 0b, SKILL.md). Remove it if present, and keep only the git tags:
 
 ```yaml
 tags:
-  - name: _STACKHAWK_AGENT
-    value: ${HAWK_AGENT:none}
   - name: _STACKHAWK_GIT_COMMIT_SHA
     value: ${COMMIT_SHA:none}
   - name: _STACKHAWK_GIT_BRANCH

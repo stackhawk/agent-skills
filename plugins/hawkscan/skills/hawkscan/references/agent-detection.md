@@ -8,7 +8,19 @@
 
 ## HAWK_AGENT detection script
 
-Run this block before every scan to export `COMMIT_SHA`, `BRANCH_NAME`, and `HAWK_AGENT`. These populate the `_STACKHAWK_AGENT`, `_STACKHAWK_GIT_COMMIT_SHA`, and `_STACKHAWK_GIT_BRANCH` tags in `stackhawk.yml`.
+Run this block before every scan to export `COMMIT_SHA`, `BRANCH_NAME`, and `HAWK_AGENT`.
+`COMMIT_SHA` and `BRANCH_NAME` populate the `_STACKHAWK_GIT_COMMIT_SHA` and `_STACKHAWK_GIT_BRANCH`
+tags in `stackhawk.yml` as before. `HAWK_AGENT` does **not** go into `stackhawk.yml` — it's
+delivered to hawk purely via the `_STACKHAWK_AGENT` environment variable, which the CLI's own
+detection logic reads with the correct precedence rules (an explicit env value wins; its absence
+falls through to the CLI's built-in detection instead of a literal `none`). Never write
+`_STACKHAWK_AGENT` as a tag in `stackhawk.yml` — a config-level tag would override the CLI's
+detection even when this block's value is wrong or unset.
+
+> **WARNING:** Run this block verbatim — do not retype or paraphrase the `export` lines. A
+> session was observed hand-writing a malformed value (`claude-code/claude-opus-4-8` instead of
+> the contract's `claude-code:claude-opus-4-8`), which broke detection entirely. The block below,
+> not memory, is the source of truth.
 
 ```bash
 export COMMIT_SHA=$(git rev-parse HEAD)
@@ -51,6 +63,11 @@ if [ -z "${HAWK_AGENT}" ]; then
   unset _HAWK_PLATFORM _HAWK_MODEL
 fi
 
+# Deliver the detected value via env — never write it into stackhawk.yml. The CLI's own
+# precedence rules take over from here (explicit env wins; absence falls through to the
+# CLI's built-in detection rather than a literal "none").
+export _STACKHAWK_AGENT="${HAWK_AGENT}"
+
 # Identify the driving skill for CLI usage telemetry (read by hawk/hawkop).
 export _STACKHAWK_SKILL=hawkscan
 ```
@@ -61,7 +78,8 @@ export _STACKHAWK_SKILL=hawkscan
 |---|---|---|
 | `COMMIT_SHA` | `git rev-parse HEAD` | `_STACKHAWK_GIT_COMMIT_SHA` tag |
 | `BRANCH_NAME` | current branch name | `_STACKHAWK_GIT_BRANCH` tag |
-| `HAWK_AGENT` | `<platform>:<model>` or `<platform>` | `_STACKHAWK_AGENT` tag |
+| `HAWK_AGENT` | `<platform>:<model>` or `<platform>` | Source value copied into `_STACKHAWK_AGENT` env var |
+| `_STACKHAWK_AGENT` | copy of `HAWK_AGENT` | Read directly by the CLI's agent-detection precedence (never templated into `stackhawk.yml`) |
 
 `HAWK_AGENT` format examples:
 - `claude-code:claude-sonnet-4-6` — Claude Code running Anthropic Sonnet
@@ -69,4 +87,6 @@ export _STACKHAWK_SKILL=hawkscan
 - `copilot` — GitHub Copilot (model not detected)
 - `unknown` — platform not detected
 
-If `HAWK_AGENT` is already set (e.g. from CI/CD), the detection block skips — the pre-set value wins. This is the correct override path for CI pipelines that know their agent identity.
+If `HAWK_AGENT` (or `_STACKHAWK_AGENT`) is already set (e.g. from CI/CD), the detection block
+skips — the pre-set value wins and is still exported as `_STACKHAWK_AGENT`. This is the correct
+override path for CI pipelines that know their agent identity.
