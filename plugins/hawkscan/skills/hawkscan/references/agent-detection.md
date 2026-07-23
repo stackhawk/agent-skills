@@ -14,7 +14,7 @@ populate the `_STACKHAWK_AGENT`, `_STACKHAWK_GIT_COMMIT_SHA`, and `_STACKHAWK_GI
 alongside the yml tag, read directly by the CLI's own detection precedence. The yml tag's
 `${HAWK_AGENT:none}` default is a sentinel: when this block didn't run (or ran before
 `HAWK_AGENT` was populated), hawk fills the blank/`none` value from its own built-in detection
-rather than trusting the literal default.
+when an agent is identified; if no agent is detected, the `none` default stands.
 
 > **WARNING:** Run this block verbatim — do not retype or paraphrase the `export` lines. A
 > session was observed hand-writing a malformed value (`claude-code/claude-opus-4-8` instead of
