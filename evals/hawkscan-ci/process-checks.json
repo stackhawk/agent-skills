@@ -170,7 +170,7 @@
     {
       "id": "no_hawk_agent_set",
       "phase": "any",
-      "description": "The agent does NOT set HAWK_AGENT — a CI pipeline is not an agent; ${HAWK_AGENT:none} resolves correctly on its own.",
+      "description": "The agent does NOT set HAWK_AGENT — a CI pipeline is not an agent; the config never carries a _STACKHAWK_AGENT tag, so leaving it unset lets the hawk CLI's own detection resolve correctly.",
       "type": "output_negative",
       "anti_patterns": [
         "hawk_agent: ",
@@ -178,7 +178,7 @@
         "hawk_agent="
       ],
       "severity": "warning",
-      "failure_guidance": "Setting HAWK_AGENT in CI mis-attributes the scan. Leave the ${HAWK_AGENT:none} default alone."
+      "failure_guidance": "Setting HAWK_AGENT in CI mis-attributes the scan. The config never asserts _STACKHAWK_AGENT; leave the env unset and let the hawk CLI's built-in detection own the tag."
     },
     {
       "id": "gitlab_key_split",

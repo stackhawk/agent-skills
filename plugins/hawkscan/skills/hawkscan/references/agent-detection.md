@@ -29,8 +29,8 @@ export BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
 # Detect agent platform and model for _STACKHAWK_AGENT tag interpolation.
 # Platform and model are detected independently — they can be from different vendors
 # (e.g. Copilot IDE running an Anthropic model produces "copilot:claude-sonnet-4-6").
-# Skip detection if HAWK_AGENT is already set (allows CI/CD override).
-if [ -z "${HAWK_AGENT}" ]; then
+# Skip detection if HAWK_AGENT or _STACKHAWK_AGENT is already set (allows CI/CD override).
+if [ -z "${HAWK_AGENT}" ] && [ -z "${_STACKHAWK_AGENT}" ]; then
   # Step 1: detect agent platform (the IDE / agentic tool)
   if [ -n "${CLAUDE_CODE}" ] || [ -d ".claude" ]; then
     _HAWK_PLATFORM=claude-code
@@ -65,8 +65,11 @@ fi
 
 # Deliver the detected value via env — never write it into stackhawk.yml. The CLI's own
 # precedence rules take over from here (explicit env wins; absence falls through to the
-# CLI's built-in detection rather than a literal "none").
-export _STACKHAWK_AGENT="${HAWK_AGENT}"
+# CLI's built-in detection rather than a literal "none"). A pre-set _STACKHAWK_AGENT
+# (e.g. from CI/CD) is never clobbered; the if-form stays safe under `set -e`.
+if [ -z "${_STACKHAWK_AGENT}" ]; then
+  export _STACKHAWK_AGENT="${HAWK_AGENT}"
+fi
 
 # Identify the driving skill for CLI usage telemetry (read by hawk/hawkop).
 export _STACKHAWK_SKILL=hawkscan
@@ -88,5 +91,6 @@ export _STACKHAWK_SKILL=hawkscan
 - `unknown` — platform not detected
 
 If `HAWK_AGENT` (or `_STACKHAWK_AGENT`) is already set (e.g. from CI/CD), the detection block
-skips — the pre-set value wins and is still exported as `_STACKHAWK_AGENT`. This is the correct
-override path for CI pipelines that know their agent identity.
+skips — the pre-set value wins: a pre-set `HAWK_AGENT` is copied into `_STACKHAWK_AGENT`, and a
+pre-set `_STACKHAWK_AGENT` is never clobbered. This is the correct override path for CI
+pipelines that know their agent identity.
