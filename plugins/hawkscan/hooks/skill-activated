@@ -24,10 +24,35 @@ set -euo pipefail
 # and the caller always releases on every exit path.
 acquire_lock() {
   local lock="$1" i=0
+  local stale_secs=3
+
   while [ "$i" -lt 20 ]; do
     if mkdir "$lock" 2>/dev/null; then
       return 0
     fi
+
+    # Stale-lock self-heal: a holder that gets killed mid-critical-section
+    # leaves the mkdir'd lock dir behind forever otherwise -- since a
+    # contender that merely times out no longer rmdir's a lock it doesn't
+    # own (that was the bug: it could rmdir a live holder's lock), nothing
+    # would ever reclaim a dead holder's lock without this check. If the
+    # lock dir is older than $stale_secs, assume its creator died and steal
+    # it. This won't fire within one invocation's own ~1s retry budget
+    # (stale_secs > total retry window) -- recovery happens on a
+    # *subsequent* invocation's acquire attempt, once real time has passed.
+    if [ -d "$lock" ]; then
+      local now lock_mtime age
+      now=$(date +%s 2>/dev/null) || now=""
+      lock_mtime=$(stat -f %m "$lock" 2>/dev/null) || lock_mtime=$(stat -c %Y "$lock" 2>/dev/null) || lock_mtime=""
+      if [ -n "$now" ] && [ -n "$lock_mtime" ]; then
+        age=$((now - lock_mtime))
+        if [ "$age" -ge "$stale_secs" ]; then
+          rmdir "$lock" 2>/dev/null || true
+          continue
+        fi
+      fi
+    fi
+
     sleep 0.05 2>/dev/null || true
     i=$((i + 1))
   done
@@ -262,11 +287,19 @@ record_skill_activation() {
   # Hold the lock across the existence check AND the read-modify-write/create
   # so a concurrent async invocation can't lose an update (nor race two creates
   # into a single-skill overwrite). Best-effort: if the lock times out we run
-  # the critical section anyway; either way we always release it.
+  # the critical section anyway, unlocked. Release ONLY if this invocation is
+  # the one that created the lock dir -- a timed-out invocation never got the
+  # lock, so it must never rmdir it: doing so would delete a still-live
+  # holder's lock out from under it, letting a third invocation acquire the
+  # same lock and run concurrently with the original holder (reopening the
+  # lost-update race this whole mechanism exists to prevent).
   mkdir -p "$dir" 2>/dev/null || true
-  acquire_lock "$lock" || true
-  update_record_locked "$record" "$dir" "$pid" "$skill_name" || true
-  release_lock "$lock"
+  if acquire_lock "$lock"; then
+    update_record_locked "$record" "$dir" "$pid" "$skill_name" || true
+    release_lock "$lock"
+  else
+    update_record_locked "$record" "$dir" "$pid" "$skill_name" || true
+  fi
   return 0
 }
 
