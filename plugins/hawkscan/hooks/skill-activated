@@ -75,6 +75,44 @@ extract_number_field() {
     | grep -oE '[0-9]+$'
 }
 
+# Backfill a minimal session record when SessionStart never ran for this
+# session (ENG-776: user installs the plugin mid-session, so the record at
+# ${HOME}/.stackhawk/agent/sessions/${PPID}.json is missing when the first
+# skill activates). Mirrors session-start's write_session_record() field
+# shape/order exactly (the canonical writer of the v1 record contract) but is
+# duplicated here rather than sourced/shared, to avoid touching
+# session-start's already-tested write path. writer is "skill-activated-hook"
+# (vs. session-start's "claude-hook") so telemetry can distinguish a
+# backfilled first-session record from a normal SessionStart-created one.
+# Best-effort: every command guarded, atomic tmp+rename, never fails the hook.
+create_missing_record() {
+  local record="$1" dir="$2" pid="$3" skill="$4"
+  mkdir -p "$dir" 2>/dev/null || return 0
+  local now_secs
+  now_secs="$(date +%s)" || now_secs=0
+  local sid=""
+  [ -n "${CLAUDE_SESSION_ID:-}" ] && sid="${CLAUDE_SESSION_ID}"
+  local new_json=""
+  new_json=$(cat <<EOF
+{
+  "schemaVersion": 1,
+  "platform": "claude-code",
+  "hostSessionId": "$(escape_for_json "${sid}")",
+  "pid": ${pid},
+  "createdAtSecs": ${now_secs},
+  "writer": "skill-activated-hook",
+  "skillsActivated": ["$(escape_for_json "$skill")"]
+}
+EOF
+) || return 0
+  [ -n "$new_json" ] || return 0
+
+  local tmp="${record}.tmp.$$"
+  printf '%s\n' "$new_json" > "$tmp" 2>/dev/null || return 0
+  mv -f "$tmp" "$record" 2>/dev/null || { rm -f "$tmp" 2>/dev/null || true; return 0; }
+  return 0
+}
+
 record_skill_activation() {
   # No stdin (interactive terminal) -- not a tool-use context.
   [ -t 0 ] && return 0
@@ -96,7 +134,11 @@ record_skill_activation() {
   local dir="${HOME}/.stackhawk/agent/sessions"
   local pid="${PPID:-0}"
   local record="${dir}/${pid}.json"
-  [ -f "$record" ] || return 0
+
+  if [ ! -f "$record" ]; then
+    create_missing_record "$record" "$dir" "$pid" "$skill_name"
+    return 0
+  fi
 
   local existing=""
   existing=$(cat "$record" 2>/dev/null) || return 0
