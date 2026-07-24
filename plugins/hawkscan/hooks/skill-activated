@@ -47,8 +47,14 @@ acquire_lock() {
       if [ -n "$now" ] && [ -n "$lock_mtime" ]; then
         age=$((now - lock_mtime))
         if [ "$age" -ge "$stale_secs" ]; then
-          rmdir "$lock" 2>/dev/null || true
-          continue
+          # Only fast-retry when the steal actually succeeded (dir now gone,
+          # so the next mkdir will win). If rmdir fails (perms, or a
+          # non-empty dir), fall through to the bounded sleep+increment
+          # below rather than spinning on `continue` -- keeps the loop
+          # strictly bounded to ~1s even if rmdir can never succeed.
+          if rmdir "$lock" 2>/dev/null; then
+            continue
+          fi
         fi
       fi
     fi
