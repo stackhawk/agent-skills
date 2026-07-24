@@ -57,7 +57,12 @@ write_session_record() {
   now_secs="$(date +%s)" || now_secs=0
   local sid=""
   [ -n "${CLAUDE_SESSION_ID:-}" ] && sid="${CLAUDE_SESSION_ID}"
-  cat > "${dir}/${pid}.json" 2>/dev/null <<EOF || return 0
+  # Atomic write: build in a tmp file then rename (matches skill-activated's
+  # pattern) so a reader (hawkop-lib) never observes a partial record if the
+  # hook is killed mid-write. Best-effort: never fail the hook.
+  local record="${dir}/${pid}.json"
+  local tmp="${record}.tmp.$$"
+  cat > "${tmp}" 2>/dev/null <<EOF || { rm -f "${tmp}" 2>/dev/null || true; return 0; }
 {
   "schemaVersion": 1,
   "platform": "claude-code",
@@ -68,6 +73,7 @@ write_session_record() {
   "skillsActivated": []
 }
 EOF
+  mv -f "${tmp}" "${record}" 2>/dev/null || { rm -f "${tmp}" 2>/dev/null || true; return 0; }
 }
 write_session_record
 
