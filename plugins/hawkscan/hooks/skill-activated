@@ -12,6 +12,32 @@
 
 set -euo pipefail
 
+# Portable mutex via mkdir (atomic on POSIX). Chosen over flock because flock
+# is NOT present on stock macOS — this hook runs on macOS, Linux, and git-bash
+# on Windows. Guards the record read-modify-write below: this hook is
+# registered "async": true and the harness fires parallel Skill tool calls, so
+# concurrent invocations could otherwise do an unlocked read-modify-write of
+# the same record and drop a skillsActivated entry (lost update).
+#
+# Best-effort, never fails the hook: acquire retries up to ~1s; on timeout we
+# proceed anyway (telemetry accuracy is not worth blocking/failing the hook),
+# and the caller always releases on every exit path.
+acquire_lock() {
+  local lock="$1" i=0
+  while [ "$i" -lt 20 ]; do
+    if mkdir "$lock" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.05 2>/dev/null || true
+    i=$((i + 1))
+  done
+  return 1
+}
+
+release_lock() {
+  rmdir "$1" 2>/dev/null || true
+}
+
 escape_for_json() {
     local s="$1"
     s="${s//\\/\\\\}"
@@ -113,27 +139,13 @@ EOF
   return 0
 }
 
-record_skill_activation() {
-  # No stdin (interactive terminal) -- not a tool-use context.
-  [ -t 0 ] && return 0
-
-  local tool_input=""
-  tool_input=$(cat 2>/dev/null) || return 0
-  [ -n "$tool_input" ] || return 0
-
-  # Extract the skill name from tool_input.skill.
-  local skill_name=""
-  if command -v jq >/dev/null 2>&1; then
-    skill_name=$(printf '%s' "$tool_input" | jq -r '.tool_input.skill // empty' 2>/dev/null) || skill_name=""
-  fi
-  if [ -z "$skill_name" ]; then
-    skill_name=$(extract_string_field "$tool_input" "skill") || skill_name=""
-  fi
-  [ -n "$skill_name" ] || return 0
-
-  local dir="${HOME}/.stackhawk/agent/sessions"
-  local pid="${PPID:-0}"
-  local record="${dir}/${pid}.json"
+# Critical section: read-modify-write (or create) the record for one skill.
+# MUST be called with the record lock held (see acquire_lock); its early
+# returns hand control back to record_skill_activation, which always releases
+# the lock afterward. That is how the lock stays correct across every exit
+# path without a per-return rmdir here.
+update_record_locked() {
+  local record="$1" dir="$2" pid="$3" skill_name="$4"
 
   if [ ! -f "$record" ]; then
     create_missing_record "$record" "$dir" "$pid" "$skill_name"
@@ -221,6 +233,40 @@ EOF
   printf '%s\n' "$new_json" > "$tmp" 2>/dev/null || return 0
   mv -f "$tmp" "$record" 2>/dev/null || { rm -f "$tmp" 2>/dev/null || true; return 0; }
 
+  return 0
+}
+
+record_skill_activation() {
+  # No stdin (interactive terminal) -- not a tool-use context.
+  [ -t 0 ] && return 0
+
+  local tool_input=""
+  tool_input=$(cat 2>/dev/null) || return 0
+  [ -n "$tool_input" ] || return 0
+
+  # Extract the skill name from tool_input.skill.
+  local skill_name=""
+  if command -v jq >/dev/null 2>&1; then
+    skill_name=$(printf '%s' "$tool_input" | jq -r '.tool_input.skill // empty' 2>/dev/null) || skill_name=""
+  fi
+  if [ -z "$skill_name" ]; then
+    skill_name=$(extract_string_field "$tool_input" "skill") || skill_name=""
+  fi
+  [ -n "$skill_name" ] || return 0
+
+  local dir="${HOME}/.stackhawk/agent/sessions"
+  local pid="${PPID:-0}"
+  local record="${dir}/${pid}.json"
+  local lock="${record}.lock"
+
+  # Hold the lock across the existence check AND the read-modify-write/create
+  # so a concurrent async invocation can't lose an update (nor race two creates
+  # into a single-skill overwrite). Best-effort: if the lock times out we run
+  # the critical section anyway; either way we always release it.
+  mkdir -p "$dir" 2>/dev/null || true
+  acquire_lock "$lock" || true
+  update_record_locked "$record" "$dir" "$pid" "$skill_name" || true
+  release_lock "$lock"
   return 0
 }
 
