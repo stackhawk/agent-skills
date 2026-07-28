@@ -47,6 +47,36 @@ This applies to actual code changes and explicit scan requests only. Do NOT scan
 Environment: hawk runtime=${hawk_available}, HAWK_API_KEY=${has_api_key}
 </hawkscan-autonomous-security>"
 
+# Session record for hawk agent-detection (SHARED CONTRACT v2 — hawkop-lib
+# agent/session_record.rs). Best-effort: never fail the hook.
+write_session_record() {
+  local dir="${HOME}/.stackhawk/agent/sessions"
+  mkdir -p "${dir}" 2>/dev/null || return 0
+  local pid="${PPID:-0}"
+  local now_secs
+  now_secs="$(date +%s)" || now_secs=0
+  local sid=""
+  [ -n "${CLAUDE_SESSION_ID:-}" ] && sid="${CLAUDE_SESSION_ID}"
+  # Atomic write: build in a tmp file then rename (matches skill-activated's
+  # pattern) so a reader (hawkop-lib) never observes a partial record if the
+  # hook is killed mid-write. Best-effort: never fail the hook.
+  local record="${dir}/${pid}.json"
+  local tmp="${record}.tmp.$$"
+  cat > "${tmp}" 2>/dev/null <<EOF || { rm -f "${tmp}" 2>/dev/null || true; return 0; }
+{
+  "schemaVersion": 1,
+  "platform": "claude-code",
+  "hostSessionId": "$(escape_for_json "${sid}")",
+  "pid": ${pid},
+  "createdAtSecs": ${now_secs},
+  "writer": "claude-hook",
+  "skillsActivated": []
+}
+EOF
+  mv -f "${tmp}" "${record}" 2>/dev/null || { rm -f "${tmp}" 2>/dev/null || true; return 0; }
+}
+write_session_record
+
 session_context=$(escape_for_json "$context_text")
 
 # Output context injection as JSON.

@@ -22,6 +22,16 @@
             "async": false
           }
         ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" skill-activated",
+            "async": true
+          }
+        ]
       }
     ],
     "Stop": [

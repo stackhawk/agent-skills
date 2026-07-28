@@ -1,0 +1,314 @@
+#!/usr/bin/env bash
+# PostToolUse hook for hawkscan plugin
+# Fires after the Skill tool is used. Appends the invoked skill's name into
+# the per-session agent-detection record's skillsActivated array (deduped).
+#
+# PostToolUse stdin payload: {"session_id":..., "tool_name":"Skill",
+#   "tool_input":{"skill":"<name>","args":"..."}, "tool_response":{...}}
+#
+# Best-effort: never fails the hook — any parse/IO problem is swallowed and
+# the script always exits 0 (Task 12's review flagged an unguarded `date`
+# call as the class of bug to avoid here; every command below is guarded).
+
+set -euo pipefail
+
+# Portable mutex via mkdir (atomic on POSIX). Chosen over flock because flock
+# is NOT present on stock macOS — this hook runs on macOS, Linux, and git-bash
+# on Windows. Guards the record read-modify-write below: this hook is
+# registered "async": true and the harness fires parallel Skill tool calls, so
+# concurrent invocations could otherwise do an unlocked read-modify-write of
+# the same record and drop a skillsActivated entry (lost update).
+#
+# Best-effort, never fails the hook: acquire retries up to ~1s; on timeout we
+# proceed anyway (telemetry accuracy is not worth blocking/failing the hook),
+# and the caller always releases on every exit path.
+acquire_lock() {
+  local lock="$1" i=0
+  local stale_secs=3
+
+  while [ "$i" -lt 20 ]; do
+    if mkdir "$lock" 2>/dev/null; then
+      return 0
+    fi
+
+    # Stale-lock self-heal: a holder that gets killed mid-critical-section
+    # leaves the mkdir'd lock dir behind forever otherwise -- since a
+    # contender that merely times out no longer rmdir's a lock it doesn't
+    # own (that was the bug: it could rmdir a live holder's lock), nothing
+    # would ever reclaim a dead holder's lock without this check. If the
+    # lock dir is older than $stale_secs, assume its creator died and steal
+    # it. This won't fire within one invocation's own ~1s retry budget
+    # (stale_secs > total retry window) -- recovery happens on a
+    # *subsequent* invocation's acquire attempt, once real time has passed.
+    if [ -d "$lock" ]; then
+      local now lock_mtime age
+      now=$(date +%s 2>/dev/null) || now=""
+      lock_mtime=$(stat -f %m "$lock" 2>/dev/null) || lock_mtime=$(stat -c %Y "$lock" 2>/dev/null) || lock_mtime=""
+      if [ -n "$now" ] && [ -n "$lock_mtime" ]; then
+        age=$((now - lock_mtime))
+        if [ "$age" -ge "$stale_secs" ]; then
+          # Only fast-retry when the steal actually succeeded (dir now gone,
+          # so the next mkdir will win). If rmdir fails (perms, or a
+          # non-empty dir), fall through to the bounded sleep+increment
+          # below rather than spinning on `continue` -- keeps the loop
+          # strictly bounded to ~1s even if rmdir can never succeed.
+          if rmdir "$lock" 2>/dev/null; then
+            continue
+          fi
+        fi
+      fi
+    fi
+
+    sleep 0.05 2>/dev/null || true
+    i=$((i + 1))
+  done
+  return 1
+}
+
+release_lock() {
+  rmdir "$1" 2>/dev/null || true
+}
+
+escape_for_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+# Reverse escape_for_json: decode a raw (still JSON-escaped) substring pulled
+# out of a JSON blob back into its literal value. Needed because the pure-bash
+# extraction below is regex-based, not a real JSON parser — it hands back the
+# escaped bytes verbatim (e.g. `sess\"weird` for the value sess"weird), and
+# feeding that straight into escape_for_json a second time would double-escape
+# it (backslashes especially). Decoding here first keeps every extracted value
+# in the same "plain/decoded" shape jq -r would have produced, so a single
+# escape_for_json call at write time is always correct regardless of which
+# path (jq or fallback) produced the value.
+unescape_json_string() {
+  local s="$1"
+  local esc_bs=$'\x01' # placeholder so a decoded \\ doesn't get re-touched below
+  s="${s//\\\\/$esc_bs}"
+  s="${s//\\\"/\"}"
+  s="${s//\\n/$'\n'}"
+  s="${s//\\r/$'\r'}"
+  s="${s//\\t/$'\t'}"
+  s="${s//\\\//\/}"
+  s="${s//$esc_bs/\\}"
+  printf '%s' "$s"
+}
+
+# Extract a quoted-string field's value from a JSON blob via grep/sed
+# (pure-bash fallback path — no jq dependency assumed to exist repo-wide).
+#
+# The inner pattern `(\\.|[^"\\])*` is escape-aware: it accepts either an
+# escaped pair (backslash + any char, e.g. \" or \\) or any non-quote,
+# non-backslash byte. That lets the match run past an escaped `"` instead of
+# treating it as the closing quote (the bug: a naive `[^"]*` stops at the
+# first literal `"`, even an escaped one, silently truncating/corrupting the
+# value). The result is unescaped before being returned so callers always get
+# the plain decoded string.
+extract_string_field() {
+  local json="$1" key="$2"
+  local pattern raw
+  pattern="\"${key}\"[[:space:]]*:[[:space:]]*\"(\\\\.|[^\"\\\\])*\""
+  raw=$(printf '%s' "$json" \
+    | grep -oE "$pattern" \
+    | head -1 \
+    | sed -E "s/^\"${key}\"[[:space:]]*:[[:space:]]*\"//; s/\"\$//") || return 0
+  [ -n "$raw" ] || return 0
+  unescape_json_string "$raw"
+}
+
+# Extract a bare (unquoted) numeric field's value.
+extract_number_field() {
+  local json="$1" key="$2"
+  printf '%s' "$json" \
+    | grep -oE "\"${key}\"[[:space:]]*:[[:space:]]*[0-9]+" \
+    | head -1 \
+    | grep -oE '[0-9]+$'
+}
+
+# Backfill a minimal session record when SessionStart never ran for this
+# session (ENG-776: user installs the plugin mid-session, so the record at
+# ${HOME}/.stackhawk/agent/sessions/${PPID}.json is missing when the first
+# skill activates). Mirrors session-start's write_session_record() field
+# shape/order exactly (the canonical writer of the v1 record contract) but is
+# duplicated here rather than sourced/shared, to avoid touching
+# session-start's already-tested write path. writer is "skill-activated-hook"
+# (vs. session-start's "claude-hook") so telemetry can distinguish a
+# backfilled first-session record from a normal SessionStart-created one.
+# Best-effort: every command guarded, atomic tmp+rename, never fails the hook.
+create_missing_record() {
+  local record="$1" dir="$2" pid="$3" skill="$4"
+  mkdir -p "$dir" 2>/dev/null || return 0
+  local now_secs
+  now_secs="$(date +%s)" || now_secs=0
+  local sid=""
+  [ -n "${CLAUDE_SESSION_ID:-}" ] && sid="${CLAUDE_SESSION_ID}"
+  local new_json=""
+  new_json=$(cat <<EOF
+{
+  "schemaVersion": 1,
+  "platform": "claude-code",
+  "hostSessionId": "$(escape_for_json "${sid}")",
+  "pid": ${pid},
+  "createdAtSecs": ${now_secs},
+  "writer": "skill-activated-hook",
+  "skillsActivated": ["$(escape_for_json "$skill")"]
+}
+EOF
+) || return 0
+  [ -n "$new_json" ] || return 0
+
+  local tmp="${record}.tmp.$$"
+  printf '%s\n' "$new_json" > "$tmp" 2>/dev/null || return 0
+  mv -f "$tmp" "$record" 2>/dev/null || { rm -f "$tmp" 2>/dev/null || true; return 0; }
+  return 0
+}
+
+# Critical section: read-modify-write (or create) the record for one skill.
+# MUST be called with the record lock held (see acquire_lock); its early
+# returns hand control back to record_skill_activation, which always releases
+# the lock afterward. That is how the lock stays correct across every exit
+# path without a per-return rmdir here.
+update_record_locked() {
+  local record="$1" dir="$2" pid="$3" skill_name="$4"
+
+  if [ ! -f "$record" ]; then
+    create_missing_record "$record" "$dir" "$pid" "$skill_name"
+    return 0
+  fi
+
+  local existing=""
+  existing=$(cat "$record" 2>/dev/null) || return 0
+  [ -n "$existing" ] || return 0
+
+  local new_json=""
+  if command -v jq >/dev/null 2>&1; then
+    new_json=$(printf '%s' "$existing" | jq --arg s "$skill_name" \
+      '.skillsActivated = ((.skillsActivated // []) + [$s] | unique)' 2>/dev/null) || new_json=""
+  fi
+
+  if [ -z "$new_json" ]; then
+    # Pure-bash fallback: rebuild the fixed-shape v1 record, recomputing only
+    # skillsActivated (dedup-append), preserving every other field verbatim.
+    local schema_version pid_field created_at writer host_session_id
+    schema_version=$(extract_number_field "$existing" "schemaVersion") || schema_version=""
+    pid_field=$(extract_number_field "$existing" "pid") || pid_field=""
+    created_at=$(extract_number_field "$existing" "createdAtSecs") || created_at=""
+    writer=$(extract_string_field "$existing" "writer") || writer=""
+    host_session_id=$(extract_string_field "$existing" "hostSessionId") || host_session_id=""
+    [ -n "$schema_version" ] || schema_version=1
+    [ -n "$pid_field" ] || pid_field="$pid"
+    [ -n "$created_at" ] || created_at=0
+    [ -n "$writer" ] || writer="claude-hook"
+
+    local existing_arr=""
+    existing_arr=$(printf '%s' "$existing" | grep -oE '"skillsActivated"[[:space:]]*:[[:space:]]*\[[^]]*\]') || existing_arr=""
+
+    local -a items=()
+    if [ -n "$existing_arr" ]; then
+      # Escape-aware, same as extract_string_field: don't stop at an escaped
+      # quote inside an item, and decode each item back to its plain value.
+      while IFS= read -r item; do
+        [ -n "$item" ] || continue
+        item="${item#\"}"
+        item="${item%\"}"
+        items+=("$(unescape_json_string "$item")")
+      done < <(printf '%s' "$existing_arr" | grep -oE '"(\\.|[^"\\])*"' | tail -n +2)
+    fi
+
+    local already_present="false" it
+    for it in "${items[@]:-}"; do
+      if [ "$it" = "$skill_name" ]; then
+        already_present="true"
+        break
+      fi
+    done
+    [ "$already_present" = "true" ] || items+=("$skill_name")
+
+    local arr_json="" first="true"
+    arr_json="["
+    for it in "${items[@]:-}"; do
+      [ -n "$it" ] || continue
+      if [ "$first" = "true" ]; then
+        first="false"
+      else
+        arr_json+=","
+      fi
+      arr_json+="\"$(escape_for_json "$it")\""
+    done
+    arr_json+="]"
+
+    new_json=$(cat <<EOF
+{
+  "schemaVersion": ${schema_version},
+  "platform": "claude-code",
+  "hostSessionId": "$(escape_for_json "$host_session_id")",
+  "pid": ${pid_field},
+  "createdAtSecs": ${created_at},
+  "writer": "$(escape_for_json "$writer")",
+  "skillsActivated": ${arr_json}
+}
+EOF
+) || return 0
+  fi
+
+  [ -n "$new_json" ] || return 0
+
+  local tmp="${record}.tmp.$$"
+  printf '%s\n' "$new_json" > "$tmp" 2>/dev/null || return 0
+  mv -f "$tmp" "$record" 2>/dev/null || { rm -f "$tmp" 2>/dev/null || true; return 0; }
+
+  return 0
+}
+
+record_skill_activation() {
+  # No stdin (interactive terminal) -- not a tool-use context.
+  [ -t 0 ] && return 0
+
+  local tool_input=""
+  tool_input=$(cat 2>/dev/null) || return 0
+  [ -n "$tool_input" ] || return 0
+
+  # Extract the skill name from tool_input.skill.
+  local skill_name=""
+  if command -v jq >/dev/null 2>&1; then
+    skill_name=$(printf '%s' "$tool_input" | jq -r '.tool_input.skill // empty' 2>/dev/null) || skill_name=""
+  fi
+  if [ -z "$skill_name" ]; then
+    skill_name=$(extract_string_field "$tool_input" "skill") || skill_name=""
+  fi
+  [ -n "$skill_name" ] || return 0
+
+  local dir="${HOME}/.stackhawk/agent/sessions"
+  local pid="${PPID:-0}"
+  local record="${dir}/${pid}.json"
+  local lock="${record}.lock"
+
+  # Hold the lock across the existence check AND the read-modify-write/create
+  # so a concurrent async invocation can't lose an update (nor race two creates
+  # into a single-skill overwrite). Best-effort: if the lock times out we run
+  # the critical section anyway, unlocked. Release ONLY if this invocation is
+  # the one that created the lock dir -- a timed-out invocation never got the
+  # lock, so it must never rmdir it: doing so would delete a still-live
+  # holder's lock out from under it, letting a third invocation acquire the
+  # same lock and run concurrently with the original holder (reopening the
+  # lost-update race this whole mechanism exists to prevent).
+  mkdir -p "$dir" 2>/dev/null || true
+  if acquire_lock "$lock"; then
+    update_record_locked "$record" "$dir" "$pid" "$skill_name" || true
+    release_lock "$lock"
+  else
+    update_record_locked "$record" "$dir" "$pid" "$skill_name" || true
+  fi
+  return 0
+}
+
+record_skill_activation || true
+
+exit 0
