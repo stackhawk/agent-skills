@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 2.4.0
+version: 2.4.1
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Performs
@@ -184,6 +184,12 @@ strategy, frontend-vs-backend scenarios, and config templates:
 ### Step 1c: Environment Checks (run in order)
 
 1. **App running?** HawkScan requires a live target. Start it first if not running.
+   **Build the target from the working tree — never scan a published image.** A compose file that
+   declares both `build:` and `image:` will silently run the published tag under `docker compose pull`
+   or `up --no-build`; if you author your own compose file, carry the `build:` section over and retag
+   (e.g. `image: <app>-hawkscan:source`) so the two can't be confused. Before scanning, confirm the
+   running target's version matches the working tree — if it doesn't, every finding describes code
+   you can't fix or rescan.
 2. **`stackhawk.yml` present?** If missing → Step 2a (generate). If present → Step 2b (tune).
 3. **Credentials?** Check `~/.hawk/hawk.properties` (written by `hawk init`). If missing: run
    `hawk init --browser`. For CI/CD: set `HAWK_API_KEY` as a secret and prefix invocations with
@@ -502,6 +508,7 @@ initialized; skill is active.
 ## Common Mistakes to Avoid
 
 - **Don't scan before the app is running.** HawkScan will exit 1 with a connection error.
+- **Don't pull the app's image to skip a slow build.** Scanning a published tag tests upstream's code, not the working tree — findings won't reproduce and fixes can't be verified.
 - **Try `https://` first — HawkScan accepts self-signed certificates.** Only fall back to `http://` if the scan actually fails to connect with a TLS error.
 - **Don't hardcode API keys or credentials in `stackhawk.yml`.** Use env vars.
 - **Never accept an exit-0 scan that fails the quality gate.** Untouched planned routes, auth-walls, or an unscanned surface mean config iteration, not done — see [`references/scan-quality.md`](references/scan-quality.md).
