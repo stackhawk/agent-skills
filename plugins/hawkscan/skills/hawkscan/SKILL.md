@@ -174,7 +174,9 @@ a scan-time step (Step 1c), not part of discovery.
   [`references/app-discovery.md`](references/app-discovery.md)
 
 Record what discovery produced — surfaces, run command, host/port, auth shape — Step 1c and
-Step 2 consume them.
+Step 2 consume them. Also compute the **`multi-role`** verdict (role model + ID-addressable
+resources) — Phase 1c.7 and the optimize skill consume it:
+→ [`references/authz-profiles.md`](references/authz-profiles.md)
 
 **SPA rule:** if the app is a client-rendered JS front end, never scan it without the Ajax
 Spider, and note that a separate backend API is usually the higher-value target. Full
@@ -298,6 +300,12 @@ datastore — run the seed against that repo, not the gateway.
 
 After seeding, re-run `hawk validate auth stackhawk.yml` and continue.
 
+### Phase 1c.7: Multi-Role Authorization Profiles (BOLA/BFLA)
+
+Run when Step 1a returned `multi-role` and single-profile auth already validates: work the
+credential cascade, write 2+ `app.authentication.profiles`, re-validate, then apply the
+capability + provenance gates before passing `--all-plugins-per-profile` → [`references/authz-profiles.md`](references/authz-profiles.md)
+
 ---
 
 ## Step 2b: Tune Existing `stackhawk.yml`
@@ -366,6 +374,7 @@ arguments only — no `-c` or `--config` flag. Use bare filenames (not absolute 
 ```bash
 hawk scan --json-output                            # structured output (requires Dev Release v5.3.41+)
 hawk rescan --scan-id <SCAN_ID> --json-output      # fast fix verification — re-runs only fired plugins
+hawk scan --all-plugins-per-profile --json-output  # multi-role: full policy per profile (gates first, Phase 1c.7)
 ```
 
 **Always rescan against the original full-scan ID.** Rescan IDs are not valid parent scan references.
