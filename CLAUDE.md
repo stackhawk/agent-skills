@@ -36,7 +36,8 @@ bash scripts/bump-version.sh --patch   # bug fixes
 bash scripts/bump-version.sh --minor   # new skill or significant capability
 bash scripts/bump-version.sh --major   # breaking changes
 
-# Release (validates everything, creates annotated tag, creates GH Release)
+# Release (validates manifests, Cursor rules, and the wingman Copilot bundle;
+# creates annotated tag, creates GH Release)
 bash scripts/release.sh --dry-run  # validate without creating anything
 bash scripts/release.sh            # create tag + GH Release (must be on main, clean tree)
 
@@ -80,7 +81,7 @@ Skills assume the combined `hawk` binary (`hawk op …`) is installed — no raw
 | Claude | `.claude-plugin/marketplace.json` + `plugins/*/.claude-plugin/plugin.json` |
 | Codex | `.codex-plugin/marketplace.json` + `plugins/*/.codex-plugin/plugin.json` |
 | Gemini | `gemini-extension.json` |
-| Copilot | `plugins/wingman/.github/plugin/plugin.json` (umbrella only); other plugins discover via `skills/` symlinks |
+| Copilot | `plugins/wingman/.github/plugin/plugin.json` (umbrella only). A per-plugin Copilot install fetches e.g. `plugins/hawkscan`, reads that plugin's own `plugins/hawkscan/.claude-plugin/plugin.json`, and defaults to that plugin's own `plugins/hawkscan/skills/` directory — the repo-root `skills/` symlinks are NOT involved in marketplace per-plugin installs; they serve Gemini and the whole-repo `plugin.json` install only |
 | Cursor | Rules: generated into `cursor/.cursor/rules/`; Skills: symlinks in `.cursor/skills/`; Hooks: `plugins/hawkscan/hooks/cursor/` |
 | Claude (umbrella) | `plugins/wingman/.claude-plugin/plugin.json` — `/plugin install wingman@stackhawk` installs hawkscan + api + data-seed + optimize |
 

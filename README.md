@@ -119,7 +119,15 @@ copilot plugin install wingman@stackhawk
 `stackhawk-data-seed`, `stackhawk-optimize`). Copilot has no plugin-dependency
 mechanism, so wingman ships these as bundled copies rather than resolving them.
 
-To add `hawkscan-ci`, or to install skills individually:
+To add `hawkscan-ci` on top of an existing `wingman` install (it is not a
+wingman dependency, but is separately installable):
+
+```
+copilot plugin install hawkscan-ci@stackhawk
+```
+
+To install skills individually **instead of** `wingman` (do not run this after
+installing `wingman` — it duplicates the four skills you already have):
 
 ```
 copilot plugin install hawkscan@stackhawk
@@ -253,7 +261,7 @@ scripts/install.ps1              Installer for Cursor and Copilot (Windows)
 | Claude Code | `/plugin install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 | Codex | `/plugin install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 | Gemini CLI | `gemini extensions install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
-| GitHub Copilot | `copilot plugin install wingman@stackhawk` (or per-plugin) | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
+| GitHub Copilot | `copilot plugin install wingman@stackhawk` (or per-plugin) | hawkscan, stackhawk-api, stackhawk-data-seed, stackhawk-optimize (+ hawkscan-ci via per-plugin install) |
 | OpenCode | Copy to `.opencode/skills/` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 | Cursor | `install.sh --platform cursor` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 

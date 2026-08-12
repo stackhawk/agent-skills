@@ -46,6 +46,7 @@ fi
 
 # 4. Cursor rules are up to date
 bash "${REPO_ROOT}/scripts/generate-cursor-rules.sh" > /dev/null
+git add -N cursor/
 if ! git diff --quiet cursor/; then
   echo "ERROR: Cursor rules are out of date. Run 'bash scripts/generate-cursor-rules.sh' and commit." >&2
   errors=$((errors + 1))
@@ -53,7 +54,7 @@ fi
 
 # 5. Version consistency across manifests
 expected="$version"
-for manifest in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json gemini-extension.json .codex-plugin/plugin.json; do
+for manifest in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json plugins/*/.github/plugin/plugin.json gemini-extension.json .codex-plugin/plugin.json; do
   if [ -f "$manifest" ]; then
     actual=$(python3 -c "import json; print(json.load(open('$manifest')).get('version', 'MISSING'))")
     if [ "$actual" != "$expected" ]; then
@@ -62,6 +63,15 @@ for manifest in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plu
     fi
   fi
 done
+
+# 6. Wingman Copilot bundle is valid and up to date
+bash "${REPO_ROOT}/scripts/test-wingman-skills.sh" || errors=$((errors + 1))
+bash "${REPO_ROOT}/scripts/generate-wingman-skills.sh" > /dev/null
+git add -N plugins/wingman/copilot-skills/
+if ! git diff --quiet plugins/wingman/copilot-skills/; then
+  echo "ERROR: wingman copilot-skills/ is out of date. Run 'bash scripts/generate-wingman-skills.sh' and commit." >&2
+  errors=$((errors + 1))
+fi
 
 if [ $errors -gt 0 ]; then
   echo ""

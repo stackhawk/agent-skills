@@ -15,6 +15,20 @@ if [ -e "plugins/wingman/skills" ]; then
   errors=$((errors + 1))
 fi
 
+# 1b. Copilot resolves manifests in order .plugin/plugin.json -> plugin.json ->
+# .github/plugin/plugin.json -> .claude-plugin/plugin.json. A plugin.json or
+# .plugin/plugin.json directly under plugins/wingman/ would shadow our Copilot
+# manifest and, lacking a `skills` field, default to skills/ — silently
+# reproducing the original zero-skills bug.
+if [ -e "plugins/wingman/plugin.json" ]; then
+  echo "ERROR: plugins/wingman/plugin.json exists — it would shadow plugins/wingman/.github/plugin/plugin.json in Copilot's manifest resolution order"
+  errors=$((errors + 1))
+fi
+if [ -e "plugins/wingman/.plugin/plugin.json" ]; then
+  echo "ERROR: plugins/wingman/.plugin/plugin.json exists — it would shadow plugins/wingman/.github/plugin/plugin.json in Copilot's manifest resolution order"
+  errors=$((errors + 1))
+fi
+
 # 2. Every expected skill directory exists with a SKILL.md.
 for name in "${EXPECTED[@]}"; do
   if [ ! -f "${DEST}/${name}/SKILL.md" ]; then
@@ -43,8 +57,11 @@ expected_version="$(cat VERSION)"
 for name in "${EXPECTED[@]}"; do
   f="${DEST}/${name}/SKILL.md"
   [ -f "$f" ] || continue
-  actual="$(head -20 "$f" | grep '^version:' | sed 's/version: //')"
-  if [ "$actual" != "$expected_version" ]; then
+  actual="$(head -20 "$f" | grep '^version:' | sed 's/version: //' || true)"
+  if [ -z "$actual" ]; then
+    echo "ERROR: $f is missing a 'version:' line in frontmatter"
+    errors=$((errors + 1))
+  elif [ "$actual" != "$expected_version" ]; then
     echo "ERROR: $f has version '$actual', expected '$expected_version' (run bump-version.sh before generating)"
     errors=$((errors + 1))
   fi

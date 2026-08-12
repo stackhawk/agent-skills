@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `skill-authoring` skill: changelog update guidance — documents when and how to add CHANGELOG entries for every substantive skill change
 - `wingman` umbrella plugin: `/plugin install wingman@stackhawk` installs the default skill set.
 
+## [2.5.0]
+
+### Fixed
+- `copilot plugin install wingman@stackhawk` reported success but installed zero skills — GitHub Copilot CLI has no plugin-dependency mechanism, so `plugins/wingman/`'s `"dependencies"` field (resolved by Claude Code and Codex) was silently ignored. Added a Copilot-only manifest, `plugins/wingman/.github/plugin/plugin.json`, with `"skills": "./copilot-skills/"`, pointing at a generated bundle of real copies of wingman's four dependency skills (`scripts/generate-wingman-skills.sh`).
+- Corrected the documented Copilot install path from `~/.agents/skills/` to `~/.copilot/installed-plugins/`.
+
+### Added
+- CI now validates the wingman Copilot bundle (`scripts/test-wingman-skills.sh`) and catches untracked drift in the generated `copilot-skills/` output on every PR and at release time.
+
 ### Changed
 - Skills now drive the combined `hawk` binary (`hawk op …`); the `api` skill's raw-REST fallback was removed.
 - `skill-authoring` moved from `plugins/skill-authoring/` to `.claude/skills/skill-authoring/` (maintainer skill, not a marketplace plugin)

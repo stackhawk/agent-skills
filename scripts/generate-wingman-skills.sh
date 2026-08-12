@@ -23,6 +23,16 @@ MAPPINGS=(
   "plugins/optimize/skills/optimize|stackhawk-optimize"
 )
 
+# Validate all sources exist BEFORE destroying anything — a missing source
+# must not leave the bundle half-deleted with no README.md.
+for entry in "${MAPPINGS[@]}"; do
+  src="${entry%%|*}"
+  if [ ! -f "${src}/SKILL.md" ]; then
+    echo "ERROR: source not found: ${src}/SKILL.md" >&2
+    exit 1
+  fi
+done
+
 # Full rebuild so files deleted from source do not linger.
 rm -rf "$DEST"
 mkdir -p "$DEST"
@@ -30,10 +40,6 @@ mkdir -p "$DEST"
 for entry in "${MAPPINGS[@]}"; do
   src="${entry%%|*}"
   name="${entry##*|}"
-  if [ ! -f "${src}/SKILL.md" ]; then
-    echo "ERROR: source not found: ${src}/SKILL.md" >&2
-    exit 1
-  fi
   # -L dereferences symlinks: this repo reaches skills through symlinks, and the
   # marketplace extracts only the plugins/wingman subdir, so links would dangle.
   cp -RL "$src" "${DEST}/${name}"
