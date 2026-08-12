@@ -90,7 +90,13 @@ hawk perch seed validate --help >/dev/null 2>&1 && hawk perch seed finalize --he
 
 If the gate passes and `stackhawk-data-seed` is installed, invoke it and ask for its
 **multi-user** shape: two peer users each owning a resource, plus one admin. It writes
-`.data-seed-credentials.env` with role-labelled variables this skill then reads.
+`.data-seed-credentials.env` with one variable pair per seeded user, each pair carrying a
+role-identifying suffix — the exact names are whatever `hawk perch seed finalize` emits, not a
+name this skill assumes in advance. **Discover, don't assume:** read the file, group variables
+into pairs by their suffix, and match each pair to peer-a / peer-b / admin by the suffix text
+(e.g. a suffix containing `admin` or `privileged` is the admin pair). If which pair is
+privileged is ambiguous from the suffixes alone, ask the user to confirm before setting
+`isPrivileged: true` on the wrong profile.
 
 **3. `ask` — ask the user.** State plainly what is missing and why it matters:
 
@@ -148,9 +154,10 @@ a mistake — either write 2+ or write none.
 
 ## The two gates before passing the flag
 
-The optimize skill guarantees BOLA/BFLA in any policy **it** authors, and this skill trusts
-that guarantee without re-reading the policy. Both gates below check something optimize's
-guarantee does not cover.
+**Once 2+ profiles are written, they stay in `stackhawk.yml`.** Every scan that reads this
+file from now on — not just this one — force-resolves the hidden `BUSINESS_LOGIC` preset
+unless `--all-plugins-per-profile` is passed *and* provenance holds. Get either gate wrong and
+the app silently drops to a 2-plugin scan permanently, not just today.
 
 **Capability gate — does this `hawk` have the flag?**
 
@@ -158,22 +165,52 @@ guarantee does not cover.
 hawk scan --help 2>/dev/null | grep -q -- --all-plugins-per-profile
 ```
 
-Non-zero means the installed `hawk` predates the flag. Drop the flag and scan without it. This
-is a mild outcome, not a failure: the no-flag path still runs BOLA/BFLA via `BUSINESS_LOGIC`.
+Non-zero means the installed `hawk` predates the flag — it does not exist to pass, ever, on
+this binary. This is **not** a mild fallback: the profiles are already written, so from this
+point forward every scan of this app runs only 422004/422005 and nothing else — no XSS, no
+SQLi, no injection, no header checks — until the profiles are removed or `hawk` is upgraded.
 
-**Provenance gate — did optimize author the policy in play?**
+**Stop and ask the user before proceeding.** Present the tradeoff explicitly and let them
+choose per-repo:
 
-There is nothing to trust when the resolved policy came from somewhere else. Drop the flag
-when any of these is true:
+> This `hawk` build predates `--all-plugins-per-profile`. Writing the 2+ auth profiles needed
+> for BOLA/BFLA testing will make *every* future scan of this app run only 2 plugins
+> (BOLA/BFLA) — the rest of the policy (XSS, SQLi, injection, headers, everything else) stops
+> running until you upgrade `hawk` or remove the profiles. Options:
+> 1. Keep the current full-breadth single-profile scan — skip writing the profiles, no
+>    authorization testing this run.
+> 2. Accept the 2-plugin BOLA/BFLA-only scan — write the profiles now.
+> Which do you want?
 
-- `app.scanPolicy.name` in `stackhawk.yml` is absent or does not name an optimize-authored
-  policy (optimize names them `OPTIMIZE_TRIAL_...` or its promoted permanent equivalent);
-- `app.includedPlugins` is set in the yaml — it takes precedence over the policy entirely;
-- the app relies on its platform default or an org-level policy that this session did not author.
+Do not default either way — this is the one decision point in this feature where the agent
+pauses for input, unlike the N× time warning below, which is status-only. Record the choice;
+if the user picks (1), skip the rest of Phase 1c.7 for this run and do not write `profiles:`.
 
-Both gates fail **safe**: the fallback always runs BOLA/BFLA. What is lost is only the rest of
-the policy running per profile. Losing breadth is recoverable; silently losing authorization
-coverage is not.
+**Provenance gate — was the policy in play constructed with the verdict, not just named
+plausibly?**
+
+hawkscan trusts optimize's guarantee that any policy **it authors** contains 422004/422005,
+without re-reading the policy back (no `hawk op policy get` verification call). That trust is
+earned by construction, not inspection: Phase 1c.7 re-invokes optimize Setup, passing the
+`multi-role` verdict, so a policy that provably contains 422004/422005 exists before the flag
+is ever considered (see Phase 1c.7 above). Pattern-matching a policy name is not a
+substitute — the permanent policy name is user-chosen at promotion time (the optimize skill
+lets the user pick any upper-snake name), so a user-renamed optimize policy would fail a name
+check, while an unrelated policy that happens to match the naming convention would pass it.
+Re-invocation avoids both failure modes because it checks construction, not naming.
+
+Drop the flag — do not re-invoke, do not pass `--all-plugins-per-profile` — when any of these
+holds instead:
+
+- optimize is unavailable, or degraded to recommend-only (no `ORG_POLICY_MANAGEMENT` /
+  `WRITE_POLICY` permission — see Step 3 of the optimize skill's preflight);
+- `app.includedPlugins` is set in the yaml — it takes precedence over the policy entirely, so
+  no re-invoked policy can influence what actually runs.
+
+**Both gates fail safe only for authorization coverage, not for breadth.** The fallback in
+both cases still runs BOLA/BFLA via `BUSINESS_LOGIC` (2 plugins). But when profiles are
+already written, that fallback also means every other plugin in the policy stops running for
+this app until the situation changes. Say that plainly to the user — do not call it "mild."
 
 ## Warning the user about scan time
 
@@ -181,7 +218,7 @@ Configure the profiles and the flag, then warn **before** starting the scan:
 
 ```
 StackHawk | Multi-role app detected - <N> auth profiles configured (BOLA/BFLA enabled)
-StackHawk | Active scan time scales to roughly <N>x; maxDurationMinutes budgets the WHOLE
+StackHawk | Active scan time scales to roughly <N>x; hawk.scan.maxDurationMinutes budgets the WHOLE
 StackHawk | scan, so an existing budget may truncate it. Faster option: drop
 StackHawk | --all-plugins-per-profile for a BOLA/BFLA-only pass.
 ```
@@ -189,7 +226,7 @@ StackHawk | --all-plugins-per-profile for a BOLA/BFLA-only pass.
 This is status output, not a prompt — do not pause for input. The faster option is stated so
 the user can redirect, not so the agent waits.
 
-If `hawk.maxDurationMinutes` is already set in the yaml, say so explicitly and give the
+If `hawk.scan.maxDurationMinutes` is already set in the yaml, say so explicitly and give the
 arithmetic: a budget sized for a single-profile scan will truncate an N-profile run.
 
 ## Reading per-profile findings

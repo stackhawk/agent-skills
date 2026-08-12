@@ -62,9 +62,10 @@ scan and tunes from per-path metrics; it runs only via `/optimize` or when a sca
 ### Setup (config) — tech flags + scan policy, no trial scan
 
 1. **Analyze codebase** — detect languages/frameworks/DBs and app shape
-   (REST vs SPA, GraphQL, OpenAPI spec, base paths, auth). Also note whether the app has a
-   role/privilege model with ID-addressable resources (hawkscan's `multi-role` verdict; accept
-   it if hawkscan passed one in). See `references/mapping.md`.
+   (REST vs SPA, GraphQL, OpenAPI spec, base paths, auth). Act on a `multi-role` verdict only
+   when hawkscan passed one in, or the user explicitly asked for authorization/BOLA/BFLA
+   testing — do not independently re-derive the verdict; that duplicates hawkscan's
+   role/privilege heuristics and the two copies will drift. See `references/mapping.md`.
 2. **Compute optimal config** — tech flags to enable, plugin include/exclude set, and
    `stackhawk.yml` corrections. Default to a **balanced** profile; honor an explicit
    speed↔coverage lean if the user gives one. On a `multi-role` app the policy MUST include
