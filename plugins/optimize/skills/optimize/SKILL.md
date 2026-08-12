@@ -62,10 +62,14 @@ scan and tunes from per-path metrics; it runs only via `/optimize` or when a sca
 ### Setup (config) — tech flags + scan policy, no trial scan
 
 1. **Analyze codebase** — detect languages/frameworks/DBs and app shape
-   (REST vs SPA, GraphQL, OpenAPI spec, base paths, auth). See `references/mapping.md`.
+   (REST vs SPA, GraphQL, OpenAPI spec, base paths, auth). Also note whether the app has a
+   role/privilege model with ID-addressable resources (hawkscan's `multi-role` verdict; accept
+   it if hawkscan passed one in). See `references/mapping.md`.
 2. **Compute optimal config** — tech flags to enable, plugin include/exclude set, and
    `stackhawk.yml` corrections. Default to a **balanced** profile; honor an explicit
-   speed↔coverage lean if the user gives one. See `references/mapping.md`.
+   speed↔coverage lean if the user gives one. On a `multi-role` app the policy MUST include
+   plugins 422004 (BOLA) + 422005 (BFLA) — never dropped by a speed lean.
+   See `references/mapping.md`.
 3. **Build the policy** — fetch a base preset (`hawk op policy get --name DEFAULT`
    or the API/GraphQL preset matching the app), edit its tech flags + toggle plugin
    families, write the result to a temp JSON file, and create it under a deterministic

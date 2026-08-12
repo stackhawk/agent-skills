@@ -25,6 +25,29 @@ Fetch the base with `hawk op policy get --name <PRESET>`. Then:
 - KEEP/ADD families the stack needs.
 Validate every plugin id against the base policy's plugin list — never invent ids.
 
+### Multi-role apps: BOLA/BFLA are mandatory
+
+When the app has a role/privilege model and ID-addressable resources (hawkscan's `multi-role`
+verdict, or the user asks for authorization/BOLA/BFLA testing), the authored policy MUST
+include both:
+
+| pluginId | name |
+|----------|------|
+| 422004 | Cross Platform BOLA |
+| 422005 | Cross Platform BFLA |
+
+**This is the one sanctioned exception to "never invent ids" above,** and it is scoped to
+exactly these two. They live in `BUSINESS_LOGIC`, a hidden platform preset absent from
+`hawk op policy list`, so they cannot be discovered by reading a base policy — they are added
+literally.
+
+Why it matters: hawkscan runs multi-profile scans with `--all-plugins-per-profile`, which
+*replaces* the forced BOLA/BFLA-only preset with this policy. If these IDs are missing, the
+scan silently performs no authorization testing at all. hawkscan trusts this guarantee and
+does not re-read the policy to check.
+
+Never drop these two under a speed lean.
+
 ## stackhawk.yml correctness
 - App type: SPA → enable SPA/spider settings; REST → leave spider conservative.
 - OpenAPI spec present → set `app.openApiConf` to point at it.
