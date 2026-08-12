@@ -1,0 +1,204 @@
+# Multi-Role Authorization Profiles (BOLA/BFLA)
+
+How to detect an app whose users hold different privileges, configure one HawkScan auth
+profile per role, and run a scan that actually exercises the BOLA and BFLA plugins.
+
+## Contents
+- [Why this is not automatic](#why-this-is-not-automatic)
+- [Detection: the multi-role verdict](#detection-the-multi-role-verdict)
+- [Phase 1c.7: build the profiles](#phase-1c7-build-the-profiles)
+- [The two gates before passing the flag](#the-two-gates-before-passing-the-flag)
+- [Warning the user about scan time](#warning-the-user-about-scan-time)
+- [Reading per-profile findings](#reading-per-profile-findings)
+
+---
+
+## Why this is not automatic
+
+Configuring two or more auth profiles changes which scan policy HawkScan resolves:
+
+| Config | Resolved scan policy |
+|---|---|
+| 2+ profiles, no flag | `BUSINESS_LOGIC` — a hidden preset holding exactly 2 plugins |
+| 2+ profiles, with `--all-plugins-per-profile` | normal precedence (includedPlugins, then org policy, then app policy) |
+| single profile | unchanged either way |
+
+`BUSINESS_LOGIC` contains only:
+
+| pluginId | name |
+|----------|------|
+| 422004 | Cross Platform BOLA |
+| 422005 | Cross Platform BFLA |
+
+**The flag is subtractive, not additive.** It removes the profile short-circuit so the app's
+real policy runs per profile. It does **not** add BOLA/BFLA. With the flag set, 422004 and
+422005 run only if the resolved policy already lists them — HawkScan does not inject them,
+does not union anything, and emits no warning when they are missing.
+
+`BUSINESS_LOGIC` does not appear in `hawk op policy list`, so it cannot be fetched and copied.
+The two plugin IDs above are added literally, by the optimize skill, when it authors a policy
+for a multi-role app.
+
+Consequence: passing the flag with a policy that lacks those IDs **silently loses all
+authorization coverage** — the scan looks richer while testing less. The two gates below exist
+to make that outcome unreachable.
+
+## Detection: the multi-role verdict
+
+Compute during Step 1a discovery, from three signal groups. The commands below are
+illustrative starting points — run them against the repo's real source root, not a literal
+`src/`.
+
+| Signal group | What to look for | Example probe |
+|---|---|---|
+| Role/privilege model | role or permission enums; RBAC annotations, decorators, guards; policy engines (Casbin, OPA, Pundit, CanCan); a roles or permissions table in migrations | `grep -rniE "enum .*(role\|permission)\|@PreAuthorize\|@RequiresRole\|hasPermission\|requireAdmin\|can\?\(" <source-root>` |
+| Object ownership | queries filtered by an owner column, and handlers that take an ID from the path or body and do **not** filter by owner | `grep -rniE "where .*(user_id\|owner_id\|tenant_id\|account_id) *=" <source-root>` |
+| Privileged surface | admin or internal route prefixes; routes addressing another user by ID; routes gated by a role check | `grep -rniE "\"/(admin\|internal)\|/users/\{?id" <source-root>` |
+
+**The verdict is `multi-role` when a role/privilege model AND an ID-addressable resource
+surface both appear.**
+
+Missing ownership checks raise confidence but are never required. A missing ownership check is
+the bug being hunted — requiring one as evidence would suppress the very finding this exists to
+surface.
+
+Record the verdict alongside the rest of discovery. Both Phase 1c.7 and the optimize skill
+consume it.
+
+## Phase 1c.7: build the profiles
+
+Run only after single-profile auth already validates green (`hawk validate auth` passes). A
+broken single profile cannot be fixed by adding a second one.
+
+Meaningful coverage needs specific shapes, not just extra logins:
+- **BOLA** needs two users at the **same** privilege level, each owning at least one resource,
+  so one can attempt to read the other's object by ID.
+- **BFLA** needs a **low**-privilege user plus a privileged surface to attempt.
+
+Work the cascade in order and stop at the first success:
+
+**1. `fixtures` — harvest what the repo already has.** Cheapest, writes nothing. Look for
+credentials with distinguishable roles in test fixtures and factories, seed SQL,
+`docker-compose.yml` environment blocks, `.env.example`, and the README's local-setup section.
+Accept only credentials the repo clearly intends for local development.
+
+**2. `data-seed` — seed them.** Gate first, exactly as Phase 1c.6 does:
+
+```bash
+hawk perch seed validate --help >/dev/null 2>&1 && hawk perch seed finalize --help >/dev/null 2>&1
+```
+
+If the gate passes and `stackhawk-data-seed` is installed, invoke it and ask for its
+**multi-user** shape: two peer users each owning a resource, plus one admin. It writes
+`.data-seed-credentials.env` with role-labelled variables this skill then reads.
+
+**3. `ask` — ask the user.** State plainly what is missing and why it matters:
+
+> Authorization testing needs a second account at the same privilege level as the first (to
+> test BOLA) and ideally an admin account (to test BFLA). I found only one usable credential.
+> Supply the others as environment variables and I will wire them up, or say skip and I will
+> run a single-profile scan.
+
+**4. `degrade` — proceed without it.** Run the normal single-profile scan. Report explicitly
+that authorization testing was skipped, name which cascade step failed, and say what would
+unblock it. Never silently drop the capability.
+
+On success, write the profiles. Fetch the canonical field list first — never write this block
+from memory:
+
+```bash
+hawk config show app.authentication.profiles --text
+```
+
+Each profile takes a unique `name`, one credential mechanism (`userNamePassword`, `external`,
+or `authScript`), an `isPrivileged` boolean, and optional `globalParameters`. Set
+`isPrivileged: true` on the admin profile only.
+
+```yaml
+# Shape only — every value here is a placeholder. Field list comes from hawk config show.
+app:
+  authentication:
+    profiles:
+      - name: <peer-a-profile-name>
+        isPrivileged: false
+        userNamePassword:
+          username: ${<PEER_A_USER_VAR>}
+          password: ${<PEER_A_PASS_VAR>}
+      - name: <peer-b-profile-name>
+        isPrivileged: false
+        userNamePassword:
+          username: ${<PEER_B_USER_VAR>}
+          password: ${<PEER_B_PASS_VAR>}
+      - name: <admin-profile-name>
+        isPrivileged: true
+        userNamePassword:
+          username: ${<ADMIN_USER_VAR>}
+          password: ${<ADMIN_PASS_VAR>}
+```
+
+Then re-validate, because the `authentication:` block changed:
+
+```bash
+hawk validate config stackhawk.yml
+hawk validate auth stackhawk.yml
+```
+
+`hawk validate auth` hard-fails below 2 profiles, so a single-entry `profiles:` list is always
+a mistake — either write 2+ or write none.
+
+## The two gates before passing the flag
+
+The optimize skill guarantees BOLA/BFLA in any policy **it** authors, and this skill trusts
+that guarantee without re-reading the policy. Both gates below check something optimize's
+guarantee does not cover.
+
+**Capability gate — does this `hawk` have the flag?**
+
+```bash
+hawk scan --help 2>/dev/null | grep -q -- --all-plugins-per-profile
+```
+
+Non-zero means the installed `hawk` predates the flag. Drop the flag and scan without it. This
+is a mild outcome, not a failure: the no-flag path still runs BOLA/BFLA via `BUSINESS_LOGIC`.
+
+**Provenance gate — did optimize author the policy in play?**
+
+There is nothing to trust when the resolved policy came from somewhere else. Drop the flag
+when any of these is true:
+
+- `app.scanPolicy.name` in `stackhawk.yml` is absent or does not name an optimize-authored
+  policy (optimize names them `OPTIMIZE_TRIAL_...` or its promoted permanent equivalent);
+- `app.includedPlugins` is set in the yaml — it takes precedence over the policy entirely;
+- the app relies on its platform default or an org-level policy that this session did not author.
+
+Both gates fail **safe**: the fallback always runs BOLA/BFLA. What is lost is only the rest of
+the policy running per profile. Losing breadth is recoverable; silently losing authorization
+coverage is not.
+
+## Warning the user about scan time
+
+Configure the profiles and the flag, then warn **before** starting the scan:
+
+```
+StackHawk | Multi-role app detected - <N> auth profiles configured (BOLA/BFLA enabled)
+StackHawk | Active scan time scales to roughly <N>x; maxDurationMinutes budgets the WHOLE
+StackHawk | scan, so an existing budget may truncate it. Faster option: drop
+StackHawk | --all-plugins-per-profile for a BOLA/BFLA-only pass.
+```
+
+This is status output, not a prompt — do not pause for input. The faster option is stated so
+the user can redirect, not so the agent waits.
+
+If `hawk.maxDurationMinutes` is already set in the yaml, say so explicitly and give the
+arithmetic: a budget sized for a single-profile scan will truncate an N-profile run.
+
+## Reading per-profile findings
+
+Findings collapse by plugin — one alert per plugin per scan, with URIs merged. Profile identity
+survives in exactly one place: a `[profile=<name>]` prefix on the alert's `evidence` string,
+present only when more than one profile was configured. There is no queryable profile field.
+
+So parse that prefix and carry it into the fix task. "Reachable as the low-privilege profile,
+not just as admin" is the entire value of a BOLA/BFLA finding, and evidence text is the only
+place it exists. A fix task that omits which role reached the endpoint has discarded the
+finding's point.
