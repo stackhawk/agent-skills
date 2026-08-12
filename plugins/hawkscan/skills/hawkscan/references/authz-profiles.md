@@ -7,7 +7,7 @@ profile per role, and run a scan that actually exercises the BOLA and BFLA plugi
 - [Why this is not automatic](#why-this-is-not-automatic)
 - [Detection: the multi-role verdict](#detection-the-multi-role-verdict)
 - [Phase 1c.7: build the profiles](#phase-1c7-build-the-profiles)
-- [The two gates before passing the flag](#the-two-gates-before-passing-the-flag)
+- [The provenance gate before passing the flag](#the-provenance-gate-before-passing-the-flag)
 - [Warning the user about scan time](#warning-the-user-about-scan-time)
 - [Reading per-profile findings](#reading-per-profile-findings)
 
@@ -40,8 +40,8 @@ The two plugin IDs above are added literally, by the optimize skill, when it aut
 for a multi-role app.
 
 Consequence: passing the flag with a policy that lacks those IDs **silently loses all
-authorization coverage** — the scan looks richer while testing less. The two gates below exist
-to make that outcome unreachable.
+authorization coverage** — the scan looks richer while testing less. The capability gate at the
+front of Phase 1c.7, and the provenance gate after it, exist to make that outcome unreachable.
 
 ## Detection: the multi-role verdict
 
@@ -67,8 +67,38 @@ consume it.
 
 ## Phase 1c.7: build the profiles
 
-Run only after single-profile auth already validates green (`hawk validate auth` passes). A
-broken single profile cannot be fixed by adding a second one.
+**Step 0 — probe capability before touching anything.** Do this first, before any credential
+work and before anything is written to `stackhawk.yml`. It is a zero-cost check with no state,
+so nothing forces it to run late:
+
+```bash
+hawk scan --help 2>/dev/null | grep -q -- --all-plugins-per-profile
+```
+
+Non-zero means the installed `hawk` predates the flag — it does not exist to pass, ever, on
+this binary. On any released `hawk` this probe fails; treat that as the common case, not the
+edge case.
+
+**If the probe fails, stop and ask the user now, before anything is modified.** At this point
+"keep full breadth" is a clean no-op — nothing has been written yet:
+
+> This `hawk` build predates `--all-plugins-per-profile`. Writing the 2+ auth profiles needed
+> for BOLA/BFLA testing will make *every* future scan of this app run only 2 plugins
+> (BOLA/BFLA) — the rest of the policy (XSS, SQLi, injection, headers, everything else) stops
+> running until you upgrade `hawk` or remove the profiles. Options:
+> 1. Keep the current full-breadth single-profile scan — skip writing the profiles, no
+>    authorization testing this run.
+> 2. Accept the 2-plugin BOLA/BFLA-only scan — write the profiles now.
+> Which do you want?
+
+Do not default either way — this is the one decision point in this feature where the agent
+pauses for input, unlike the N× time warning below, which is status-only. Record the choice; if
+the user picks (1), stop here — do not proceed to the cascade, and do not write `profiles:`.
+
+If the probe passes, or the user picked (2), continue below.
+
+Run the rest of Phase 1c.7 only after single-profile auth already validates green
+(`hawk validate auth` passes). A broken single profile cannot be fixed by adding a second one.
 
 Meaningful coverage needs specific shapes, not just extra logins:
 - **BOLA** needs two users at the **same** privilege level, each owning at least one resource,
@@ -152,48 +182,32 @@ hawk validate auth stackhawk.yml
 `hawk validate auth` hard-fails below 2 profiles, so a single-entry `profiles:` list is always
 a mistake — either write 2+ or write none.
 
-## The two gates before passing the flag
+**Finally, re-invoke optimize Setup, passing the verdict.** With profiles written and validated,
+re-invoke the optimize skill's Setup mode, passing it the `multi-role` verdict from discovery.
+Setup authors (or updates) the scan policy so it includes plugins 422004 and 422005 literally —
+this is what gives the provenance gate below something real to trust. If optimize is
+unavailable, or degrades to recommend-only because the org lacks `ORG_POLICY_MANAGEMENT` /
+`WRITE_POLICY` permission (see Step 3 of the optimize skill's preflight), no policy with
+422004/422005 gets authored — drop the flag, which the provenance gate below already covers.
+
+## The provenance gate before passing the flag
 
 **Once 2+ profiles are written, they stay in `stackhawk.yml`.** Every scan that reads this
 file from now on — not just this one — force-resolves the hidden `BUSINESS_LOGIC` preset
-unless `--all-plugins-per-profile` is passed *and* provenance holds. Get either gate wrong and
+unless `--all-plugins-per-profile` is passed *and* provenance holds. Get this gate wrong and
 the app silently drops to a 2-plugin scan permanently, not just today.
 
-**Capability gate — does this `hawk` have the flag?**
-
-```bash
-hawk scan --help 2>/dev/null | grep -q -- --all-plugins-per-profile
-```
-
-Non-zero means the installed `hawk` predates the flag — it does not exist to pass, ever, on
-this binary. This is **not** a mild fallback: the profiles are already written, so from this
-point forward every scan of this app runs only 422004/422005 and nothing else — no XSS, no
-SQLi, no injection, no header checks — until the profiles are removed or `hawk` is upgraded.
-
-**Stop and ask the user before proceeding.** Present the tradeoff explicitly and let them
-choose per-repo:
-
-> This `hawk` build predates `--all-plugins-per-profile`. Writing the 2+ auth profiles needed
-> for BOLA/BFLA testing will make *every* future scan of this app run only 2 plugins
-> (BOLA/BFLA) — the rest of the policy (XSS, SQLi, injection, headers, everything else) stops
-> running until you upgrade `hawk` or remove the profiles. Options:
-> 1. Keep the current full-breadth single-profile scan — skip writing the profiles, no
->    authorization testing this run.
-> 2. Accept the 2-plugin BOLA/BFLA-only scan — write the profiles now.
-> Which do you want?
-
-Do not default either way — this is the one decision point in this feature where the agent
-pauses for input, unlike the N× time warning below, which is status-only. Record the choice;
-if the user picks (1), skip the rest of Phase 1c.7 for this run and do not write `profiles:`.
-
-**Provenance gate — was the policy in play constructed with the verdict, not just named
-plausibly?**
+By the time execution reaches this point, the capability gate at the front of Phase 1c.7 has
+already passed — the profiles exist specifically because that gate passed and the user chose
+to proceed. What remains is provenance: was the policy in play actually constructed with the
+verdict, not just named plausibly?
 
 hawkscan trusts optimize's guarantee that any policy **it authors** contains 422004/422005,
 without re-reading the policy back (no `hawk op policy get` verification call). That trust is
 earned by construction, not inspection: Phase 1c.7 re-invokes optimize Setup, passing the
 `multi-role` verdict, so a policy that provably contains 422004/422005 exists before the flag
-is ever considered (see Phase 1c.7 above). Pattern-matching a policy name is not a
+is ever considered (see the re-invoke-optimize step in
+[Phase 1c.7](#phase-1c7-build-the-profiles) above). Pattern-matching a policy name is not a
 substitute — the permanent policy name is user-chosen at promotion time (the optimize skill
 lets the user pick any upper-snake name), so a user-renamed optimize policy would fail a name
 check, while an unrelated policy that happens to match the naming convention would pass it.

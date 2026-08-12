@@ -302,9 +302,9 @@ After seeding, re-run `hawk validate auth stackhawk.yml` and continue.
 
 ### Phase 1c.7: Multi-Role Authorization Profiles (BOLA/BFLA)
 
-Run when Step 1a returned `multi-role` and single-profile auth already validates: work the
-credential cascade, write 2+ `app.authentication.profiles`, re-validate, re-invoke optimize Setup
-passing the verdict, then gate — capability failure means **stop and ask the user** → [`references/authz-profiles.md`](references/authz-profiles.md)
+Run when Step 1a returned `multi-role` and single-profile auth already validates: probe
+capability first — failure means **stop and ask the user**, before writing anything — then work
+the credential cascade, write 2+ `app.authentication.profiles`, re-validate, re-invoke optimize Setup passing the verdict, then check provenance → [`references/authz-profiles.md`](references/authz-profiles.md)
 
 ---
 
