@@ -50,6 +50,33 @@ for name in "${EXPECTED[@]}"; do
   fi
 done
 
+# 6. Copilot manifest exists, is valid JSON, and points at copilot-skills/.
+MANIFEST="plugins/wingman/.github/plugin/plugin.json"
+if [ ! -f "$MANIFEST" ]; then
+  echo "ERROR: missing $MANIFEST"
+  errors=$((errors + 1))
+else
+  python3 -m json.tool "$MANIFEST" > /dev/null || {
+    echo "ERROR: $MANIFEST is not valid JSON"
+    errors=$((errors + 1))
+  }
+  skills_field="$(python3 -c "import json; print(json.load(open('$MANIFEST')).get('skills',''))")"
+  if [ "$skills_field" != "./copilot-skills/" ]; then
+    echo "ERROR: $MANIFEST skills field is '$skills_field', expected './copilot-skills/'"
+    errors=$((errors + 1))
+  fi
+  # Must NOT carry dependencies — Copilot ignores it and it misleads readers.
+  if python3 -c "import json,sys; sys.exit(0 if 'dependencies' in json.load(open('$MANIFEST')) else 1)"; then
+    echo "ERROR: $MANIFEST must not declare 'dependencies' (Copilot has no such mechanism)"
+    errors=$((errors + 1))
+  fi
+  mver="$(python3 -c "import json; print(json.load(open('$MANIFEST')).get('version','MISSING'))")"
+  if [ "$mver" != "$expected_version" ]; then
+    echo "ERROR: $MANIFEST has version '$mver', expected '$expected_version'"
+    errors=$((errors + 1))
+  fi
+fi
+
 if [ $errors -gt 0 ]; then
   echo "FAILED: $errors error(s)"
   exit 1

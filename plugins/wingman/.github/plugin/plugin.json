@@ -1,0 +1,22 @@
+{
+  "name": "wingman",
+  "version": "2.4.0",
+  "description": "StackHawk umbrella — installs the default StackHawk skill set (hawkscan, api, data-seed, optimize) in one command for the combined hawk CLI.",
+  "author": {
+    "name": "StackHawk",
+    "email": "support@stackhawk.com",
+    "url": "https://www.stackhawk.com"
+  },
+  "homepage": "https://docs.stackhawk.com",
+  "repository": "https://github.com/stackhawk/agent-skills",
+  "license": "MIT",
+  "keywords": [
+    "security",
+    "appsec",
+    "stackhawk",
+    "hawk",
+    "dast",
+    "umbrella"
+  ],
+  "skills": "./copilot-skills/"
+}
