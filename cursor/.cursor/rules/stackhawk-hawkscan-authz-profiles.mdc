@@ -196,6 +196,11 @@ unavailable, or degrades to recommend-only because the org lacks `ORG_POLICY_MAN
 `WRITE_POLICY` permission (see Step 3 of the optimize skill's preflight), no policy with
 422004/422005 gets authored — drop the flag, which the provenance gate below already covers.
 
+Do this step on the accepted-2-plugin path too, where the probe failed and there is no flag to
+pass or drop. `BUSINESS_LOGIC` resolves regardless of what the policy contains, so it changes
+nothing today — it prepares the policy for the moment `hawk` is upgraded and the flag becomes
+available.
+
 ## The provenance gate before passing the flag
 
 **Once 2+ profiles are written, they stay in `stackhawk.yml`.** Every scan that reads this
