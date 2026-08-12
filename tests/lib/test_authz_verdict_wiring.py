@@ -136,6 +136,55 @@ def test_process_check_grades_the_verdict() -> None:
     assert check.get("severity") in {"blocking", "warning"}, "bad severity"
 
 
+def test_mapping_requires_the_enabled_flag() -> None:
+    """The BOLA/BFLA plugin entries must be written with `enabled: true`.
+
+    Origin: a clean-room LiteLLM session did everything right — stated the
+    `multi-role` verdict, wrote three profiles, added 422004/422005 literally,
+    upserted the policy, scanned with --all-plugins-per-profile — and still got
+    zero authorization coverage, because the hand-built entries omitted
+    `enabled`. The platform stored both plugins *disabled*.
+
+    In the base policy JSON, `enabled` is only ever `true` (96/165 entries) or
+    absent (69/165) — never explicitly `false`. That is proto3 default omission:
+    `enabled: false` serializes to nothing, so **absent means disabled**. An
+    agent copying entry shape from a neighbouring base plugin (pluginId 0,
+    `Directory Browsing`, which has no `enabled` key) produces a disabled entry.
+
+    So naming the plugin IDs is not sufficient instruction; the entry shape has
+    to be spelled out.
+    """
+    mapping = (REPO / "plugins/optimize/skills/optimize/references/mapping.md").read_text()
+    section = _section(mapping, r"^### Multi-role apps", r"^## |\Z")
+    assert '"enabled": true' in section, (
+        "mapping.md does not tell the agent to set `enabled: true` on the "
+        "BOLA/BFLA entries — omitting the field stores them DISABLED"
+    )
+    assert re.search(r"absent|omit", section, re.IGNORECASE), (
+        "mapping.md does not warn that an omitted `enabled` field means "
+        "disabled, which is the trap that produced zero coverage"
+    )
+
+
+def test_trust_is_defined_as_enabled_not_merely_present() -> None:
+    """hawkscan's trust statement must mean 'enabled', not 'present'.
+
+    The provenance gate passes the flag on the strength of optimize's guarantee.
+    If that guarantee is only 'the policy contains 422004/422005', a policy with
+    both plugins present-but-disabled satisfies it while testing nothing.
+    """
+    # Scope to the provenance section. Matching "enabled" anywhere in the file is
+    # not enough: a status-line template already reads "(BOLA/BFLA enabled)",
+    # which is unrelated to the plugin flag and produced a false pass here.
+    section = _section(AUTHZ.read_text(), r"^## The provenance gate", r"^## Warning")
+    assert "422004" in section, "provenance section does not state the guarantee"
+    assert re.search(r"\benabled\b", section), (
+        "the trust statement says the policy must *contain* 422004/422005 but "
+        "never that they must be ENABLED — a present-but-disabled pair "
+        "satisfies it while testing nothing"
+    )
+
+
 def test_skill_body_within_limit() -> None:
     """Guard the budget these edits had to fit inside."""
     n = _body(SKILL).count("\n")

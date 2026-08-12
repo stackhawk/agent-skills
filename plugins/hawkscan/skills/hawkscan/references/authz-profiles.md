@@ -210,10 +210,15 @@ below. Everything that follows applies only after a passing probe. What remains 
 provenance: was the policy in play actually constructed with the verdict, not just named
 plausibly?
 
-hawkscan trusts optimize's guarantee that any policy **it authors** contains 422004/422005,
-without re-reading the policy back (no `hawk op policy get` verification call). That trust is
+hawkscan trusts optimize's guarantee that any policy **it authors** carries 422004/422005 with
+`"enabled": true` — *enabled*, not merely present. A disabled entry upserts fine, appears in the
+policy, and never runs, so "the ids are in there" is not the guarantee; the flag is. (An
+`enabled` field that is absent means disabled — the serializer drops default values.)
+
+The trust is extended without re-reading the policy back (no `hawk op policy get` verification
+call — that command cannot fetch org policies today anyway, only presets). It is instead
 earned by construction, not inspection: Phase 1c.7 re-invokes optimize Setup, passing the
-`multi-role` verdict, so a policy that provably contains 422004/422005 exists before the flag
+`multi-role` verdict, so a policy that provably enables 422004/422005 exists before the flag
 is ever considered (see the re-invoke-optimize step in
 [Phase 1c.7](#phase-1c7-build-the-profiles) above). Pattern-matching a policy name is not a
 substitute — the permanent policy name is user-chosen at promotion time (the optimize skill

@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 2.5.1
+version: 2.5.2
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Performs

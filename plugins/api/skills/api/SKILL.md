@@ -1,6 +1,6 @@
 ---
 name: api
-version: 2.5.1
+version: 2.5.2
 description: >
   Use this skill when a user or agent needs to query the StackHawk platform for
   security reporting, findings analysis, or app management. Triggers include:
