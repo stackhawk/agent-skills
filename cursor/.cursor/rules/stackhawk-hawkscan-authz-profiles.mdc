@@ -203,10 +203,13 @@ file from now on — not just this one — force-resolves the hidden `BUSINESS_L
 unless `--all-plugins-per-profile` is passed *and* provenance holds. Get this gate wrong and
 the app silently drops to a 2-plugin scan permanently, not just today.
 
-By the time execution reaches this point, the capability gate at the front of Phase 1c.7 has
-already passed — the profiles exist specifically because that gate passed and the user chose
-to proceed. What remains is provenance: was the policy in play actually constructed with the
-verdict, not just named plausibly?
+This gate matters only when the capability probe at the front of Phase 1c.7 passed — that is
+the only path where `--all-plugins-per-profile` is ever in play. If the probe failed and the
+user picked option 2 (accept the 2-plugin scan), profiles exist but there is no flag to
+evaluate: skip this gate entirely rather than falling through into the flag-passing logic
+below. Everything that follows applies only after a passing probe. What remains there is
+provenance: was the policy in play actually constructed with the verdict, not just named
+plausibly?
 
 hawkscan trusts optimize's guarantee that any policy **it authors** contains 422004/422005,
 without re-reading the policy back (no `hawk op policy get` verification call). That trust is
@@ -227,14 +230,20 @@ holds instead:
 - `app.includedPlugins` is set in the yaml — it takes precedence over the policy entirely, so
   no re-invoked policy can influence what actually runs.
 
-**Both gates fail safe only for authorization coverage, not for breadth.** The fallback in
-both cases still runs BOLA/BFLA via `BUSINESS_LOGIC` (2 plugins). But when profiles are
-already written, that fallback also means every other plugin in the policy stops running for
-this app until the situation changes. Say that plainly to the user — do not call it "mild."
+**The two gates' fallbacks trade away opposite things — neither is "mild."** The
+capability-gate fallback (Step 0 above) is the user's own choice: option 1 keeps full breadth
+with zero authorization testing and nothing written to `stackhawk.yml`; option 2 accepts
+`BUSINESS_LOGIC` — exactly 2 plugins (BOLA/BFLA), and every other plugin in the policy stops
+running for this app while the profiles remain. The provenance-gate fallback here — the flag
+dropped, not re-invoked — keeps BOLA/BFLA: `BUSINESS_LOGIC` still resolves, so 422004/422005
+keep running, but the rest of the policy stops running for this app until the situation
+changes. Say the consequence plainly to the user in either case — do not call it "mild."
 
 ## Warning the user about scan time
 
-Configure the profiles and the flag, then warn **before** starting the scan:
+This warning applies only on the path where the flag is actually in play — probe passed,
+provenance holds, profiles and `--all-plugins-per-profile` both configured. Warn before
+starting the scan:
 
 ```
 StackHawk | Multi-role app detected - <N> auth profiles configured (BOLA/BFLA enabled)
@@ -245,6 +254,11 @@ StackHawk | --all-plugins-per-profile for a BOLA/BFLA-only pass.
 
 This is status output, not a prompt — do not pause for input. The faster option is stated so
 the user can redirect, not so the agent waits.
+
+On the path where the probe failed and the user accepted the 2-plugin scan, profiles exist but
+the flag never does, so this N× warning does not apply: `BUSINESS_LOGIC` runs exactly 2
+plugins per profile, not the full policy, so there is no time multiplier. The warning to give
+on that path is about lost breadth, not lost time — see the gate-fallback note above.
 
 If `hawk.scan.maxDurationMinutes` is already set in the yaml, say so explicitly and give the
 arithmetic: a budget sized for a single-profile scan will truncate an N-profile run.
