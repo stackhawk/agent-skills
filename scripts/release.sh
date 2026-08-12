@@ -50,6 +50,7 @@ git add -N cursor/
 if ! git diff --quiet cursor/; then
   echo "ERROR: Cursor rules are out of date. Run 'bash scripts/generate-cursor-rules.sh' and commit." >&2
   errors=$((errors + 1))
+  git reset -- cursor/
 fi
 
 # 5. Version consistency across manifests
@@ -71,6 +72,7 @@ git add -N plugins/wingman/copilot-skills/
 if ! git diff --quiet plugins/wingman/copilot-skills/; then
   echo "ERROR: wingman copilot-skills/ is out of date. Run 'bash scripts/generate-wingman-skills.sh' and commit." >&2
   errors=$((errors + 1))
+  git reset -- plugins/wingman/copilot-skills/
 fi
 
 if [ $errors -gt 0 ]; then
