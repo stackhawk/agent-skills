@@ -17,6 +17,10 @@ alwaysApply: false
 | Get per-path scan metrics + signal flags | `hawk op scan metrics <SCAN_ID\|latest> [--sort heaviest\|slowest\|erroring\|most-requested] [--top N] [--method <VERB>] [--operations] --format json` |
 
 Notes:
+- `policy get` works on **StackHawk presets only**. On an org policy name (anything you
+  created, e.g. `OPTIMIZE_TRIAL_…`) it returns `Error: Resource not found` even though
+  `policy list` shows it — org policies are only reachable via the org-scoped list. Never
+  build a step that depends on reading your own policy back.
 - `policy get` prints a full `ScanPolicy` JSON (tech flags + plugins) suitable for editing
   and re-submitting via `policy create --file`.
 - Policy names must match `^[A-Z0-9_]+$`, ≤256 chars.

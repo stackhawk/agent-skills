@@ -35,11 +35,16 @@ idempotent.
 
 ## Promote
 1. Ask the user for a permanent policy name (default `OPTIMIZE_<APP>`), upper-snake.
-2. Ensure the policy JSON is available, then create the permanent policy. The trial policy
-   already lives on the platform, so do NOT assume the local `<tmp.json>` survived (a
-   resumed/crashed session may have lost it). If `<tmp.json>` is missing, reconstruct it
-   from the live trial policy: `hawk op policy get --name OPTIMIZE_TRIAL_… > <tmp.json>`.
-   Then `hawk op policy create --file <tmp.json> --name <PERMANENT>`.
+2. Ensure the policy JSON is available, then create the permanent policy:
+   `hawk op policy create --file <tmp.json> --name <PERMANENT>`.
+   The local `<tmp.json>` is the **only** source — do not plan to re-read the trial policy
+   off the platform. `hawk op policy get` resolves StackHawk presets only; on any org policy
+   name (every `OPTIMIZE_*`) it returns `Error: Resource not found`, even though the policy
+   is real and listed by `hawk op policy list`.
+   So treat `<tmp.json>` as **not reconstructable**: keep it for the whole trial, and if a
+   resumed or crashed session has lost it, rebuild the policy from the base preset the same
+   way Setup did (`hawk op policy get --name <PRESET>` still works) rather than trying to
+   recover the trial's contents. Say plainly that the rebuild may not be byte-identical.
 3. Update `stackhawk.yml app.scanPolicy.name` → `<PERMANENT>`; remove the backup file.
 4. `hawk op policy delete --name OPTIMIZE_TRIAL_… --yes`.
 5. (Optional) `hawk op policy assign --app <APP> --name <PERMANENT>` to set the platform default.

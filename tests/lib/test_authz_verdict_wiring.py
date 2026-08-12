@@ -185,6 +185,39 @@ def test_trust_is_defined_as_enabled_not_merely_present() -> None:
     )
 
 
+def test_no_skill_instructs_policy_get_on_an_org_policy() -> None:
+    """`hawk op policy get` resolves StackHawk presets only, never org policies.
+
+    Root cause in hawkop (`client/stackhawk.rs:2769`): `get_policy(name)` issues
+    `GET /policy?policyName=<name>` with no org scoping, while org policies live
+    behind the org-scoped `GET /policy/{org_id}/list`. Its siblings
+    `upsert_org_policy` / `delete_org_policy` both require an org_id; `get` does
+    not. Verified against a live org: DEFAULT and DEFAULT_API return policies,
+    while MY_API, LONG_SCAN and OPTIMIZE_TRIAL_LITELLM_DEVELOPMENT all return
+    "Error: Resource not found" despite appearing in `policy list`.
+
+    So any instruction telling an agent to fetch an OPTIMIZE_* (org) policy by
+    name is dead on arrival. Fetching a PRESET by name is fine and stays allowed.
+    """
+    offenders = []
+    for md in sorted((REPO / "plugins").rglob("*.md")):
+        for i, line in enumerate(md.read_text().splitlines(), 1):
+            if "policy get" not in line:
+                continue
+            # Preset fetches are legitimate; so is prose documenting that the
+            # command cannot read org policies.
+            if re.search(r"PRESET|DEFAULT|preset", line):
+                continue
+            if re.search(r"cannot|can't|not\b.*fetch|broken|only presets", line, re.IGNORECASE):
+                continue
+            if re.search(r"OPTIMIZE|org polic|trial polic", line, re.IGNORECASE):
+                offenders.append(f"{md.relative_to(REPO)}:{i}: {line.strip()[:100]}")
+    assert not offenders, (
+        "these instructions fetch an org policy by name, which always fails:\n  "
+        + "\n  ".join(offenders)
+    )
+
+
 def test_skill_body_within_limit() -> None:
     """Guard the budget these edits had to fit inside."""
     n = _body(SKILL).count("\n")
