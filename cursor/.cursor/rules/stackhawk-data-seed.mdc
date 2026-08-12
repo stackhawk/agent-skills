@@ -105,6 +105,7 @@ From the pre-flight `digest` (storage kind, migrations, routes, schema signals),
 **Methodology:**
 
 1. Pick the smallest set of entities that unblock authenticated, non-trivial routes — typically one org, one user (with credentials), and at least one owned resource (app/project/record) the routes read.
+   - **Multi-user shape (when hawkscan asks for authorization/BOLA/BFLA testing):** seed **two peer users at the same privilege level, each owning at least one resource**, plus **one admin/privileged user**. BOLA testing needs peer A to be able to attempt a read of peer B's resource by ID, so two owners with distinct resources are the point — one user with two resources does not test it. BFLA testing needs the low-privilege user plus a privileged surface to attempt. Keep every step idempotent as usual.
 2. Order steps by foreign-key dependency (create the org before the user that references it, etc.).
 3. Make every step **idempotent** (e.g. `INSERT … ON CONFLICT DO NOTHING`, upserts, "create if absent") so replaying the seed is safe.
 4. Keep it minimal. Do NOT start services or run the artifacts.
@@ -180,3 +181,5 @@ git commit -m "chore: add data seed artifacts for HawkScan"
 ## Boundaries with hawkscan
 
 This skill never writes or modifies `stackhawk.yml`, selects authentication recipes, or creates Apps/Envs on the StackHawk platform. The handoff is one file: `.data-seed-credentials.env`. Hawkscan reads it and plugs the values into whatever auth recipe it selects.
+
+**Multi-user handoff.** When the multi-user shape was seeded, label each credential pair in `.data-seed-credentials.env` so hawkscan can tell the roles apart and set `isPrivileged` correctly. Use a per-role suffix on the variable names and record which role is privileged — hawkscan cannot infer privilege from a username. Emit one pair per seeded user (two peers plus the admin), and keep the existing single-user variables unchanged so single-profile consumers keep working. Choosing profile names and writing the `profiles:` block stays hawkscan's job.
