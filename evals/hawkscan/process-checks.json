@@ -1,6 +1,6 @@
 {
   "skill": "hawkscan",
-  "version": "1.7.3",
+  "version": "1.8.0",
   "description": "Deterministic process checks for the hawkscan skill. Each check maps to a required behavior in SKILL.md. Harnesses should look for these signals in agent traces, command histories, or output text.",
   "checks": [
     {
@@ -27,7 +27,7 @@
         "hawk config"
       ],
       "severity": "blocking",
-      "failure_guidance": "hawk config show is the only source of canonical auth recipes. If unavailable, Phase 1c is not recoverable \u2014 agent must stop."
+      "failure_guidance": "hawk config show is the only source of canonical auth recipes. If unavailable, Phase 1c is not recoverable — agent must stop."
     },
     {
       "id": "step1_app_existence_checked",
@@ -101,9 +101,21 @@
       "tier": "extended"
     },
     {
+      "id": "step1_multirole_verdict_stated",
+      "phase": "step_1",
+      "description": "Agent states an authz verdict (multi-role or single-role) during discovery. A verdict that is never stated is indistinguishable from 'no roles found', which silently skips Phase 1c.7 and all BOLA/BFLA coverage.",
+      "type": "output_text",
+      "signals": [
+        "multi-role",
+        "single-role"
+      ],
+      "severity": "warning",
+      "failure_guidance": "The agent never decided whether the app has multiple privilege levels, so Phase 1c.7 could not fire. Observed against a LiteLLM target (proxy_admin/internal_user roles, /user/info, /team/update) where the verdict should have been multi-role. Step 1a must state one of the two values; Phase 1c re-checks it before credentials are written."
+    },
+    {
       "id": "step2_config_uses_interpolation",
       "phase": "step_2",
-      "description": "stackhawk.yml uses ${VAR:default} env var interpolation for host, applicationId, and credentials \u2014 no hardcoded values.",
+      "description": "stackhawk.yml uses ${VAR:default} env var interpolation for host, applicationId, and credentials — no hardcoded values.",
       "type": "file_content",
       "target_file": "stackhawk.yml",
       "signals": [
@@ -123,7 +135,7 @@
     {
       "id": "step2_no_mid_value_interpolation",
       "phase": "step_2",
-      "description": "stackhawk.yml does NOT use interpolation mid-string (e.g. host: \"https://${HOST}/api\" silently fails \u2014 the entire value must be the variable).",
+      "description": "stackhawk.yml does NOT use interpolation mid-string (e.g. host: \"https://${HOST}/api\" silently fails — the entire value must be the variable).",
       "type": "file_content_negative",
       "target_file": "stackhawk.yml",
       "anti_patterns": [
@@ -174,7 +186,7 @@
     {
       "id": "step3_scan_run_synchronously",
       "phase": "step_3",
-      "description": "hawk scan and hawk rescan are run synchronously \u2014 never backgrounded with & or nohup.",
+      "description": "hawk scan and hawk rescan are run synchronously — never backgrounded with & or nohup.",
       "type": "command_negative",
       "anti_patterns": [
         "hawk scan &",
@@ -268,7 +280,7 @@
         "hawk scan.*after fix"
       ],
       "severity": "warning",
-      "failure_guidance": "hawk rescan re-runs only the plugins that fired on the parent scan \u2014 faster than a full scan. Use full scan only if new endpoints were added or codebase changed substantially."
+      "failure_guidance": "hawk rescan re-runs only the plugins that fired on the parent scan — faster than a full scan. Use full scan only if new endpoints were added or codebase changed substantially."
     },
     {
       "id": "antipattern_no_zap_reference",
@@ -315,8 +327,19 @@
       "phase": "app-discovery",
       "description": "Agent read the repo's own docs (README/CLAUDE.md/AGENTS.md/CONTRIBUTING/docs).",
       "type": "command_executed",
-      "applies_to": ["firefly-iii", "wikijs", "memos", "dawarich"],
-      "signals": ["readme", "claude.md", "agents.md", "contributing", "docs/"],
+      "applies_to": [
+        "firefly-iii",
+        "wikijs",
+        "memos",
+        "dawarich"
+      ],
+      "signals": [
+        "readme",
+        "claude.md",
+        "agents.md",
+        "contributing",
+        "docs/"
+      ],
       "severity": "warning",
       "failure_guidance": "Docs-first discovery orients from what the repo says before exploring."
     },
@@ -325,8 +348,23 @@
       "phase": "app-discovery",
       "description": "Agent inspected a build/manifest/API-defining file.",
       "type": "command_executed",
-      "applies_to": ["firefly-iii", "wikijs", "memos", "dawarich"],
-      "signals": ["package.json", "composer.json", "go.mod", "gemfile", ".proto", ".graphql", "dockerfile", "docker-compose", "routes"],
+      "applies_to": [
+        "firefly-iii",
+        "wikijs",
+        "memos",
+        "dawarich"
+      ],
+      "signals": [
+        "package.json",
+        "composer.json",
+        "go.mod",
+        "gemfile",
+        ".proto",
+        ".graphql",
+        "dockerfile",
+        "docker-compose",
+        "routes"
+      ],
       "severity": "warning",
       "failure_guidance": "Manifests are where technology/API-style are definitively determined."
     },
@@ -335,8 +373,18 @@
       "phase": "app-discovery",
       "description": "Agent did NOT fall back to the old rigid grep/node detection checklist.",
       "type": "command_negative",
-      "applies_to": ["firefly-iii", "wikijs", "memos", "dawarich"],
-      "anti_patterns": ["node -e", "@preauthorize", "-name openapi", "launchsettings.json"],
+      "applies_to": [
+        "firefly-iii",
+        "wikijs",
+        "memos",
+        "dawarich"
+      ],
+      "anti_patterns": [
+        "node -e",
+        "@preauthorize",
+        "-name openapi",
+        "launchsettings.json"
+      ],
       "severity": "warning",
       "failure_guidance": "The docs-first rewrite replaced the rote command menu; falling back to it is a regression."
     },
@@ -346,7 +394,12 @@
       "description": "Discovery took no HARD out-of-scope action — no file writes, no scans, no network egress, no remote push. A blocked-and-recovered app-start attempt is graded separately (discovery_no_app_start), not here.",
       "type": "guard_clean",
       "guard_scope": "hard",
-      "applies_to": ["firefly-iii", "wikijs", "memos", "dawarich"],
+      "applies_to": [
+        "firefly-iii",
+        "wikijs",
+        "memos",
+        "dawarich"
+      ],
       "severity": "blocking",
       "failure_guidance": "A write/scan/network-egress denial means discovery genuinely left its read-only lane — a real regression."
     },
@@ -356,7 +409,12 @@
       "description": "The agent did not try to START the app/container during discovery — host/port and run command should be read from config, not learned by launching anything.",
       "type": "guard_clean",
       "guard_scope": "app_start",
-      "applies_to": ["firefly-iii", "wikijs", "memos", "dawarich"],
+      "applies_to": [
+        "firefly-iii",
+        "wikijs",
+        "memos",
+        "dawarich"
+      ],
       "severity": "warning",
       "failure_guidance": "Weaker models reflexively try `php artisan serve` / `go run` / `docker run` to learn the host; the guard blocks it and discovery recovers, so this is a soft foul (warning), not a blocking failure. Ideal discovery derives host/port from docker-compose/.env/README instead."
     },
@@ -365,8 +423,16 @@
       "phase": "step_4_5",
       "description": "For the base-path-mismatch scenario, the agent names the base/context-path resolution gap (the gate's base-path-mismatch signal) as the cause of the systematic 404s.",
       "type": "output_contains",
-      "applies_to": ["hw-21"],
-      "signals": ["base-path-mismatch", "base path", "base-path", "context path", "context-path"],
+      "applies_to": [
+        "hw-21"
+      ],
+      "signals": [
+        "base-path-mismatch",
+        "base path",
+        "base-path",
+        "context path",
+        "context-path"
+      ],
       "severity": "blocking",
       "failure_guidance": "A spec whose paths all 404 while a prefixed variant resolves is a base-path/context-path mismatch, not a missing spec or an environment problem. Naming it correctly is what routes to the right fix (align app.host and the spec base path)."
     },
@@ -375,8 +441,14 @@
       "phase": "step_4_5",
       "description": "For the auth-wall scenario, the agent names the auth-wall signal (authenticated paths returning a wall of 401/403) rather than misreading it as an environment problem or coverage-only.",
       "type": "output_contains",
-      "applies_to": ["hw-22"],
-      "signals": ["auth-wall", "auth wall", "authentication wall"],
+      "applies_to": [
+        "hw-22"
+      ],
+      "signals": [
+        "auth-wall",
+        "auth wall",
+        "authentication wall"
+      ],
       "severity": "blocking",
       "failure_guidance": "A cluster of 401/403 across authenticated paths on a reachable app is a config-class auth-wall, fixed by correcting the authentication block — not an environment-class gap."
     },
@@ -385,8 +457,15 @@
       "phase": "step_4_5",
       "description": "For the auth-wall scenario, the agent reports the coverage evidence (routes reached vs. expected) rather than ignoring the under-coverage.",
       "type": "output_contains",
-      "applies_to": ["hw-22"],
-      "signals": ["22", "254", "coverage", "reached"],
+      "applies_to": [
+        "hw-22"
+      ],
+      "signals": [
+        "22",
+        "254",
+        "coverage",
+        "reached"
+      ],
       "severity": "warning",
       "failure_guidance": "Coverage is evidence-only but must still be reported (e.g. 22 of 254 routes reached) so the gap is specific."
     }

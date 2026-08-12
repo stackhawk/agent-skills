@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 2.5.0
+version: 2.5.1
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Performs
@@ -174,8 +174,8 @@ a scan-time step (Step 1c), not part of discovery.
   [`references/app-discovery.md`](references/app-discovery.md)
 
 Record what discovery produced — surfaces, run command, host/port, auth shape — Step 1c and
-Step 2 consume them. Also compute the **`multi-role`** verdict (role model + ID-addressable
-resources) — Phase 1c.7 and the optimize skill consume it:
+Step 2 consume them. **Required output — you must state an authz verdict, either `multi-role`
+or `single-role`** (role model + ID-addressable resources); 1c.7 and optimize consume it:
 → [`references/authz-profiles.md`](references/authz-profiles.md)
 
 **SPA rule:** if the app is a client-rendered JS front end, never scan it without the Ajax
@@ -249,6 +249,9 @@ first. Same idea for GraphQL/gRPC: wire the schema/proto, don't scan blind.
 
 Use `hawk config show` to fetch the canonical recipe for the app's auth pattern.
 
+**Verdict checkpoint (do this first):** if Step 1a left the authz verdict unstated, decide it now
+— `multi-role` or `single-role`. Unstated silently skips Phase 1c.7 and its BOLA/BFLA coverage.
+
 **Step 1 — List available auth methods:**
 ```bash
 hawk config show app.authentication --text
@@ -316,6 +319,7 @@ Review the config against the current app state:
   auth) — additive-only; see [`references/scan-quality.md`](references/scan-quality.md).
 - **Low path count?** For a REST surface the fix is almost always an accurate spec — get one per `references/openapi-specs.md` (a wired, resolving `openApiConf` is worth far more than any spider tuning). Then: SPA/JS app → `hawk.spider.ajax: true`; GraphQL → wire `graphqlConf`. `hawk.spider.seedPaths` is a last resort (URLs only — no methods/bodies/params, so it can't reach POST/PUT or parameterized routes); prefer even a hand-derived spec over it, and omit it entirely once a spec is wired.
 - **Auth failing?** Verify `authentication` block; re-fetch the relevant recipe via `hawk config show <section> --text` (Phase 1c).
+- **`multi-role` verdict but no `profiles:` in the yml?** A pre-existing config never went through Phase 1c.7 — run it now, or authz testing stays off for every retest.
 - **Too noisy / too slow?** Add `app.excludePaths` or `app.includePaths`; tune `hawk.spider.maxDurationMinutes`.
 - **New API type added?** Add corresponding `graphqlConf`, `openApiConf`, etc.
 - **Need custom headers?** Use `hawkAddOn.replacer` for tenant or API version headers.
@@ -379,12 +383,8 @@ hawk scan --all-plugins-per-profile --json-output  # multi-role: full policy per
 
 **Always rescan against the original full-scan ID.** Rescan IDs are not valid parent scan references.
 
-### Exit Codes
-| Code | Meaning |
-|------|---------|
-| `0`  | Scan complete, no findings at or above `failureThreshold` |
-| `1`  | Scan failed (config error, app unreachable, auth failure) |
-| `42` | Scan complete, findings met or exceeded `failureThreshold` |
+**Exit codes:** `0` clean · `1` scan failed (config error, app unreachable, auth failure) ·
+`42` findings met or exceeded `failureThreshold`
 
 ---
 
