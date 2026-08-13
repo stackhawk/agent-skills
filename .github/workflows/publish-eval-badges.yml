@@ -35,7 +35,7 @@ jobs:
     # stays available as the deliberate "publish this run anyway" override.
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0   # tags needed for the meta-artifact fallback below
 

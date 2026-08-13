@@ -79,7 +79,7 @@ jobs:
     if: ${{ inputs.tool == 'all' || inputs.tool == 'claude-code' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0  # need tags for `git describe` in local mode
       - name: Install Claude Code CLI (native)
@@ -132,7 +132,7 @@ jobs:
     if: ${{ inputs.tool == 'all' || inputs.tool == 'codex' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - name: Rewrite git SSH->HTTPS
@@ -195,7 +195,7 @@ jobs:
     if: ${{ inputs.tool == 'all' || inputs.tool == 'copilot' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - uses: actions/setup-node@v6
@@ -269,7 +269,7 @@ jobs:
     if: ${{ inputs.tool == 'all' || inputs.tool == 'agy' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - name: Rewrite git SSH->HTTPS
