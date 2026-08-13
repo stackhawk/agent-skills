@@ -19,6 +19,7 @@
     { "path": ".claude/skills/skill-authoring/SKILL.md", "field": "version", "type": "yaml-frontmatter" },
     { "path": "plugins/wingman/.claude-plugin/plugin.json", "field": "version", "type": "json" },
     { "path": "plugins/wingman/.codex-plugin/plugin.json", "field": "version", "type": "json" },
+    { "path": "plugins/wingman/.github/plugin/plugin.json", "field": "version", "type": "json" },
     { "path": "plugins/optimize/.claude-plugin/plugin.json", "field": "version", "type": "json" },
     { "path": "plugins/optimize/.codex-plugin/plugin.json", "field": "version", "type": "json" },
     { "path": "plugins/optimize/skills/optimize/SKILL.md", "field": "version", "type": "yaml-frontmatter" }
