@@ -67,6 +67,32 @@ for name in "${EXPECTED[@]}"; do
   fi
 done
 
+# 5b. Each bundled skill's frontmatter `name:` is namespaced to match its
+# directory, so Copilot lists `stackhawk-api`/`stackhawk-optimize` rather than
+# the generic `api`/`optimize`. The SOURCE skills keep their current names —
+# assert that too, since renaming them is breaking and must not happen here.
+for name in "${EXPECTED[@]}"; do
+  f="${DEST}/${name}/SKILL.md"
+  [ -f "$f" ] || continue
+  actual_name="$(grep -m1 '^name:' "$f" | sed 's/^name: *//' || true)"
+  if [ -z "$actual_name" ]; then
+    echo "ERROR: $f is missing a 'name:' line in frontmatter"
+    errors=$((errors + 1))
+  elif [ "$actual_name" != "$name" ]; then
+    echo "ERROR: $f has name '$actual_name', expected '$name' (run generate-wingman-skills.sh)"
+    errors=$((errors + 1))
+  fi
+done
+
+for pair in "plugins/api/skills/api:api" "plugins/optimize/skills/optimize:optimize"; do
+  src="${pair%%:*}"; want="${pair##*:}"
+  got="$(grep -m1 '^name:' "${src}/SKILL.md" | sed 's/^name: *//' || true)"
+  if [ "$got" != "$want" ]; then
+    echo "ERROR: ${src}/SKILL.md has name '$got', expected '$want' — source skills must NOT be renamed (breaking; separate major release)"
+    errors=$((errors + 1))
+  fi
+done
+
 # 6. Copilot manifest exists, is valid JSON, and points at copilot-skills/.
 MANIFEST="plugins/wingman/.github/plugin/plugin.json"
 if [ ! -f "$MANIFEST" ]; then

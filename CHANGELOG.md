@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - CI now validates the wingman Copilot bundle (`scripts/test-wingman-skills.sh`) and catches untracked drift in the generated `copilot-skills/` output on every PR and at release time.
 
+### Changed
+- The wingman Copilot bundle now namespaces its skill names, so Copilot lists `stackhawk-api` and `stackhawk-optimize` instead of the generic `api` and `optimize`. Only the bundled copies are rewritten — the source skills keep their current names, so Claude Code, Codex, Cursor, Gemini, and OpenCode are unaffected. Note that a per-plugin Copilot install (`copilot plugin install stackhawk-api@stackhawk`) reads the source skill and therefore still lists `api`; unifying that requires renaming the source skills, which changes invocation names on every platform and is deferred to a separate major release.
+
 ## [2.1.1] - 2026-07-01
 
 ### Fixed

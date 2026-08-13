@@ -1,5 +1,5 @@
 ---
-name: api
+name: stackhawk-api
 version: 2.5.0
 description: >
   Use this skill when a user or agent needs to query the StackHawk platform for

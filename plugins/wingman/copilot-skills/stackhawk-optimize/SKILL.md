@@ -1,5 +1,5 @@
 ---
-name: optimize
+name: stackhawk-optimize
 version: 2.5.0
 description: >
   Analyze a codebase and produce an optimal HawkScan setup — tech flags, scan-policy

@@ -67,7 +67,12 @@ done
 
 # 6. Wingman Copilot bundle is valid and up to date
 bash "${REPO_ROOT}/scripts/test-wingman-skills.sh" || errors=$((errors + 1))
-bash "${REPO_ROOT}/scripts/generate-wingman-skills.sh" > /dev/null
+# Guarded so a generator failure accumulates into the errors counter and the
+# remaining checks still run, rather than hard-exiting under `set -e`.
+if ! bash "${REPO_ROOT}/scripts/generate-wingman-skills.sh" > /dev/null; then
+  echo "ERROR: scripts/generate-wingman-skills.sh failed" >&2
+  errors=$((errors + 1))
+fi
 git add -N plugins/wingman/copilot-skills/
 if ! git diff --quiet plugins/wingman/copilot-skills/; then
   echo "ERROR: wingman copilot-skills/ is out of date. Run 'bash scripts/generate-wingman-skills.sh' and commit." >&2

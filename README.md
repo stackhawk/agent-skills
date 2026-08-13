@@ -138,8 +138,14 @@ copilot plugin install stackhawk-optimize@stackhawk
 ```
 
 Plugins install to `~/.copilot/installed-plugins/stackhawk/<plugin>/`. Confirm
-they appear under **GitHub Copilot → Configure Skills** in VS Code. The API and
-optimize skills currently appear as `api` and `optimize`.
+they appear under **GitHub Copilot → Configure Skills** in VS Code.
+
+Skill names differ between the two install paths above. The `wingman` bundle
+namespaces its copies, so they list as `hawkscan`, `stackhawk-api`,
+`stackhawk-data-seed`, and `stackhawk-optimize`. A per-plugin install reads the
+source skill instead, so `stackhawk-api` and `stackhawk-optimize` list as `api`
+and `optimize`. Renaming the source skills would change their invocation names
+on every platform, so it is deferred to a separate major release.
 
 #### OpenCode
 
