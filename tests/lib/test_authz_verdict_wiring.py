@@ -173,11 +173,16 @@ def test_trust_is_defined_as_enabled_not_merely_present() -> None:
     If that guarantee is only 'the policy contains 422004/422005', a policy with
     both plugins present-but-disabled satisfies it while testing nothing.
     """
-    # Scope to the provenance section. Matching "enabled" anywhere in the file is
-    # not enough: a status-line template already reads "(BOLA/BFLA enabled)",
-    # which is unrelated to the plugin flag and produced a false pass here.
-    section = _section(AUTHZ.read_text(), r"^## The provenance gate", r"^## Warning")
-    assert "422004" in section, "provenance section does not state the guarantee"
+    # Scope to the section explaining when policy contents still decide coverage.
+    # Matching "enabled" anywhere in the file is not enough: a status-line
+    # template once read "(BOLA/BFLA enabled)", unrelated to the plugin flag,
+    # and produced a false pass here.
+    #
+    # Under primary-full the engine supplies BOLA/BFLA to non-primary profiles,
+    # so the guarantee is no longer load-bearing for the default path — but it
+    # still is for all-full and for offline runs, and that is what this asserts.
+    section = _section(AUTHZ.read_text(), r"^## Why this is not automatic", r"^## ")
+    assert "422004" in section, "the section does not state the guarantee"
     assert re.search(r"\benabled\b", section), (
         "the trust statement says the policy must *contain* 422004/422005 but "
         "never that they must be ENABLED — a present-but-disabled pair "
@@ -215,6 +220,93 @@ def test_no_skill_instructs_policy_get_on_an_org_policy() -> None:
     assert not offenders, (
         "these instructions fetch an org policy by name, which always fails:\n  "
         + "\n  ".join(offenders)
+    )
+
+
+def _skill_markdown() -> dict[str, str]:
+    """Every shipped skill markdown file, keyed by repo-relative path."""
+    return {str(p.relative_to(REPO)): p.read_text()
+            for p in sorted((REPO / "plugins").rglob("*.md"))}
+
+
+def test_dead_flag_is_gone_everywhere() -> None:
+    """`--all-plugins-per-profile` was replaced, not deprecated.
+
+    The local hawk build exposes `--profile-scan-mode=(business-logic|
+    primary-full|all-full)` and `hawk scan --help` no longer mentions the old
+    flag at all. Any instruction still naming it tells an agent to pass an
+    argument the binary rejects.
+    """
+    offenders = [f"{path}" for path, text in _skill_markdown().items()
+                 if "all-plugins-per-profile" in text]
+    assert not offenders, (
+        "these files reference the removed --all-plugins-per-profile flag: "
+        + ", ".join(offenders)
+    )
+
+
+def test_primary_full_is_the_default_mode() -> None:
+    """The skill must default to primary-full, not the engine default.
+
+    `--profile-scan-mode` defaults to `business-logic` (BOLA/BFLA only, every
+    profile). Passing nothing therefore gives a 2-plugin scan. primary-full runs
+    the full policy on one profile and BOLA/BFLA on the rest.
+    """
+    authz = AUTHZ.read_text()
+    assert "--profile-scan-mode=primary-full" in authz, (
+        "authz-profiles.md does not name the default mode the skill should pass"
+    )
+    assert re.search(r"business-logic.*default|default.*business-logic", authz, re.IGNORECASE), (
+        "the doc does not warn that the flag's own default is business-logic, "
+        "so omitting it silently yields a 2-plugin scan"
+    )
+
+
+def test_full_scan_profile_is_named_explicitly() -> None:
+    """--full-scan-profile must be pinned to the privileged profile.
+
+    It defaults to the first profile declared in the config, which for us is a
+    low-privilege peer — so relying on the default makes coverage depend on the
+    order the skill happened to write profiles in.
+    """
+    authz = AUTHZ.read_text()
+    assert "--full-scan-profile" in authz, "the flag is never mentioned"
+    section = _section(authz, r"--full-scan-profile", r"^## ")
+    assert re.search(r"privileg|admin", section, re.IGNORECASE), (
+        "the doc does not say to pin --full-scan-profile to the privileged "
+        "profile; falling back to declaration order scans as a peer"
+    )
+
+
+def test_attribution_is_other_info_not_evidence() -> None:
+    """Profile attribution lives in Other Info, not the evidence string.
+
+    hawkscan moved it (commit 4bd23cf86): the platform UI highlights a finding by
+    locating the evidence string verbatim inside the captured request/response,
+    so prefixing evidence with [profile=<name>] silently broke highlighting.
+    A doc still telling an agent to parse evidence sends it to the wrong field.
+    """
+    section = _section(AUTHZ.read_text(), r"^## Reading per-profile findings", r"^## |\Z")
+    assert re.search(r"other info", section, re.IGNORECASE), (
+        "the attribution section does not name Other Info as the field"
+    )
+    assert not re.search(r"prefix.{0,40}evidence|evidence.{0,40}prefix", section, re.IGNORECASE), (
+        "the attribution section still describes an evidence prefix, which no "
+        "longer exists and would send an agent to the wrong field"
+    )
+
+
+def test_offline_bola_bfla_gap_is_documented() -> None:
+    """Keyless/offline runs get no BOLA/BFLA on non-primary profiles.
+
+    `policyForProfile` falls back to the bundled full policy when `!canSend()`,
+    and 422004/422005 exist in no bundled policy — so the engine's BOLA/BFLA
+    guarantee quietly does not hold without platform connectivity.
+    """
+    authz = AUTHZ.read_text()
+    assert re.search(r"offline|keyless|no platform|without.{0,20}platform", authz, re.IGNORECASE), (
+        "the offline fallback is undocumented, so an agent will assume the "
+        "engine supplies BOLA/BFLA when it cannot"
     )
 
 

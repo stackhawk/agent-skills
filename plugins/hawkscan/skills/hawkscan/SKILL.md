@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 2.5.3
+version: 2.6.0
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Performs
@@ -307,7 +307,7 @@ After seeding, re-run `hawk validate auth stackhawk.yml` and continue.
 
 Run when Step 1a returned `multi-role` and single-profile auth already validates: probe
 capability first — failure means **stop and ask the user**, before writing anything — then work
-the credential cascade, write 2+ `app.authentication.profiles`, re-validate, re-invoke optimize Setup passing the verdict, then check provenance → [`references/authz-profiles.md`](references/authz-profiles.md)
+the credential cascade, write 2+ `app.authentication.profiles`, re-validate, re-invoke optimize Setup passing the verdict, then scan with `--profile-scan-mode=primary-full --full-scan-profile=<privileged>` → [`references/authz-profiles.md`](references/authz-profiles.md)
 
 ---
 
@@ -378,7 +378,7 @@ arguments only — no `-c` or `--config` flag. Use bare filenames (not absolute 
 ```bash
 hawk scan --json-output                            # structured output (requires Dev Release v5.3.41+)
 hawk rescan --scan-id <SCAN_ID> --json-output      # fast fix verification — re-runs only fired plugins
-hawk scan --all-plugins-per-profile --json-output  # multi-role: full policy per profile (gates first, Phase 1c.7)
+hawk scan --profile-scan-mode=primary-full --json-output  # multi-role; pin --full-scan-profile (Phase 1c.7)
 ```
 
 **Always rescan against the original full-scan ID.** Rescan IDs are not valid parent scan references.

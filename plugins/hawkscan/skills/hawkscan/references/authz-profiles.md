@@ -15,33 +15,44 @@ profile per role, and run a scan that actually exercises the BOLA and BFLA plugi
 
 ## Why this is not automatic
 
-Configuring two or more auth profiles changes which scan policy HawkScan resolves:
+With two or more auth profiles configured, `--profile-scan-mode` decides how plugin coverage is
+spread across them:
 
-| Config | Resolved scan policy |
-|---|---|
-| 2+ profiles, no flag | `BUSINESS_LOGIC` — a hidden preset holding exactly 2 plugins |
-| 2+ profiles, with `--all-plugins-per-profile` | normal precedence (includedPlugins, then org policy, then app policy) |
-| single profile | unchanged either way |
+| Mode | Primary profile | Every other profile | Cost |
+|---|---|---|---|
+| `business-logic` *(the flag's own default)* | BOLA/BFLA only | BOLA/BFLA only | cheapest — 2 plugins total |
+| **`primary-full`** — **what this skill passes** | full configured policy | BOLA/BFLA | one full scan, not N |
+| `all-full` | full configured policy | full configured policy | scan time ≈ N× |
 
-`BUSINESS_LOGIC` contains only:
+**Always pass the mode explicitly.** Omitting `--profile-scan-mode` selects `business-logic`,
+so the moment a second profile exists an otherwise-normal scan silently drops to two plugins —
+no XSS, no SQLi, nothing else — for as long as those profiles stay in `stackhawk.yml`.
+
+`BUSINESS_LOGIC` is a hidden preset containing only:
 
 | pluginId | name |
 |----------|------|
 | 422004 | Cross Platform BOLA |
 | 422005 | Cross Platform BFLA |
 
-**The flag is subtractive, not additive.** It removes the profile short-circuit so the app's
-real policy runs per profile. It does **not** add BOLA/BFLA. With the flag set, 422004 and
-422005 run only if the resolved policy already lists them — HawkScan does not inject them,
-does not union anything, and emits no warning when they are missing.
+It does not appear in `hawk op policy list`, so it cannot be fetched and copied.
 
-`BUSINESS_LOGIC` does not appear in `hawk op policy list`, so it cannot be fetched and copied.
-The two plugin IDs above are added literally, by the optimize skill, when it authors a policy
-for a multi-role app.
+**Under `primary-full` the engine supplies BOLA/BFLA itself.** Non-primary profiles are scanned
+with `BUSINESS_LOGIC`, fetched once per scan — *not* with your policy. So authorization coverage
+on those profiles does **not** depend on your policy containing 422004/422005. That is what
+makes this the right default: full-depth coverage on one profile, authz coverage on all of
+them, and no way to silently lose the latter.
 
-Consequence: passing the flag with a policy that lacks those IDs **silently loses all
-authorization coverage** — the scan looks richer while testing less. The capability gate at the
-front of Phase 1c.7, and the provenance gate after it, exist to make that outcome unreachable.
+Two places where that guarantee does not hold, and the policy's own contents still decide:
+
+- **`all-full`** scans every profile with your policy, so BOLA/BFLA run only if it lists them
+  (enabled). The engine never injects them and emits no warning when they are absent.
+- **No platform connectivity** (keyless or offline): `BUSINESS_LOGIC` cannot be fetched, so
+  non-primary profiles fall back to the bundled full policy. No bundled policy contains
+  422004/422005, so such a run gets **no BOLA/BFLA at all**. Say so rather than implying
+  coverage that isn't there.
+
+Both are why the optimize skill still authors 422004/422005 with `"enabled": true`.
 
 ## Detection: the multi-role verdict
 
@@ -72,7 +83,7 @@ work and before anything is written to `stackhawk.yml`. It is a zero-cost check 
 so nothing forces it to run late:
 
 ```bash
-hawk scan --help 2>/dev/null | grep -q -- --all-plugins-per-profile
+hawk scan --help 2>/dev/null | grep -q -- --profile-scan-mode
 ```
 
 Non-zero means the installed `hawk` predates the flag — it does not exist to pass, ever, on
@@ -82,7 +93,7 @@ edge case.
 **If the probe fails, stop and ask the user now, before anything is modified.** At this point
 "keep full breadth" is a clean no-op — nothing has been written yet:
 
-> This `hawk` build predates `--all-plugins-per-profile`. Writing the 2+ auth profiles needed
+> This `hawk` build predates `--profile-scan-mode`. Writing the 2+ auth profiles needed
 > for BOLA/BFLA testing will make *every* future scan of this app run only 2 plugins
 > (BOLA/BFLA) — the rest of the policy (XSS, SQLi, injection, headers, everything else) stops
 > running until you upgrade `hawk` or remove the profiles. Options:
@@ -195,85 +206,88 @@ pass or drop. `BUSINESS_LOGIC` resolves regardless of what the policy contains, 
 nothing today — it prepares the policy for the moment `hawk` is upgraded and the flag becomes
 available.
 
-## The provenance gate before passing the flag
+## Always pass the mode; never drop it
 
-**Once 2+ profiles are written, they stay in `stackhawk.yml`.** Every scan that reads this
-file from now on — not just this one — force-resolves the hidden `BUSINESS_LOGIC` preset
-unless `--all-plugins-per-profile` is passed *and* provenance holds. Get this gate wrong and
-the app silently drops to a 2-plugin scan permanently, not just today.
+**Once 2+ profiles are written, they stay in `stackhawk.yml`.** Every scan that reads this file
+from now on — not just this one — spreads coverage according to `--profile-scan-mode`, and
+omitting it selects `business-logic`: exactly 2 plugins, permanently, for this app.
 
-This gate matters only when the capability probe at the front of Phase 1c.7 passed — that is
-the only path where `--all-plugins-per-profile` is ever in play. If the probe failed and the
-user picked option 2 (accept the 2-plugin scan), profiles exist but there is no flag to
-evaluate: skip this gate entirely rather than falling through into the flag-passing logic
-below. Everything that follows applies only after a passing probe. What remains there is
-provenance: was the policy in play actually constructed with the verdict, not just named
-plausibly?
+So on any build where the capability probe passed, **always pass
+`--profile-scan-mode=primary-full`**. There is no condition under which dropping it improves
+the outcome, because dropping it does not fall back to a normal scan — it falls back to the
+2-plugin mode. Passing it is never worse than omitting it:
 
-hawkscan trusts optimize's guarantee that any policy **it authors** carries 422004/422005 with
-`"enabled": true` — *enabled*, not merely present. A disabled entry upserts fine, appears in the
-policy, and never runs, so "the ids are in there" is not the guarantee; the flag is. (An
-`enabled` field that is absent means disabled — the serializer drops default values.)
+| Situation | With `primary-full` | Omitting the mode |
+|---|---|---|
+| Good policy | full policy on primary + BOLA/BFLA on the rest | 2 plugins |
+| Weak or unrelated policy | that policy on primary + BOLA/BFLA on the rest | 2 plugins |
+| `app.includedPlugins` set | that plugin set on primary + BOLA/BFLA on the rest | 2 plugins |
 
-The trust is extended without re-reading the policy back (no `hawk op policy get` verification
-call — that command cannot fetch org policies today anyway, only presets). It is instead
-earned by construction, not inspection: Phase 1c.7 re-invokes optimize Setup, passing the
-`multi-role` verdict, so a policy that provably enables 422004/422005 exists before the flag
-is ever considered (see the re-invoke-optimize step in
-[Phase 1c.7](#phase-1c7-build-the-profiles) above). Pattern-matching a policy name is not a
-substitute — the permanent policy name is user-chosen at promotion time (the optimize skill
-lets the user pick any upper-snake name), so a user-renamed optimize policy would fail a name
-check, while an unrelated policy that happens to match the naming convention would pass it.
-Re-invocation avoids both failure modes because it checks construction, not naming.
+This is why there is no provenance gate here any more. Under `all-full` the policy's contents
+decided whether BOLA/BFLA ran at all, so a policy of unknown origin was genuinely dangerous.
+Under `primary-full` the engine scans non-primary profiles with `BUSINESS_LOGIC` regardless of
+your policy, so authorization coverage cannot be lost by passing the mode with an imperfect
+policy — only by *not* passing it.
 
-Drop the flag — do not re-invoke, do not pass `--all-plugins-per-profile` — when any of these
-holds instead:
+**Still re-invoke optimize with the verdict** (the step in
+[Phase 1c.7](#phase-1c7-build-the-profiles) above). It is no longer load-bearing for authz
+coverage, but it decides how good the *primary* profile's full scan is, and it is what keeps
+422004/422005 enabled for the two cases where the engine's guarantee does not apply —
+`all-full`, and offline runs with no platform to fetch `BUSINESS_LOGIC` from.
 
-- optimize is unavailable, or degraded to recommend-only (no `ORG_POLICY_MANAGEMENT` /
-  `WRITE_POLICY` permission — see Step 3 of the optimize skill's preflight);
-- `app.includedPlugins` is set in the yaml — it takes precedence over the policy entirely, so
-  no re-invoked policy can influence what actually runs.
+When optimize is unavailable or degraded to recommend-only (no `ORG_POLICY_MANAGEMENT` /
+`WRITE_POLICY` — see Step 3 of its preflight), proceed anyway: pass the mode, scan with
+whatever policy the app already has, and tell the user the primary profile's depth is
+whatever that policy provides. Do not withhold the mode as a consequence.
 
-**The two gates' fallbacks trade away opposite things — neither is "mild."** The
-capability-gate fallback (Step 0 above) is the user's own choice: option 1 keeps full breadth
-with zero authorization testing and nothing written to `stackhawk.yml`; option 2 accepts
-`BUSINESS_LOGIC` — exactly 2 plugins (BOLA/BFLA), and every other plugin in the policy stops
-running for this app while the profiles remain. The provenance-gate fallback here — the flag
-dropped, not re-invoked — keeps BOLA/BFLA: `BUSINESS_LOGIC` still resolves, so 422004/422005
-keep running, but the rest of the policy stops running for this app until the situation
-changes. Say the consequence plainly to the user in either case — do not call it "mild."
+**The capability-gate fallback is the one that costs something, and it is not "mild."** If the
+probe failed (Step 0 above), the user chose between keeping full breadth with zero
+authorization testing and nothing written, or accepting `BUSINESS_LOGIC` — 2 plugins, with
+every other plugin stopping for this app while the profiles remain. Say that plainly.
 
-## Warning the user about scan time
+## Running the scan
 
-This warning applies only on the path where the flag is actually in play — probe passed,
-provenance holds, profiles and `--all-plugins-per-profile` both configured. Warn before
-starting the scan:
+Pass the mode and pin the profile that gets the full scan:
 
-```
-StackHawk | Multi-role app detected - <N> auth profiles configured (BOLA/BFLA enabled)
-StackHawk | Active scan time scales to roughly <N>x; hawk.scan.maxDurationMinutes budgets the WHOLE
-StackHawk | scan, so an existing budget may truncate it. Faster option: drop
-StackHawk | --all-plugins-per-profile for a BOLA/BFLA-only pass.
+```bash
+hawk scan --profile-scan-mode=primary-full --full-scan-profile=<privileged-profile-name> \
+  --json-output stackhawk.yml   # e.g. --full-scan-profile=admin
 ```
 
-This is status output, not a prompt — do not pause for input. The faster option is stated so
-the user can redirect, not so the agent waits.
+**Always name `--full-scan-profile` explicitly.** It defaults to the *first profile declared in
+the config*, which in the layout this skill writes is a low-privilege peer — so relying on the
+default silently makes coverage depend on the order the profiles happen to appear in. Pin it to
+the `isPrivileged: true` profile: that account reaches the widest surface, so the single
+full-depth pass covers the most routes, while BOLA/BFLA still run as the unprivileged peers,
+which is where authorization gaps actually show up.
 
-On the path where the probe failed and the user accepted the 2-plugin scan, profiles exist but
-the flag never does, so this N× warning does not apply: `BUSINESS_LOGIC` runs exactly 2
-plugins per profile, not the full policy, so there is no time multiplier. The warning to give
-on that path is about lost breadth, not lost time — see the gate-fallback note above.
+Announce before starting (status output, **not** a prompt — do not pause for input):
 
-If `hawk.scan.maxDurationMinutes` is already set in the yaml, say so explicitly and give the
-arithmetic: a budget sized for a single-profile scan will truncate an N-profile run.
+```
+StackHawk | Multi-role app detected - <N> auth profiles; full policy as <primary>, BOLA/BFLA on the rest
+StackHawk | Cost is roughly one full scan plus <N-1> cheap 2-plugin passes, not <N>x
+StackHawk | hawk.scan.maxDurationMinutes budgets the WHOLE scan across all profiles
+```
+
+`primary-full` exists precisely so scan time does not scale with profile count: only the
+primary profile runs the full policy. Use `all-full` only when the user explicitly asks to
+scan every profile in full, and warn there that time really does grow to roughly N×.
+
+If `hawk.scan.maxDurationMinutes` is already set, say so and give the arithmetic — the budget
+covers every profile's pass, so one sized for a single-profile scan can still truncate the run
+mid-way even in `primary-full`.
 
 ## Reading per-profile findings
 
 Findings collapse by plugin — one alert per plugin per scan, with URIs merged. Profile identity
-survives in exactly one place: a `[profile=<name>]` prefix on the alert's `evidence` string,
-present only when more than one profile was configured. There is no queryable profile field.
+survives in exactly one place: the alert's **Other Info** field (`other`), where the profile is
+recorded ahead of any existing content, and only when 2+ profiles were configured. There is no
+queryable profile field.
 
-So parse that prefix and carry it into the fix task. "Reachable as the low-privilege profile,
-not just as admin" is the entire value of a BOLA/BFLA finding, and evidence text is the only
-place it exists. A fix task that omits which role reached the endpoint has discarded the
-finding's point.
+Read it from Other Info, not from `evidence`. Evidence must match the captured
+request/response byte for byte — the platform UI highlights a finding by locating that string
+verbatim — so nothing is prefixed onto it. Single-profile scans are unchanged in both fields.
+
+Carry the profile into the fix task. "Reachable as the low-privilege profile, not just as
+admin" is the entire value of a BOLA/BFLA finding, and Other Info is the only place it exists.
+A fix task that omits which role reached the endpoint has discarded the finding's point.

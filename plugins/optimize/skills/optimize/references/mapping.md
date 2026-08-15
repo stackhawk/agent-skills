@@ -52,11 +52,18 @@ exactly these two. They live in `BUSINESS_LOGIC`, a hidden platform preset absen
 `hawk op policy list`, so they cannot be discovered by reading a base policy — they are added
 literally.
 
-Why it matters: hawkscan runs multi-profile scans with `--all-plugins-per-profile`, which
-*replaces* the forced BOLA/BFLA-only preset with this policy. If these IDs are missing — or
-present but not enabled — the scan silently performs no authorization testing at all. hawkscan
-trusts this guarantee and does not re-read the policy to check, so nothing downstream will
-catch a disabled entry.
+Why it matters: hawkscan runs multi-profile scans with
+`--profile-scan-mode=primary-full`, where the **primary** profile is scanned with this policy
+and the engine scans the rest with the hidden `BUSINESS_LOGIC` preset. So the default path
+survives a policy that lacks these ids — but two cases still depend entirely on this policy:
+
+- `--profile-scan-mode=all-full`, where every profile uses this policy;
+- offline / keyless runs, where `BUSINESS_LOGIC` cannot be fetched and non-primary profiles
+  fall back to the bundled full policy, which contains neither id.
+
+In both, ids that are missing — or present but not enabled — mean the scan performs no
+authorization testing at all. hawkscan does not re-read the policy to check, so nothing
+downstream will catch a disabled entry.
 
 Never drop these two under a speed lean.
 
