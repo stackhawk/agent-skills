@@ -25,6 +25,59 @@ Fetch the base with `hawk op policy get --name <PRESET>`. Then:
 - KEEP/ADD families the stack needs.
 Validate every plugin id against the base policy's plugin list — never invent ids.
 
+### Multi-role apps: BOLA/BFLA are mandatory
+
+When the app has a role/privilege model and ID-addressable resources (hawkscan's `multi-role`
+verdict, or the user asks for authorization/BOLA/BFLA testing), the authored policy MUST
+include both:
+
+Append both entries to the policy's `plugins` array **exactly like this** — copy the shape,
+including `"enabled": true`:
+
+```json
+{"pluginId": "422004", "name": "Cross Platform BOLA", "enabled": true,
+ "defaultRisk": "HIGH", "status": "ADDON_STATUS_RELEASE",
+ "strength": "STRENGTH_MEDIUM", "threshold": "THRESHOLD_MEDIUM"}
+{"pluginId": "422005", "name": "Cross Platform BFLA", "enabled": true,
+ "defaultRisk": "HIGH", "status": "ADDON_STATUS_RELEASE",
+ "strength": "STRENGTH_MEDIUM", "threshold": "THRESHOLD_MEDIUM"}
+```
+
+`pluginId` is a **string**, quoted, matching the platform's own schema — every entry in a real
+`hawk op policy get --name <PRESET>` response is quoted (`"0"`, `"2"`, …). Do not "correct" it
+to a bare number; that is a plausible-looking edit that risks failing validation or coercing
+oddly, for no gain.
+
+**`"enabled": true` is not optional, and omitting it is silent.** In a policy JSON the
+`enabled` field only ever appears as `true` or is **absent** — never `false` — because the
+serializer drops default values. **Absent therefore means disabled.** An entry without the
+field upserts successfully, shows up in the policy, and never runs. Do not copy entry shape
+from a neighbouring base plugin to decide this: plenty of base entries legitimately have no
+`enabled` key, and imitating one produces a disabled BOLA/BFLA pair.
+
+Verify before creating the policy — count both IDs *and* their flag in the file you are about
+to submit, e.g. `grep -c '"enabled": true' <policy-file>` alongside a check for each id.
+
+**This is the one sanctioned exception to "never invent ids" above,** and it is scoped to
+exactly these two. They live in `BUSINESS_LOGIC`, a hidden platform preset absent from
+`hawk op policy list`, so they cannot be discovered by reading a base policy — they are added
+literally.
+
+Why it matters: hawkscan runs multi-profile scans with
+`--profile-scan-mode=primary-full`, where the **primary** profile is scanned with this policy
+and the engine scans the rest with the hidden `BUSINESS_LOGIC` preset. So the default path
+survives a policy that lacks these ids — but two cases still depend entirely on this policy:
+
+- `--profile-scan-mode=all-full`, where every profile uses this policy;
+- offline / keyless runs, where `BUSINESS_LOGIC` cannot be fetched and non-primary profiles
+  fall back to the bundled full policy, which contains neither id.
+
+In both, ids that are missing — or present but not enabled — mean the scan performs no
+authorization testing at all. hawkscan does not re-read the policy to check, so nothing
+downstream will catch a disabled entry.
+
+Never drop these two under a speed lean.
+
 ## stackhawk.yml correctness
 - App type: SPA → enable SPA/spider settings; REST → leave spider conservative.
 - OpenAPI spec present → set `app.openApiConf` to point at it.

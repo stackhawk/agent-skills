@@ -8,7 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Multi-role authorization scanning (BOLA/BFLA). `hawkscan` gains `references/authz-profiles.md` and a Phase 1c.7: it detects apps with a role/privilege model plus ID-addressable resources, states a required `multi-role`/`single-role` verdict during discovery, sources 2+ credentials (repo fixtures → `stackhawk-data-seed` multi-user → ask the user → degrade), writes `app.authentication.profiles`, and scans with `--profile-scan-mode=primary-full --full-scan-profile=<privileged>` — full-depth policy on the privileged profile, BOLA/BFLA on the rest, at the cost of one full scan rather than N. Rescans carry the same two flags, since the mode defaults to `business-logic` there too.
+- `optimize`: policies authored for a `multi-role` app must include plugins `422004` (Cross Platform BOLA) and `422005` (Cross Platform BFLA) with `"enabled": true`. In policy JSON the `enabled` field appears only as `true` or absent — never `false` — so an omitted flag stores the plugin **disabled**, which upserts cleanly and never runs. This is the one sanctioned exception to the "never invent plugin ids" rule, scoped to exactly these two.
+- `stackhawk-data-seed`: a multi-user seeding shape — two peer users at the same privilege level each owning a resource, plus one admin — with a role-labelled `.data-seed-credentials.env` handoff that hawkscan discovers and maps rather than assuming names. BOLA needs two owners with distinct resources; one user with two resources does not test it.
 - `skill-authoring` skill: changelog update guidance — documents when and how to add CHANGELOG entries for every substantive skill change
+
+### Fixed
+- `optimize`: the promote flow no longer plans to reconstruct a lost trial policy via `hawk op policy get`. That command resolves StackHawk presets only — on any org policy name it returns `Error: Resource not found` even though `hawk op policy list` shows it (tracked as ENG-921). `cli-contract.md` records the limitation.
 - `wingman` umbrella plugin: `/plugin install wingman@stackhawk` installs the default skill set.
 
 ### Changed
