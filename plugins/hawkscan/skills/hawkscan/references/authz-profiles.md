@@ -7,8 +7,8 @@ profile per role, and run a scan that actually exercises the BOLA and BFLA plugi
 - [Why this is not automatic](#why-this-is-not-automatic)
 - [Detection: the multi-role verdict](#detection-the-multi-role-verdict)
 - [Phase 1c.7: build the profiles](#phase-1c7-build-the-profiles)
-- [The provenance gate before passing the flag](#the-provenance-gate-before-passing-the-flag)
-- [Warning the user about scan time](#warning-the-user-about-scan-time)
+- [Always pass the mode; never drop it](#always-pass-the-mode-never-drop-it)
+- [Running the scan](#running-the-scan)
 - [Reading per-profile findings](#reading-per-profile-findings)
 
 ---
@@ -272,6 +272,18 @@ StackHawk | hawk.scan.maxDurationMinutes budgets the WHOLE scan across all profi
 `primary-full` exists precisely so scan time does not scale with profile count: only the
 primary profile runs the full policy. Use `all-full` only when the user explicitly asks to
 scan every profile in full, and warn there that time really does grow to roughly N×.
+
+**Rescans need the same two flags.** `hawk rescan` accepts `--profile-scan-mode` and
+`--full-scan-profile`, and the mode defaults to `business-logic` there too — so a rescan issued
+without them against a multi-profile config re-runs only 2 plugins and cannot confirm the fix
+it was run to check:
+
+```bash
+hawk rescan --scan-id <SCAN_ID> --profile-scan-mode=primary-full \
+  --full-scan-profile=<privileged-profile-name> --json-output
+```
+
+Carry both flags on every verification rescan for as long as the profiles remain in the config.
 
 If `hawk.scan.maxDurationMinutes` is already set, say so and give the arithmetic — the budget
 covers every profile's pass, so one sized for a single-profile scan can still truncate the run

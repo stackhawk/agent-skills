@@ -224,9 +224,86 @@ def test_no_skill_instructs_policy_get_on_an_org_policy() -> None:
 
 
 def _skill_markdown() -> dict[str, str]:
-    """Every shipped skill markdown file, keyed by repo-relative path."""
+    """Every place an agent can read an instruction from, keyed by relative path.
+
+    This deliberately reaches past `plugins/**/*.md`. A PR review caught a dead
+    flag surviving in `scripts/generate-cursor-rules.sh`'s MAPPINGS description —
+    which becomes the `description:` frontmatter of a generated `.mdc` rule, i.e.
+    the text a Cursor agent reads to decide how to use the rule. The earlier
+    version of this helper globbed only `plugins/`, so the test written expressly
+    to kill that flag could not see the one file that still had it.
+    """
+    paths = list((REPO / "plugins").rglob("*.md"))
+    paths += list((REPO / "cursor").rglob("*.mdc"))
+    paths.append(REPO / "scripts/generate-cursor-rules.sh")
     return {str(p.relative_to(REPO)): p.read_text()
-            for p in sorted((REPO / "plugins").rglob("*.md"))}
+            for p in sorted(paths) if p.is_file()}
+
+
+def test_toc_entries_resolve_to_real_headings() -> None:
+    """Every `## Contents` anchor must match a heading that exists.
+
+    Renaming a section without updating the ToC leaves an agent following the
+    navigation contract to land nowhere. Two sections were renamed on this
+    branch (the provenance gate became "Always pass the mode"; the scan-time
+    warning became "Running the scan") and the ToC kept pointing at the old
+    slugs — hiding the very section that mandates pinning --full-scan-profile.
+    """
+    text = AUTHZ.read_text()
+    def slug(h: str) -> str:
+        return re.sub(r"[^a-z0-9 -]", "", h.strip().lower()).replace(" ", "-")
+    headings = {slug(h) for h in re.findall(r"^## (.+)$", text, re.MULTILINE)}
+    toc = re.findall(r"\]\(#([^)]+)\)", _section(text, r"^## Contents", r"^---"))
+    assert toc, "no ToC anchors found"
+    dead = [a for a in toc if a not in headings]
+    missing = sorted(headings - set(toc) - {"contents"})
+    assert not dead, f"ToC anchors point at headings that do not exist: {dead}"
+    assert not missing, f"sections missing from the ToC: {missing}"
+
+
+def test_rescan_carries_the_mode() -> None:
+    """`hawk rescan` accepts --profile-scan-mode, so guidance must pass it.
+
+    Verified against the binary: `hawk rescan --help` lists both
+    --profile-scan-mode and --full-scan-profile. Since the mode defaults to
+    business-logic, a rescan issued without it against a 2+-profile config runs
+    exactly 2 plugins — so fix verification silently cannot confirm the fix it
+    was run to check.
+    """
+    # Inspect the command itself, not a trailing comment, and not mere textual
+    # proximity: an earlier version of this test matched `rescan ... <newline>
+    # hawk scan --profile-scan-mode` across two lines of the same code block and
+    # passed while the rescan command carried no mode at all.
+    rescan_cmds = [ln.split("#", 1)[0] for ln in
+                   (SKILL.read_text() + "\n" + AUTHZ.read_text()).splitlines()
+                   if "hawk rescan" in ln.split("#", 1)[0]]
+    assert rescan_cmds, "no runnable rescan command found"
+    assert any("--profile-scan-mode" in c for c in rescan_cmds), (
+        "no rescan command passes --profile-scan-mode, so a multi-role rescan "
+        "silently drops to the 2-plugin default and cannot verify the fix: "
+        + "; ".join(c.strip()[:80] for c in rescan_cmds)
+    )
+
+
+def test_runnable_scan_line_pins_the_full_scan_profile() -> None:
+    """A pasteable scan command must not rely on --full-scan-profile's default.
+
+    It defaults to the first profile declared, a low-privilege peer in the layout
+    this skill writes — so a verbatim paste inverts coverage (full depth as the
+    peer, BOLA/BFLA as admin) and fails silently. The authoring rules require
+    runnable blocks to fail loudly rather than mislead quietly.
+    """
+    # Check the command, not a trailing comment: the first version of this test
+    # passed on a line whose comment merely *said* "pin --full-scan-profile"
+    # while the command itself relied on the default.
+    for path, text in _skill_markdown().items():
+        for i, line in enumerate(text.splitlines(), 1):
+            cmd = line.split("#", 1)[0]
+            if "hawk scan" in cmd and "--profile-scan-mode=primary-full" in cmd:
+                assert "--full-scan-profile" in cmd, (
+                    f"{path}:{i} runs primary-full without pinning "
+                    f"--full-scan-profile: {cmd.strip()[:110]}"
+                )
 
 
 def test_dead_flag_is_gone_everywhere() -> None:

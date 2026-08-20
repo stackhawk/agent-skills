@@ -95,6 +95,20 @@ hawk scan --trace                        # trace-level HTTP logging (auth debugg
 hawk scan --hawk-mem=2g                  # increase JVM memory for large apps (default: 9g)
 ```
 
+**Multi-profile (authorization) scans** — only meaningful with 2+ `app.authentication.profiles`:
+
+```bash
+hawk scan --profile-scan-mode=primary-full --full-scan-profile=<privileged-profile> --json-output
+```
+
+`--profile-scan-mode` takes `business-logic` (BOLA/BFLA only, every profile), `primary-full`
+(full policy on one profile, BOLA/BFLA on the rest), or `all-full` (full policy on every
+profile; time grows to roughly N×). **It defaults to `business-logic`**, so omitting it with
+profiles configured runs exactly 2 plugins. `--full-scan-profile` picks the profile that gets
+the full policy under `primary-full` and defaults to the *first profile declared in the config*
+— name it explicitly rather than depending on declaration order. Both flags are accepted by
+`hawk rescan` too, with the same defaults. See Phase 1c.7 in SKILL.md.
+
 **For agentic use, prefer `--json-output`** for structured findings parsing. When you
 need human-readable log output instead, use `hawk --no-color scan --verbose`.
 

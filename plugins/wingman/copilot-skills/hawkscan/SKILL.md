@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 2.6.1
+version: 2.6.2
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Performs
@@ -378,7 +378,7 @@ arguments only — no `-c` or `--config` flag. Use bare filenames (not absolute 
 ```bash
 hawk scan --json-output                            # structured output (requires Dev Release v5.3.41+)
 hawk rescan --scan-id <SCAN_ID> --json-output      # fast fix verification — re-runs only fired plugins
-hawk scan --profile-scan-mode=primary-full --json-output  # multi-role; pin --full-scan-profile (Phase 1c.7)
+hawk scan --profile-scan-mode=primary-full --full-scan-profile=<privileged> --json-output   # multi-role (Phase 1c.7)
 ```
 
 **Always rescan against the original full-scan ID.** Rescan IDs are not valid parent scan references.
