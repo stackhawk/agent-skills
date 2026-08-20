@@ -195,15 +195,20 @@ a mistake — either write 2+ or write none.
 
 **Finally, re-invoke optimize Setup, passing the verdict.** With profiles written and validated,
 re-invoke the optimize skill's Setup mode, passing it the `multi-role` verdict from discovery.
-Setup authors (or updates) the scan policy so it includes plugins 422004 and 422005 literally —
-this is what gives the provenance gate below something real to trust. If optimize is
-unavailable, or degrades to recommend-only because the org lacks `ORG_POLICY_MANAGEMENT` /
-`WRITE_POLICY` permission (see Step 3 of the optimize skill's preflight), no policy with
-422004/422005 gets authored — drop the flag, which the provenance gate below already covers.
+Setup authors (or updates) the scan policy so it includes plugins 422004 and 422005 literally,
+with `"enabled": true`. That matters for the primary profile's own depth, and it is what keeps
+authorization coverage alive in the two cases where the engine does not supply it — `all-full`
+runs, and offline runs with no platform to fetch `BUSINESS_LOGIC` from.
 
-Do this step on the accepted-2-plugin path too, where the probe failed and there is no flag to
-pass or drop. `BUSINESS_LOGIC` resolves regardless of what the policy contains, so it changes
-nothing today — it prepares the policy for the moment `hawk` is upgraded and the flag becomes
+If optimize is unavailable, or degrades to recommend-only because the org lacks
+`ORG_POLICY_MANAGEMENT` / `WRITE_POLICY` permission (see Step 3 of the optimize skill's
+preflight), **still pass the mode.** Scan with whatever policy the app already has and tell the
+user the primary profile's depth is whatever that policy provides. A degraded optimize is never
+a reason to withhold `--profile-scan-mode` — see "Always pass the mode; never drop it" below.
+
+Do this step on the accepted-2-plugin path too, where the probe failed and no mode flag is in
+play. `BUSINESS_LOGIC` resolves regardless of what the policy contains, so it changes nothing
+today — it prepares the policy for the moment `hawk` is upgraded and the mode becomes
 available.
 
 ## Always pass the mode; never drop it

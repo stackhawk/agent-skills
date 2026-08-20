@@ -296,14 +296,74 @@ def test_runnable_scan_line_pins_the_full_scan_profile() -> None:
     # Check the command, not a trailing comment: the first version of this test
     # passed on a line whose comment merely *said* "pin --full-scan-profile"
     # while the command itself relied on the default.
+    # Guard against vacuity: if the runnable block is renamed, reflowed onto a
+    # line continuation, or deleted, a bare loop-with-inner-assert would pass
+    # having asserted nothing. Require at least one command to inspect.
+    checked = 0
     for path, text in _skill_markdown().items():
         for i, line in enumerate(text.splitlines(), 1):
             cmd = line.split("#", 1)[0]
             if "hawk scan" in cmd and "--profile-scan-mode=primary-full" in cmd:
+                checked += 1
                 assert "--full-scan-profile" in cmd, (
                     f"{path}:{i} runs primary-full without pinning "
                     f"--full-scan-profile: {cmd.strip()[:110]}"
                 )
+    assert checked, (
+        "found no runnable `hawk scan --profile-scan-mode=primary-full` command "
+        "to check — the example was renamed, reflowed, or removed"
+    )
+
+
+def test_nothing_instructs_dropping_the_mode() -> None:
+    """No instruction may tell an agent to drop or withhold --profile-scan-mode.
+
+    Dropping it does not fall back to a normal scan — it selects
+    `business-logic`, i.e. 2 plugins for the whole app, silently, and for as
+    long as the profiles stay in `stackhawk.yml`. Under `primary-full` authz
+    coverage is engine-supplied, so a degraded optimize is never a reason to
+    withhold the mode.
+
+    Caught by review: the re-invoke-optimize step still ended with "drop the
+    flag, which the provenance gate below already covers" — 27 lines above the
+    section titled "Always pass the mode; never drop it". An agent reading
+    top-down hit the wrong instruction first, inside the procedure.
+
+    Prohibitive phrasing ("never drop it", "do not withhold") is the point of
+    the rule, so lines that negate the verb are allowed.
+    """
+    offenders = []
+    for path, text in _skill_markdown().items():
+        for i, line in enumerate(text.splitlines(), 1):
+            low = line.lower()
+            if not re.search(r"drop (the )?(flag|mode)|withhold the mode", low):
+                continue
+            if re.search(r"never|do not|don't|cannot|no condition", low):
+                continue  # prohibition, not instruction
+            offenders.append(f"{path}:{i}: {line.strip()[:100]}")
+    assert not offenders, (
+        "these instruct dropping the mode, which silently collapses the scan "
+        "to 2 plugins:\n  " + "\n  ".join(offenders)
+    )
+
+
+def test_no_dead_provenance_gate_references() -> None:
+    """The provenance gate was removed; nothing may point at it as live.
+
+    A dead intra-file reference ("the provenance gate below") sends an agent
+    looking for a decision procedure that no longer exists. Prose that
+    explains its *removal* is fine.
+    """
+    offenders = []
+    for i, line in enumerate(AUTHZ.read_text().splitlines(), 1):
+        if "provenance gate" not in line.lower():
+            continue
+        if re.search(r"no provenance gate|any more|no longer|removed", line, re.IGNORECASE):
+            continue  # explains the removal
+        offenders.append(f"authz-profiles.md:{i}: {line.strip()[:100]}")
+    assert not offenders, (
+        "dead references to the removed provenance gate:\n  " + "\n  ".join(offenders)
+    )
 
 
 def test_dead_flag_is_gone_everywhere() -> None:

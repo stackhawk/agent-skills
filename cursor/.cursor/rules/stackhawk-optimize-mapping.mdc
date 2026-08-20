@@ -43,6 +43,11 @@ including `"enabled": true`:
  "strength": "STRENGTH_MEDIUM", "threshold": "THRESHOLD_MEDIUM"}
 ```
 
+`pluginId` is a **string**, quoted, matching the platform's own schema — every entry in a real
+`hawk op policy get --name <PRESET>` response is quoted (`"0"`, `"2"`, …). Do not "correct" it
+to a bare number; that is a plausible-looking edit that risks failing validation or coercing
+oddly, for no gain.
+
 **`"enabled": true` is not optional, and omitting it is silent.** In a policy JSON the
 `enabled` field only ever appears as `true` or is **absent** — never `false` — because the
 serializer drops default values. **Absent therefore means disabled.** An entry without the

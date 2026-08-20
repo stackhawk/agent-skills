@@ -1,6 +1,6 @@
 {
   "skill": "hawkscan",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Deterministic process checks for the hawkscan skill. Each check maps to a required behavior in SKILL.md. Harnesses should look for these signals in agent traces, command histories, or output text.",
   "checks": [
     {
@@ -250,6 +250,21 @@
       ],
       "severity": "blocking",
       "failure_guidance": "The hawk CLI prepends the working directory to config paths. Absolute paths produce broken double-paths that cause the command to fail."
+    },
+    {
+      "id": "multirole_scan_passes_mode_flags",
+      "phase": "step_3",
+      "description": "On a multi-role app the scan command passes --profile-scan-mode=primary-full and pins --full-scan-profile. The mode defaults to business-logic, so omitting it runs only 2 plugins; --full-scan-profile defaults to the first declared profile, a low-privilege peer, which inverts coverage.",
+      "type": "command_executed",
+      "signals": [
+        "--profile-scan-mode=primary-full"
+      ],
+      "severity": "warning",
+      "tier": "extended",
+      "applies_to": [
+        "multirole"
+      ],
+      "failure_guidance": "A multi-profile scan without --profile-scan-mode silently drops to BUSINESS_LOGIC (2 plugins) for every scan while the profiles remain in stackhawk.yml. Without --full-scan-profile the full-depth pass runs as a low-privilege peer instead of the privileged profile. Rescans need both flags too."
     },
     {
       "id": "step4_triage_filter_applied",
