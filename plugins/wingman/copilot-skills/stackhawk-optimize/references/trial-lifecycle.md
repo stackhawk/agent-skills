@@ -1,0 +1,53 @@
+# Trial Lifecycle
+
+> Setup mode builds + references the policy (steps 1–4, no scan); Refine mode runs the trial
+> scan and promotes/discards (steps 5–9). Setup is re-runnable and is what hawkscan onboarding invokes.
+
+## How a named policy reaches a scan (why this is non-destructive)
+When `app.scanPolicy.name` is set in `stackhawk.yml`, HawkScan bootstrap detects an
+org-level policy and downloads it directly from S3 at scan start
+(`AssetManagerClient.getDownloadedAsset(orgId, SCAN_POLICY, name)`), applying its tech flags
++ plugins and then layering the local `includePluginIds`/`excludePluginIds` toggles. The
+application's own stored policy/flags are never read or mutated by this path.
+
+## Naming
+Trial policy name: `OPTIMIZE_TRIAL_<APP>_<ENV>`, transformed to match `^[A-Z0-9_]+$`
+(uppercase; replace any non `[A-Z0-9]` run with `_`). Deterministic so re-runs are
+idempotent.
+
+## Create (trial)
+1. Build the trial `ScanPolicy` JSON (base preset + edited tech flags + toggled plugins).
+2. Clean up any stale orphan first: `hawk op policy delete --name OPTIMIZE_TRIAL_… --yes`
+   (ignore "not found").
+3. `hawk op policy create --file <tmp.json> --name OPTIMIZE_TRIAL_… --display-name "Optimize trial (<APP>/<ENV>)"`.
+4. Back up `stackhawk.yml` — but guard against clobbering a good backup: if
+   `stackhawk.yml.optimize-bak` ALREADY exists (a prior crashed run left it), do NOT
+   overwrite it — it holds the true original. Warn the user, reuse the existing backup, and
+   skip re-copying. Only when no backup exists, copy `stackhawk.yml` →
+   `stackhawk.yml.optimize-bak`.
+5. Set `app.scanPolicy.name` and the corrections; show the diff.
+
+## Promote
+1. Ask the user for a permanent policy name (default `OPTIMIZE_<APP>`), upper-snake.
+2. Ensure the policy JSON is available, then create the permanent policy:
+   `hawk op policy create --file <tmp.json> --name <PERMANENT>`.
+   The local `<tmp.json>` is the **only** source — do not plan to re-read the trial policy
+   off the platform. `hawk op policy get` resolves StackHawk presets only; on any org policy
+   name (every `OPTIMIZE_*`) it returns `Error: Resource not found`, even though the policy
+   is real and listed by `hawk op policy list`.
+   So treat `<tmp.json>` as **not reconstructable**: keep it for the whole trial, and if a
+   resumed or crashed session has lost it, rebuild the policy from the base preset the same
+   way Setup did (`hawk op policy get --name <PRESET>` still works) rather than trying to
+   recover the trial's contents. Say plainly that the rebuild may not be byte-identical.
+3. Update `stackhawk.yml app.scanPolicy.name` → `<PERMANENT>`; remove the backup file.
+4. `hawk op policy delete --name OPTIMIZE_TRIAL_… --yes`.
+5. (Optional) `hawk op policy assign --app <APP> --name <PERMANENT>` to set the platform default.
+6. Leave the `stackhawk.yml` change staged for the user to review/commit (do not commit for them).
+
+## Discard
+1. `hawk op policy delete --name OPTIMIZE_TRIAL_… --yes`.
+2. Restore `stackhawk.yml` from `stackhawk.yml.optimize-bak`; remove the backup file.
+
+## Failure handling
+Any error after step "Create 3" → run the full Discard sequence, then report the original
+error.

@@ -1,0 +1,80 @@
+# Codebase → Config Mapping
+
+## Tech flags
+Reuse the hawkscan skill's tech-flag detection heuristics (linked from the Companion
+skills section of SKILL.md) — evidence files such as `package.json`, `pom.xml`, `go.mod`,
+`requirements.txt`, `docker-compose.yml`, `Gemfile`, `*.csproj`/`*.sln`.
+Map detected techs to canonical flag keys. The canonical flag list is authoritative — fetch
+it with `hawk op app tech-flags get --app <APP> --format json` and only use keys that exist.
+When enabling a child flag (e.g. `Language.Java.Spring`), also enable its parents.
+
+## Plugins
+Start from a base preset that matches the app shape:
+- Plain REST/HTML app → `DEFAULT`
+- OpenAPI-described API → `DEFAULT_API`
+- GraphQL API → the GraphQL preset (confirm exact name via `hawk op policy list`)
+
+Fetch the base with `hawk op policy get --name <PRESET>`. Then:
+- DROP plugin families irrelevant to the detected stack (reduces noise + time).
+- KEEP/ADD families the stack needs.
+Validate every plugin id against the base policy's plugin list — never invent ids.
+
+### Multi-role apps: BOLA/BFLA are mandatory
+
+When the app has a role/privilege model and ID-addressable resources (hawkscan's `multi-role`
+verdict, or the user asks for authorization/BOLA/BFLA testing), the authored policy MUST
+include both:
+
+Append both entries to the policy's `plugins` array **exactly like this** — copy the shape,
+including `"enabled": true`:
+
+```json
+{"pluginId": "422004", "name": "Cross Platform BOLA", "enabled": true,
+ "defaultRisk": "HIGH", "status": "ADDON_STATUS_RELEASE",
+ "strength": "STRENGTH_MEDIUM", "threshold": "THRESHOLD_MEDIUM"}
+{"pluginId": "422005", "name": "Cross Platform BFLA", "enabled": true,
+ "defaultRisk": "HIGH", "status": "ADDON_STATUS_RELEASE",
+ "strength": "STRENGTH_MEDIUM", "threshold": "THRESHOLD_MEDIUM"}
+```
+
+**`"enabled": true` is not optional, and omitting it is silent.** In a policy JSON the
+`enabled` field only ever appears as `true` or is **absent** — never `false` — because the
+serializer drops default values. **Absent therefore means disabled.** An entry without the
+field upserts successfully, shows up in the policy, and never runs. Do not copy entry shape
+from a neighbouring base plugin to decide this: plenty of base entries legitimately have no
+`enabled` key, and imitating one produces a disabled BOLA/BFLA pair.
+
+Verify before creating the policy — count both IDs *and* their flag in the file you are about
+to submit, e.g. `grep -c '"enabled": true' <policy-file>` alongside a check for each id.
+
+**This is the one sanctioned exception to "never invent ids" above,** and it is scoped to
+exactly these two. They live in `BUSINESS_LOGIC`, a hidden platform preset absent from
+`hawk op policy list`, so they cannot be discovered by reading a base policy — they are added
+literally.
+
+Why it matters: hawkscan runs multi-profile scans with
+`--profile-scan-mode=primary-full`, where the **primary** profile is scanned with this policy
+and the engine scans the rest with the hidden `BUSINESS_LOGIC` preset. So the default path
+survives a policy that lacks these ids — but two cases still depend entirely on this policy:
+
+- `--profile-scan-mode=all-full`, where every profile uses this policy;
+- offline / keyless runs, where `BUSINESS_LOGIC` cannot be fetched and non-primary profiles
+  fall back to the bundled full policy, which contains neither id.
+
+In both, ids that are missing — or present but not enabled — mean the scan performs no
+authorization testing at all. hawkscan does not re-read the policy to check, so nothing
+downstream will catch a disabled entry.
+
+Never drop these two under a speed lean.
+
+## stackhawk.yml correctness
+- App type: SPA → enable SPA/spider settings; REST → leave spider conservative.
+- OpenAPI spec present → set `app.openApiConf` to point at it.
+- GraphQL → consider `app.autoPolicy: true`.
+- Base paths → set sensible scope.
+- Auth → FLAG for the user; never fabricate credentials.
+
+## Profile lean
+Default **balanced**. A speed lean drops more borderline plugin families and tightens
+scope; a coverage lean keeps families when in doubt. Only deviate from balanced if the user
+explicitly asks.

@@ -11,6 +11,7 @@ Multi-platform agent skills repo serving Claude, Codex, Gemini, Copilot, Cursor,
 - `plugins/hawkscan/` — HawkScan DAST scanning skill (SKILL.md + references + hooks)
 - `plugins/api/` — StackHawk API reporting skill (SKILL.md + references)
 - `plugins/wingman/` — Umbrella plugin; `/plugin install wingman@stackhawk` installs hawkscan + api + data-seed + optimize
+- `plugins/wingman/copilot-skills/` — Generated copies of wingman's four skills for GitHub Copilot (do NOT edit)
 - `.claude/skills/skill-authoring/` — Maintainer skill: authoring rules and best practices for contributors to this repo (NOT distributed via marketplace; tracked in git via `.gitignore` negation)
 - `skills/` — Symlinks for Gemini/Copilot discovery (points into plugins/)
 - `.opencode/skills/` — Symlinks for OpenCode discovery (points into plugins/)
@@ -35,13 +36,20 @@ bash scripts/bump-version.sh --patch   # bug fixes
 bash scripts/bump-version.sh --minor   # new skill or significant capability
 bash scripts/bump-version.sh --major   # breaking changes
 
-# Release (validates everything, creates annotated tag, creates GH Release)
+# Release (validates manifests, Cursor rules, and the wingman Copilot bundle;
+# creates annotated tag, creates GH Release)
 bash scripts/release.sh --dry-run  # validate without creating anything
 bash scripts/release.sh            # create tag + GH Release (must be on main, clean tree)
 
 # macOS/Linux install
 bash scripts/install.sh --platform cursor  --target ~
 bash scripts/install.sh --platform copilot --target ~
+
+# Regenerate the wingman Copilot bundle after editing any bundled SKILL.md
+bash scripts/generate-wingman-skills.sh
+
+# Validate the bundle
+bash scripts/test-wingman-skills.sh
 ```
 
 ```powershell
@@ -73,7 +81,7 @@ Skills assume the combined `hawk` binary (`hawk op …`) is installed — no raw
 | Claude | `.claude-plugin/marketplace.json` + `plugins/*/.claude-plugin/plugin.json` |
 | Codex | `.codex-plugin/marketplace.json` + `plugins/*/.codex-plugin/plugin.json` |
 | Gemini | `gemini-extension.json` |
-| Copilot | No manifest — discovers via `skills/` symlinks |
+| Copilot | `plugins/wingman/.github/plugin/plugin.json` (umbrella only). A per-plugin Copilot install fetches e.g. `plugins/hawkscan`, reads that plugin's own `plugins/hawkscan/.claude-plugin/plugin.json`, and defaults to that plugin's own `plugins/hawkscan/skills/` directory — the repo-root `skills/` symlinks are NOT involved in marketplace per-plugin installs; they serve Gemini and the whole-repo `plugin.json` install only |
 | Cursor | Rules: generated into `cursor/.cursor/rules/`; Skills: symlinks in `.cursor/skills/`; Hooks: `plugins/hawkscan/hooks/cursor/` |
 | Claude (umbrella) | `plugins/wingman/.claude-plugin/plugin.json` — `/plugin install wingman@stackhawk` installs hawkscan + api + data-seed + optimize |
 
@@ -113,9 +121,12 @@ The `stop` hook's `followup_message` causes Cursor to automatically continue wit
 
 - `cursor/` is generated output — edit the source SKILL.md, then regenerate
 - `skills/`, `.opencode/skills/`, and `.cursor/skills/` entries are symlinks, not copies — don't break the relative paths
-- Cursor skills `name:` field must match the symlink folder name (they all do: `hawkscan`, `api`, `hawkscan-ci`, `stackhawk-data-seed`)
+- Cursor skills `name:` field matches the symlink folder name for `hawkscan`, `hawkscan-ci`, and `stackhawk-data-seed`. It does NOT for the other two: symlinks `stackhawk-api` and `stackhawk-optimize` point at skills named `api` and `optimize`. Those skills are what users see in skill lists. Renaming them is a breaking change tracked as a separate major release.
 - Cursor hook `command` path (`.cursor/hooks/stop.sh`) is relative to the project root — correct for both user-level (`~`) and project-level installs
 - `docs/superpowers/` is gitignored (design specs/plans kept locally)
 - `.claude/` dir is gitignored (local settings only)
 - SKILL.md frontmatter requires `name:`, `version:`, and `description:` — CI validates all three
 - `scripts/release.sh` must be run from `main` with a clean working tree
+- `plugins/wingman/copilot-skills/` is generated output — edit the source skills and run `bash scripts/generate-wingman-skills.sh`
+- `plugins/wingman/` must NEVER contain a `skills/` directory. Claude Code always scans `skills/`, so one would load every skill twice (`wingman:hawkscan` and `hawkscan:hawkscan`). The Copilot bundle is deliberately named `copilot-skills/`.
+- Run `bump-version.sh` BEFORE the generators: generated copies carry version frontmatter copied from source

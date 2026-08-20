@@ -112,6 +112,24 @@ gemini extensions install https://github.com/stackhawk/agent-skills
 
 ```
 copilot plugin marketplace add stackhawk/agent-skills-marketplace
+copilot plugin install wingman@stackhawk
+```
+
+`wingman` bundles the four default skills (`hawkscan`, `stackhawk-api`,
+`stackhawk-data-seed`, `stackhawk-optimize`). Copilot has no plugin-dependency
+mechanism, so wingman ships these as bundled copies rather than resolving them.
+
+To add `hawkscan-ci` on top of an existing `wingman` install (it is not a
+wingman dependency, but is separately installable):
+
+```
+copilot plugin install hawkscan-ci@stackhawk
+```
+
+To install skills individually **instead of** `wingman` (do not run this after
+installing `wingman` — it duplicates the four skills you already have):
+
+```
 copilot plugin install hawkscan@stackhawk
 copilot plugin install stackhawk-api@stackhawk
 copilot plugin install hawkscan-ci@stackhawk
@@ -119,7 +137,15 @@ copilot plugin install stackhawk-data-seed@stackhawk
 copilot plugin install stackhawk-optimize@stackhawk
 ```
 
-Installs `hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, and `stackhawk-optimize` into `~/.agents/skills/`. Confirm they appear under **GitHub Copilot → Configure Skills** in VS Code.
+Plugins install to `~/.copilot/installed-plugins/stackhawk/<plugin>/`. Confirm
+they appear under **GitHub Copilot → Configure Skills** in VS Code.
+
+Skill names differ between the two install paths above. The `wingman` bundle
+namespaces its copies, so they list as `hawkscan`, `stackhawk-api`,
+`stackhawk-data-seed`, and `stackhawk-optimize`. A per-plugin install reads the
+source skill instead, so `stackhawk-api` and `stackhawk-optimize` list as `api`
+and `optimize`. Renaming the source skills would change their invocation names
+on every platform, so it is deferred to a separate major release.
 
 #### OpenCode
 
@@ -241,7 +267,7 @@ scripts/install.ps1              Installer for Cursor and Copilot (Windows)
 | Claude Code | `/plugin install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 | Codex | `/plugin install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 | Gemini CLI | `gemini extensions install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
-| GitHub Copilot | `copilot plugin install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
+| GitHub Copilot | `copilot plugin install wingman@stackhawk` (or per-plugin) | hawkscan, stackhawk-api, stackhawk-data-seed, stackhawk-optimize (+ hawkscan-ci via per-plugin install) |
 | OpenCode | Copy to `.opencode/skills/` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 | Cursor | `install.sh --platform cursor` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 

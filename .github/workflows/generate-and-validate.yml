@@ -46,7 +46,7 @@ jobs:
         run: |
           expected=$(cat VERSION)
           errors=0
-          for manifest in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json gemini-extension.json .codex-plugin/plugin.json; do
+          for manifest in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json plugins/*/.github/plugin/plugin.json gemini-extension.json .codex-plugin/plugin.json; do
             if [ -f "$manifest" ]; then
               actual=$(python3 -c "import json; print(json.load(open('$manifest')).get('version', 'MISSING'))")
               if [ "$actual" != "$expected" ]; then
@@ -71,7 +71,7 @@ jobs:
 
       - name: Validate JSON manifests
         run: |
-          for f in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json .claude-plugin/marketplace.json .codex-plugin/marketplace.json gemini-extension.json; do
+          for f in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json plugins/*/.github/plugin/plugin.json .claude-plugin/marketplace.json .codex-plugin/marketplace.json gemini-extension.json; do
             if [ -f "$f" ]; then
               python3 -m json.tool "$f" > /dev/null
               echo "OK: $f"
@@ -96,6 +96,21 @@ jobs:
             echo "FAILED: $errors broken symlink(s)"
             exit 1
           fi
+
+      - name: Validate wingman Copilot bundle
+        run: bash scripts/test-wingman-skills.sh
+
+      - name: Verify wingman bundle is up to date (PR only)
+        if: github.event_name == 'pull_request'
+        run: |
+          bash scripts/generate-wingman-skills.sh
+          git add -N plugins/wingman/copilot-skills/
+          if ! git diff --quiet plugins/wingman/copilot-skills/; then
+            echo "ERROR: wingman copilot-skills/ is out of date. Run 'bash scripts/generate-wingman-skills.sh' and commit the output."
+            git diff --stat plugins/wingman/copilot-skills/
+            exit 1
+          fi
+          echo "OK: wingman copilot-skills/ is up to date."
 
       - name: Validate hook scripts are executable
         run: |
@@ -238,6 +253,7 @@ jobs:
       - name: Check for uncommitted changes (PR only)
         if: github.event_name == 'pull_request'
         run: |
+          git add -N cursor/
           if ! git diff --quiet cursor/; then
             echo "ERROR: Cursor rules are out of date. Run 'bash scripts/generate-cursor-rules.sh' and commit the output."
             git diff --stat cursor/

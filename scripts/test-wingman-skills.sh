@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# Verifies generate-wingman-skills.sh output is complete and idempotent.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_ROOT"
+
+DEST="plugins/wingman/copilot-skills"
+EXPECTED=(hawkscan stackhawk-api stackhawk-data-seed stackhawk-optimize)
+errors=0
+
+# 1. No skills/ directory may exist in wingman — Claude Code always scans it.
+if [ -e "plugins/wingman/skills" ]; then
+  echo "ERROR: plugins/wingman/skills exists — Claude Code would load duplicate skills"
+  errors=$((errors + 1))
+fi
+
+# 1b. Copilot resolves manifests in order .plugin/plugin.json -> plugin.json ->
+# .github/plugin/plugin.json -> .claude-plugin/plugin.json. A plugin.json or
+# .plugin/plugin.json directly under plugins/wingman/ would shadow our Copilot
+# manifest and, lacking a `skills` field, default to skills/ — silently
+# reproducing the original zero-skills bug.
+if [ -e "plugins/wingman/plugin.json" ]; then
+  echo "ERROR: plugins/wingman/plugin.json exists — it would shadow plugins/wingman/.github/plugin/plugin.json in Copilot's manifest resolution order"
+  errors=$((errors + 1))
+fi
+if [ -e "plugins/wingman/.plugin/plugin.json" ]; then
+  echo "ERROR: plugins/wingman/.plugin/plugin.json exists — it would shadow plugins/wingman/.github/plugin/plugin.json in Copilot's manifest resolution order"
+  errors=$((errors + 1))
+fi
+
+# 2. Every expected skill directory exists with a SKILL.md.
+for name in "${EXPECTED[@]}"; do
+  if [ ! -f "${DEST}/${name}/SKILL.md" ]; then
+    echo "ERROR: missing ${DEST}/${name}/SKILL.md"
+    errors=$((errors + 1))
+  else
+    echo "OK: ${DEST}/${name}/SKILL.md"
+  fi
+done
+
+# 3. hawkscan-ci must NOT be bundled — it is not a wingman dependency.
+if [ -e "${DEST}/hawkscan-ci" ]; then
+  echo "ERROR: ${DEST}/hawkscan-ci must not exist (not a wingman dependency)"
+  errors=$((errors + 1))
+fi
+
+# 4. No symlinks in the output — they dangle after marketplace subdir extraction.
+if find "$DEST" -type l | grep -q .; then
+  echo "ERROR: symlinks found in ${DEST} — output must be real files"
+  find "$DEST" -type l
+  errors=$((errors + 1))
+fi
+
+# 5. Copied versions match VERSION (proves generation ran after bump-version.sh).
+expected_version="$(cat VERSION)"
+for name in "${EXPECTED[@]}"; do
+  f="${DEST}/${name}/SKILL.md"
+  [ -f "$f" ] || continue
+  actual="$(head -20 "$f" | grep '^version:' | sed 's/version: //' || true)"
+  if [ -z "$actual" ]; then
+    echo "ERROR: $f is missing a 'version:' line in frontmatter"
+    errors=$((errors + 1))
+  elif [ "$actual" != "$expected_version" ]; then
+    echo "ERROR: $f has version '$actual', expected '$expected_version' (run bump-version.sh before generating)"
+    errors=$((errors + 1))
+  fi
+done
+
+# 5b. Each bundled skill's frontmatter `name:` is namespaced to match its
+# directory, so Copilot lists `stackhawk-api`/`stackhawk-optimize` rather than
+# the generic `api`/`optimize`. The SOURCE skills keep their current names —
+# assert that too, since renaming them is breaking and must not happen here.
+for name in "${EXPECTED[@]}"; do
+  f="${DEST}/${name}/SKILL.md"
+  [ -f "$f" ] || continue
+  actual_name="$(grep -m1 '^name:' "$f" | sed 's/^name: *//' || true)"
+  if [ -z "$actual_name" ]; then
+    echo "ERROR: $f is missing a 'name:' line in frontmatter"
+    errors=$((errors + 1))
+  elif [ "$actual_name" != "$name" ]; then
+    echo "ERROR: $f has name '$actual_name', expected '$name' (run generate-wingman-skills.sh)"
+    errors=$((errors + 1))
+  fi
+done
+
+for pair in "plugins/api/skills/api:api" "plugins/optimize/skills/optimize:optimize"; do
+  src="${pair%%:*}"; want="${pair##*:}"
+  got="$(grep -m1 '^name:' "${src}/SKILL.md" | sed 's/^name: *//' || true)"
+  if [ "$got" != "$want" ]; then
+    echo "ERROR: ${src}/SKILL.md has name '$got', expected '$want' — source skills must NOT be renamed (breaking; separate major release)"
+    errors=$((errors + 1))
+  fi
+done
+
+# 6. Copilot manifest exists, is valid JSON, and points at copilot-skills/.
+MANIFEST="plugins/wingman/.github/plugin/plugin.json"
+if [ ! -f "$MANIFEST" ]; then
+  echo "ERROR: missing $MANIFEST"
+  errors=$((errors + 1))
+else
+  python3 -m json.tool "$MANIFEST" > /dev/null || {
+    echo "ERROR: $MANIFEST is not valid JSON"
+    errors=$((errors + 1))
+  }
+  skills_field="$(python3 -c "import json; print(json.load(open('$MANIFEST')).get('skills',''))")"
+  if [ "$skills_field" != "./copilot-skills/" ]; then
+    echo "ERROR: $MANIFEST skills field is '$skills_field', expected './copilot-skills/'"
+    errors=$((errors + 1))
+  fi
+  # Must NOT carry dependencies — Copilot ignores it and it misleads readers.
+  if python3 -c "import json,sys; sys.exit(0 if 'dependencies' in json.load(open('$MANIFEST')) else 1)"; then
+    echo "ERROR: $MANIFEST must not declare 'dependencies' (Copilot has no such mechanism)"
+    errors=$((errors + 1))
+  fi
+  mver="$(python3 -c "import json; print(json.load(open('$MANIFEST')).get('version','MISSING'))")"
+  if [ "$mver" != "$expected_version" ]; then
+    echo "ERROR: $MANIFEST has version '$mver', expected '$expected_version'"
+    errors=$((errors + 1))
+  fi
+fi
+
+if [ $errors -gt 0 ]; then
+  echo "FAILED: $errors error(s)"
+  exit 1
+fi
+echo "PASS: wingman copilot-skills valid"
