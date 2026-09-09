@@ -202,7 +202,16 @@ bash scripts/release.sh
 
 ## Updating the Marketplace Catalog
 
-After a release is published, the [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace) repository's `marketplace.json` should be updated to reference the new tag and commit SHA.
+The `update-marketplace` job in `.github/workflows/release.yml` does this automatically after the GitHub Release is created. It clones [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace) and pushes one commit to `main` (`chore: pin agent-skills to vX.Y.Z and vendor skills`) containing two generated outputs:
+
+1. **Catalogs** — `scripts/generate-marketplace-catalogs.py` regenerates `.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, and `.codex-plugin/marketplace.json`, pinning every plugin source to the release tag and commit SHA. Claude Code, Codex, and Copilot plugin installs read these.
+2. **Vendored skills** — `scripts/generate-marketplace-skills.py --out-dir <marketplace checkout>` deletes and rebuilds the marketplace repo's `skills/` directory with a copy of each released public skill (`hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, `stackhawk-optimize`; `wingman` is excluded). Symlinks are dereferenced and the `name:` frontmatter is rewritten to the namespaced plugin name. The [`skills` CLI](https://github.com/vercel-labs/skills) (`npx skills add stackhawk/agent-skills-marketplace`) discovers only SKILL.md files and ignores the catalogs, so without this step it would find nothing there. `npx skills update` re-fetches the marketplace tree and re-copies changed skills, so consumers are expected to move to the next GA release; confirm this after each release (see the test plan in the introducing PR).
+
+The marketplace repo is therefore catalogs + vendored skills, all generated. Never edit its `skills/` directory by hand — the next release overwrites it.
+
+To verify the vendored output before a release, run the `Marketplace Install Verify` workflow with `tool: skills-cli` (local mode generates both outputs from the latest tag and runs `npx skills add <dir> --list` against them).
+
+The rest of this section describes the manual fallback if the workflow job fails: the marketplace repository's `marketplace.json` should be updated to reference the new tag and commit SHA.
 
 Update entries in that repo's catalog with:
 

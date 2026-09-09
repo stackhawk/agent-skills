@@ -18,6 +18,11 @@ name: Marketplace Install Verify
 #   remote: `<tool> marketplace add owner/repo` — the literal user command. Proves the
 #          end-to-end remote UX once generated catalogs are merged to the marketplace main.
 #
+# The skills-cli job is the odd one out: the `skills` CLI (vercel-labs/skills) reads
+# SKILL.md files, not catalogs, so it exercises scripts/generate-marketplace-skills.py
+# (the skill dirs release.yml vendors into the marketplace repo's skills/) rather than
+# the catalog generator.
+#
 # The catalog plugin sources are REMOTE sources (url/repo + path + ref + sha), so
 # each tool clones agent-skills to fetch the plugin. CI has no SSH key.
 #
@@ -56,7 +61,7 @@ on:
         required: true
         default: "all"
         type: choice
-        options: [all, claude-code, codex, copilot, agy, cursor]
+        options: [all, claude-code, codex, copilot, agy, cursor, skills-cli]
 
 permissions:
   contents: read
@@ -354,3 +359,51 @@ jobs:
         run: |
           echo "Cursor verification is exploratory — see diagnostic output above."
           echo "Cursor marketplace install is editor/dashboard-driven; CLI surface TBD."
+
+  # ── skills CLI (npx skills) ──────────────────────────────────────────────────
+  # `npx skills add <source>` discovers SKILL.md files only and ignores every
+  # marketplace.json. release.yml therefore vendors the released skill dirs into the
+  # marketplace repo's skills/ via scripts/generate-marketplace-skills.py. This job
+  # proves that output is what the skills CLI expects: exactly the five namespaced
+  # public skills, and never the maintainer-only skill-authoring skill.
+  #   local:  vendor into the same staged dir the catalog generator writes, then
+  #           `skills add <dir> --list`.
+  #   remote: `skills add owner/repo --list` — the literal user command.
+  skills-cli:
+    name: skills-cli
+    if: ${{ inputs.tool == 'all' || inputs.tool == 'skills-cli' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38  # v6
+        with:
+          node-version: "20"
+      - name: Resolve skills source
+        run: |
+          set -euxo pipefail
+          if [ "$SOURCE_MODE" = "local" ]; then
+            TAG=$(git describe --tags --abbrev=0)
+            SHA=$(git rev-list -n1 "$TAG")
+            python3 scripts/generate-marketplace-catalogs.py --tag "$TAG" --sha "$SHA" --out-dir /tmp/mp
+            python3 scripts/generate-marketplace-skills.py --out-dir /tmp/mp
+            echo "--- vendored skills/ ---"; find /tmp/mp/skills -maxdepth 2 | sort
+            echo "SKILLS_SRC=/tmp/mp" >> "$GITHUB_ENV"
+          else
+            echo "SKILLS_SRC=${MARKETPLACE_REPO}" >> "$GITHUB_ENV"
+          fi
+      - name: Verify the skills CLI sees exactly the five public skills
+        run: |
+          set -euo pipefail
+          out="$(npx -y skills@latest add "$SKILLS_SRC" --list 2>&1)"
+          echo "$out"
+          echo "$out" | grep -q "Found 5 skills" || { echo "FAIL: expected 'Found 5 skills'"; exit 1; }
+          for skill in hawkscan stackhawk-api hawkscan-ci stackhawk-data-seed stackhawk-optimize; do
+            echo "$out" | grep -qw "${skill}" || { echo "MISSING: ${skill}"; exit 1; }
+          done
+          if echo "$out" | grep -q "skill-authoring"; then
+            echo "FAIL: maintainer-only skill-authoring leaked into the vendored skills"
+            exit 1
+          fi
+          echo "OK: skills CLI found the five namespaced skills (mode=$SOURCE_MODE src=$SKILLS_SRC)"

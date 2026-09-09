@@ -180,6 +180,38 @@ git clone https://github.com/stackhawk/agent-skills.git
 
 Installs Cursor rules (`.cursor/rules/`), skills (`.cursor/skills/`), and the stop hook that auto-triggers a scan when you finish coding.
 
+#### skills CLI (npx)
+
+Works with any agent the [`skills` CLI](https://github.com/vercel-labs/skills) supports. One command installs the current GA release for every agent it detects:
+
+```bash
+npx skills add stackhawk/agent-skills-marketplace --all
+```
+
+Add `-g` to install globally (every project) instead of into the current one. To move to the next release later (the CLI re-fetches the marketplace repo and re-copies changed skills; this update path is expected from the CLI source and is checked after each release):
+
+```bash
+npx skills update
+```
+
+Skill names are the namespaced ones: `hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, and `stackhawk-optimize`. Install from `stackhawk/agent-skills-marketplace`, not this repo — the marketplace carries the released skills, while this repo's `main` is unreleased work.
+
+**Skills only, no hooks.** The `skills` CLI installs `SKILL.md` and `references/` for each skill. It does not install the hawkscan plugin's hooks, so the automatic scan after a code change does not fire. Claude Code, Codex, and Copilot users who want the hooks should install the plugin instead — the slash commands above, or the scriptable form:
+
+```bash
+# Claude Code (no global install needed)
+npx @anthropic-ai/claude-code plugin marketplace add stackhawk/agent-skills-marketplace
+npx @anthropic-ai/claude-code plugin install wingman@stackhawk
+
+# Codex
+codex plugin marketplace add stackhawk/agent-skills-marketplace
+codex plugin add hawkscan@stackhawk
+
+# GitHub Copilot
+copilot plugin marketplace add stackhawk/agent-skills-marketplace
+copilot plugin install wingman@stackhawk
+```
+
 ### 3. Try it
 
 ```
@@ -258,12 +290,17 @@ skills/                          Symlinks for Gemini/Copilot discovery
 cursor/                          Generated Cursor .mdc rules
 scripts/install.sh               Installer for Cursor and Copilot (macOS/Linux)
 scripts/install.ps1              Installer for Cursor and Copilot (Windows)
+scripts/generate-marketplace-catalogs.py   Emits the pinned marketplace catalogs at release time
+scripts/generate-marketplace-skills.py     Vendors released skills into the marketplace repo for the skills CLI
 ```
+
+Released skills are published to [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace): plugin catalogs pinned to the release tag, plus a `skills/` directory of vendored skill copies for `npx skills add`.
 
 ### Platform Support
 
 | Platform | Install Method | Skills Available |
 |----------|---------------|-----------------|
+| skills CLI (any agent) | `npx skills add stackhawk/agent-skills-marketplace --all` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 | Claude Code | `/plugin install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 | Codex | `/plugin install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 | Gemini CLI | `gemini extensions install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `skill-authoring` skill: changelog update guidance — documents when and how to add CHANGELOG entries for every substantive skill change
 - `wingman` umbrella plugin: `/plugin install wingman@stackhawk` installs the default skill set.
+- `skills` CLI support: `npx skills add stackhawk/agent-skills-marketplace --all` installs the current GA release for any agent the CLI detects, and `npx skills update` moves to the next release. The CLI discovers SKILL.md files only and ignores marketplace.json, so `release.yml` now vendors the five public skills (`hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, `stackhawk-optimize`; namespaced like the wingman Copilot bundle) into the marketplace repo's `skills/` via the new `scripts/generate-marketplace-skills.py`. Previously `npx skills add stackhawk/agent-skills-marketplace` found nothing and `npx skills add stackhawk/agent-skills` installed unversioned `main` plus the maintainer-only `skill-authoring` skill. A `skills-cli` job in `marketplace-install-verify.yml` checks the vendored output.
 
 ### Changed
 - Skills now drive the combined `hawk` binary (`hawk op …`); the `api` skill's raw-REST fallback was removed.
