@@ -396,7 +396,9 @@ jobs:
       - name: Verify the skills CLI sees exactly the five public skills
         run: |
           set -euo pipefail
-          out="$(npx -y skills@latest add "$SKILLS_SRC" --list 2>&1)"
+          # Strip ANSI escapes: the CLI colors the count ("Found \e[32m5\e[39m skills"),
+          # which defeats a literal match. NO_COLOR is set too, but not every code path honors it.
+          out="$(NO_COLOR=1 npx -y skills@latest add "$SKILLS_SRC" --list 2>&1 | sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z]//g')"
           echo "$out"
           echo "$out" | grep -q "Found 5 skills" || { echo "FAIL: expected 'Found 5 skills'"; exit 1; }
           for skill in hawkscan stackhawk-api hawkscan-ci stackhawk-data-seed stackhawk-optimize; do
