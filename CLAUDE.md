@@ -54,7 +54,8 @@ bash scripts/generate-wingman-skills.sh
 bash scripts/test-wingman-skills.sh
 
 # Preview what release.yml pushes to agent-skills-marketplace (catalogs + vendored skills/)
-python3 scripts/generate-marketplace-catalogs.py --tag "$(git describe --tags --abbrev=0)" --sha "$(git rev-parse HEAD)" --out-dir /tmp/mp
+TAG=$(git describe --tags --abbrev=0)
+python3 scripts/generate-marketplace-catalogs.py --tag "$TAG" --sha "$(git rev-list -n1 "$TAG")" --out-dir /tmp/mp
 python3 scripts/generate-marketplace-skills.py --out-dir /tmp/mp
 npx -y skills@latest add /tmp/mp --list   # should list exactly the five namespaced skills
 ```

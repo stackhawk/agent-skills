@@ -72,22 +72,6 @@ export HAWK_API_KEY=hawk.xxxxxxxxxxxx.xxxxxxxxxxxx
 
 ### 2. Install for your platform
 
-#### skills CLI (npx)
-
-Works with any agent the [`skills` CLI](https://github.com/vercel-labs/skills) supports. One command installs the current GA release for every agent it detects:
-
-```bash
-npx skills add stackhawk/agent-skills-marketplace --all
-```
-
-Add `-g` to install globally (every project) instead of into the current one. To move to the next release later:
-
-```bash
-npx skills update
-```
-
-Skill names are the namespaced ones: `hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, and `stackhawk-optimize`. Install from `stackhawk/agent-skills-marketplace`, not this repo — the marketplace carries the released skills, while this repo's `main` is unreleased work.
-
 #### Claude Code
 
 ```
@@ -195,6 +179,22 @@ git clone https://github.com/stackhawk/agent-skills.git
 ```
 
 Installs Cursor rules (`.cursor/rules/`), skills (`.cursor/skills/`), and the stop hook that auto-triggers a scan when you finish coding.
+
+#### skills CLI (npx)
+
+Works with any agent the [`skills` CLI](https://github.com/vercel-labs/skills) supports. One command installs the current GA release for every agent it detects:
+
+```bash
+npx skills add stackhawk/agent-skills-marketplace --all
+```
+
+Add `-g` to install globally (every project) instead of into the current one. To move to the next release later (the CLI re-fetches the marketplace repo and re-copies changed skills; this update path is expected from the CLI source and is checked after each release):
+
+```bash
+npx skills update
+```
+
+Skill names are the namespaced ones: `hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, and `stackhawk-optimize`. Install from `stackhawk/agent-skills-marketplace`, not this repo — the marketplace carries the released skills, while this repo's `main` is unreleased work.
 
 ### 3. Try it
 
