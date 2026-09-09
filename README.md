@@ -196,6 +196,22 @@ npx skills update
 
 Skill names are the namespaced ones: `hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, and `stackhawk-optimize`. Install from `stackhawk/agent-skills-marketplace`, not this repo — the marketplace carries the released skills, while this repo's `main` is unreleased work.
 
+**Skills only, no hooks.** The `skills` CLI installs `SKILL.md` and `references/` for each skill. It does not install the hawkscan plugin's hooks, so the automatic scan after a code change does not fire. Claude Code, Codex, and Copilot users who want the hooks should install the plugin instead — the slash commands above, or the scriptable form:
+
+```bash
+# Claude Code (no global install needed)
+npx @anthropic-ai/claude-code plugin marketplace add stackhawk/agent-skills-marketplace
+npx @anthropic-ai/claude-code plugin install wingman@stackhawk
+
+# Codex
+codex plugin marketplace add stackhawk/agent-skills-marketplace
+codex plugin add hawkscan@stackhawk
+
+# GitHub Copilot
+copilot plugin marketplace add stackhawk/agent-skills-marketplace
+copilot plugin install wingman@stackhawk
+```
+
 ### 3. Try it
 
 ```
