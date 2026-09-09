@@ -72,6 +72,22 @@ export HAWK_API_KEY=hawk.xxxxxxxxxxxx.xxxxxxxxxxxx
 
 ### 2. Install for your platform
 
+#### skills CLI (npx)
+
+Works with any agent the [`skills` CLI](https://github.com/vercel-labs/skills) supports. One command installs the current GA release for every agent it detects:
+
+```bash
+npx skills add stackhawk/agent-skills-marketplace --all
+```
+
+Add `-g` to install globally (every project) instead of into the current one. To move to the next release later:
+
+```bash
+npx skills update
+```
+
+Skill names are the namespaced ones: `hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, and `stackhawk-optimize`. Install from `stackhawk/agent-skills-marketplace`, not this repo — the marketplace carries the released skills, while this repo's `main` is unreleased work.
+
 #### Claude Code
 
 ```
@@ -258,12 +274,17 @@ skills/                          Symlinks for Gemini/Copilot discovery
 cursor/                          Generated Cursor .mdc rules
 scripts/install.sh               Installer for Cursor and Copilot (macOS/Linux)
 scripts/install.ps1              Installer for Cursor and Copilot (Windows)
+scripts/generate-marketplace-catalogs.py   Emits the pinned marketplace catalogs at release time
+scripts/generate-marketplace-skills.py     Vendors released skills into the marketplace repo for the skills CLI
 ```
+
+Released skills are published to [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace): plugin catalogs pinned to the release tag, plus a `skills/` directory of vendored skill copies for `npx skills add`.
 
 ### Platform Support
 
 | Platform | Install Method | Skills Available |
 |----------|---------------|-----------------|
+| skills CLI (any agent) | `npx skills add stackhawk/agent-skills-marketplace --all` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 | Claude Code | `/plugin install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 | Codex | `/plugin install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 | Gemini CLI | `gemini extensions install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |

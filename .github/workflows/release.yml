@@ -207,7 +207,22 @@ jobs:
           python3 scripts/generate-marketplace-catalogs.py \
             --tag "$TAG" --sha "$SHA" --out-dir /tmp/marketplace
 
+      - name: Vendor released skills for the skills CLI
+        # The `skills` CLI (vercel-labs/skills, `npx skills add <github-repo>`) discovers
+        # only SKILL.md files and ignores marketplace.json. Without vendored skills,
+        # `npx skills add stackhawk/agent-skills-marketplace` finds nothing, and
+        # `npx skills add stackhawk/agent-skills` installs unversioned main (plus the
+        # maintainer-only .claude/skills/skill-authoring). So each release copies the
+        # released skill dirs into the marketplace repo's skills/ (symlinks dereferenced,
+        # skill names namespaced: api -> stackhawk-api, optimize -> stackhawk-optimize).
+        # `npx skills update` re-fetches the marketplace tree and moves consumers to the
+        # next GA release automatically. Plugin installs via the catalogs are unchanged.
+        run: |
+          python3 scripts/generate-marketplace-skills.py --out-dir /tmp/marketplace
+
       - name: Commit and push
+        # One commit carries both the regenerated catalogs and the vendored skills/.
+        # `git add -A` also stages deletions from the script's rebuild of skills/.
         env:
           TAG: ${{ needs.release.outputs.tag }}
         run: |
@@ -216,8 +231,8 @@ jobs:
           git config user.email "hawkdeploy@stackhawk.com"
           git add -A
           if git diff --cached --quiet; then
-            echo "No changes — marketplace already pinned to ${TAG}"
+            echo "No changes — marketplace catalogs and vendored skills already at ${TAG}"
             exit 0
           fi
-          git commit -m "chore: pin agent-skills to ${TAG}"
+          git commit -m "chore: pin agent-skills to ${TAG} and vendor skills"
           git push origin HEAD:main
