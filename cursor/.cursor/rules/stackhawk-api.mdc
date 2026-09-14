@@ -140,7 +140,7 @@ hawk op scan get --app "<APP_NAME>" --detail full --format json
 
 `--detail full` returns every alert, every affected URI, HTTP messages (subject to
 `--max-body-size`), and remediation guidance in one JSON blob. It fetches per-plugin detail for
-at most **10 plugins per call** (observed on hawk 6.4.0: "Fetching 10 plugin details"); for a
+at most **10 plugins per call** (the CLI prints "Fetching 10 plugin details"); for a
 scan with more alert types, drill the rest with `--plugin-id`, or read the scanner's own
 `hawk scan --json-output` file, which is the complete list.
 

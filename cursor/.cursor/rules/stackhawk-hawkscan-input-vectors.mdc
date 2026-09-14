@@ -15,9 +15,6 @@ which reads as "clean". This file gives the three recipes that fix that. Field s
 canonical in `hawk config show <field-path> --text`; the YAML below shows shape only, with
 placeholders you must replace.
 
-Evidence: hawk 6.4.0 / wingman 2.5.0 (2026-09) against REST fixtures with XML, XPath, and
-stored-XSS sinks. Items marked *observed* come from those sessions.
-
 ## Contents
 - [Rule: active injection needs a reachable sink](#rule-active-injection-needs-a-reachable-sink)
 - [HAR seed for XML and other non-JSON request bodies](#har-seed-for-xml-and-other-non-json-request-bodies)
@@ -44,8 +41,7 @@ and the id when the spec cannot express them.
 
 **Why.** The OpenAPI request builder emits a **JSON** body for operations declared as
 `application/xml`. The XML handler 500s on it, so the XXE rule (and every other rule on that
-operation) never runs. *Observed:* the XXE rule stayed silent under the spec alone and fired once
-a HAR with a real `application/xml` POST was imported.
+operation) never runs. With a HAR that carries a real `application/xml` POST, the XXE rule runs.
 
 **Recipe.** Record one real request per non-JSON operation — a curl against the running app, a
 browser session, or `hawk perch browser` — and import the HAR **alongside** the spec. HAR

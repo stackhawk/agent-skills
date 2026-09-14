@@ -4,11 +4,9 @@ How the scan policy is chosen, attached, and tuned across the first scan and any
 full scans. Read this before Phase 0c and before starting a second full scan. Field syntax is
 canonical in `hawk config show app.scanPolicy --text`; the optimize skill owns policy creation.
 
-Evidence: seven headless first-run sessions on hawk 6.4.0 / wingman 2.5.0 (2026-09). Items
-marked *observed* come from those sessions and are not yet enumerated by `hawk config show`.
-
 ## Contents
 - [First scan: one broad policy, run to completion](#first-scan-one-broad-policy-run-to-completion)
+- [Tech flags before the first scan](#tech-flags-before-the-first-scan)
 - [Follow-up full scans: prune, do not crank](#follow-up-full-scans-prune-do-not-crank)
 - [Attaching a named org policy](#attaching-a-named-org-policy)
 - [Hand-built policy traps](#hand-built-policy-traps)
@@ -24,13 +22,36 @@ marked *observed* come from those sessions and are not yet enumerated by `hawk c
   every plugin at HIGH strength; not a hand-picked subset.
 - **Run it to completion.** Do not stop it early and do not chain several long scans. The
   first completed broad scan reaches most of the findings any config can reach; further hours
-  add a finding or two. *Observed:* 52 findings in ~5 min on a REST app and 43 in 5.6 min on a
-  GraphQL app; a 20-minute follow-up at lowest threshold / HIGH strength added nothing.
+  add a finding or two, and a follow-up at lowest threshold / HIGH strength adds time, not findings.
 - **Broadest scan last.** When several full scans run in one env, the **last completed scan is
   the result** — on the platform and for anyone grading the output. Ending on a narrow scan
-  (`includePaths` on a few routes, a reduced plugin set) replaces the broad result. *Observed:*
-  ending on a 13-path scan dropped one session from 71% to 42% of reachable findings. Narrow
+  (`includePaths` on a few routes, a reduced plugin set) replaces the broad result. Narrow
   diagnostic scans are fine mid-session; finish with the broad one.
+
+## Tech flags before the first scan
+
+A newly created app has **every** tech flag enabled. Left that way, the scan runs rules for
+databases, languages, and frameworks the app does not have, which roughly doubles scan time
+with no recall gain. Phase 0c via optimize Setup is the normal route: it writes the detected
+flags into the named policy. When Phase 0c is skipped, or optimize degrades to recommend-only,
+set the app's flags directly before the first scan:
+
+1. Detect the stack from the source — manifests and evidence files (`package.json`, `pom.xml`,
+   `go.mod`, `requirements.txt`, `Gemfile`, `*.csproj`, `docker-compose.yml`). Heuristics and
+   flag names are in the tech-flags reference linked from SKILL.md Phase 0c.
+2. Fetch the canonical flag list; only keys it returns are valid:
+   ```bash
+   hawk op app tech-flags get --app <NAME|UUID> --format json
+   ```
+3. Disable all, then enable only the detected flags (enable a parent with its child, e.g.
+   `Language.Java` with `Language.Java.Spring`):
+   ```bash
+   hawk op app tech-flags disable-all --app <NAME|UUID> --yes
+   hawk op app tech-flags set --app <NAME|UUID> <Flag.Key>=true <Other.Flag.Key>=true
+   ```
+
+If detection finds no evidence, leave the flags alone: a wrong "off" hides findings, a wrong
+"on" only costs time.
 
 ## Follow-up full scans: prune, do not crank
 
@@ -40,7 +61,7 @@ section covers. This is about a *second full `hawk scan`* after the first broad 
 Run a follow-up full scan only for a reason the quality gate named (SKILL.md Step 4.5 — spec
 not wired, auth wall, base-path mismatch) or to **prune**: drop tech flags for stacks the app
 does not use, exclude paths that are pure noise. Do **not** raise strength or lower threshold
-across all plugins — it multiplies scan time and, on this evidence, adds no findings. To change
+across all plugins — it multiplies scan time and adds no findings. To change
 the policy, re-run optimize Setup or edit the named policy through `hawk op policy`; do not
 hand-edit policy JSON from memory (see traps below).
 
@@ -66,7 +87,7 @@ named, the name did not match — names are exact and upper-case.
 
 Prefer optimize Setup (`hawk op policy get --name <PRESET>` → edit → `hawk op policy create
 --file`). If you must hand-edit policy JSON, start from a `policy get` dump and change as
-little as possible. Two traps, both *observed*:
+little as possible. Two traps:
 
 | Trap | Symptom | Rule |
 |------|---------|------|
@@ -82,7 +103,7 @@ Before `hawk op policy create`, diff the JSON you are about to submit against th
 
 SKILL.md Phase 0c runs optimize Setup whenever a `stackhawk.yml` is **created** — not only the
 first time an *application* is onboarded. A reused app with a fresh config (new clone, new env,
-new operator) otherwise gets no policy step at all; *observed:* in seven sessions optimize was
-never invoked, every operator hand-built a policy, and every one hit a trap above. Setup is
+new operator) otherwise gets no policy step at all, and the agent hand-builds a policy and
+hits a trap above. Setup is
 non-destructive (a trial policy referenced by `app.scanPolicy.name`; the app's own flags are
 untouched), so re-running it on a reused app is safe.

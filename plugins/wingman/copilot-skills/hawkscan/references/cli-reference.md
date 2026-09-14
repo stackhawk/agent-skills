@@ -113,13 +113,12 @@ available in your version, fall back to `hawk --no-color scan --verbose` and par
 (e.g. `12g`) for large apps — thousands of URLs, a big spec, a long passive backlog — and
 whenever a scan dies late with **SIGABRT** (the JVM aborts once the heap is exhausted; the scan
 log from `hawk download log` shows the out-of-memory error). A constrained container must use a
-value that fits its memory limit; *observed on hawk 6.4.0:* a 2g heap did not survive a
-two-hour web-app scan and aborted at 93%.
+value that fits its memory limit; a 2g heap does not survive a multi-hour web-app scan.
 
 **Never trade rule time for memory.** When the heap runs out, the fix is more heap — not a
 shorter `hawk.scan.maxRuleDurationMinutes`. A per-rule cap short enough to "fit" the heap
-truncates the active injection rules (*observed:* a 1-minute cap cut off command injection
-`90020` and code injection `90019`), and an aborted scan also never finishes its passive pass, so
+truncates the active injection rules (a 1-minute cap cuts off command injection `90020` and
+code injection `90019`), and an aborted scan also never finishes its passive pass, so
 missing-header and hidden-file findings vanish too. Leave the rule cap at its default (`0`,
 unlimited) unless one specific rule is provably stuck.
 
@@ -127,7 +126,7 @@ unlimited) unless one specific rule is provably stuck.
 past `maxTimeouts` (default 5× `hawk.scan.concurrentRequests`), probes `app.waitForAppTarget`;
 on a confirmed failure the default `action: ABORT` ends the scan. Endpoints that block on DNS or
 shell out (a `ping`/health route, a URL fetcher) time out under load and produce **false
-aborts** — *observed:* two sessions aborted at ~13 minutes on a `ping.php` route. For those apps:
+aborts**. For those apps:
 
 ```yaml
 hawk:
@@ -141,8 +140,8 @@ app:
     pollDelay: 1000               # required; minimum 50
 ```
 
-Confirm the fields with `hawk config show hawk.scan.crashDetection --text` (hawk 6.3.0 lists only
-the type; the fields above are from docs.stackhawk.com).
+Confirm the fields with `hawk config show hawk.scan.crashDetection --text` (some hawk builds list
+only the type; the fields above are documented at docs.stackhawk.com).
 
 ---
 
