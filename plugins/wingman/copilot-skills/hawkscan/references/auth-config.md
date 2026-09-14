@@ -92,11 +92,14 @@ After seeding, re-run `hawk validate auth stackhawk.yml` and continue.
 
 ## Profiles and scan user
 
-**One user, not `profiles`.** `app.authentication.profiles` (`hawk config show app.authentication.profiles --text`) declares several users for a **cross-profile authorization scan**. Declaring it switches the engine into profile (BUSINESS_LOGIC) mode: only the cross-profile authorization plugins run, the scan finishes in about 30 seconds, and general findings are 0. Operators handed several test accounts wrote a `profiles` block "to cover all users" and got exactly that dead scan in four of seven observed sessions (hawk 6.4.0). Rules:
+**The trap: `profiles` without `--profile-scan-mode=primary-full`.** `app.authentication.profiles` (`hawk config show app.authentication.profiles --text`) declares several users for multi-role authorization testing (BOLA/BFLA). With 2+ profiles present, `--profile-scan-mode` decides how coverage is spread, and its default is `business-logic`: every profile is scanned with the hidden `BUSINESS_LOGIC` preset only — Cross Platform BOLA and BFLA, 2 plugins — so the scan finishes in about 30 seconds with **0 general findings** (no XSS, no injection, no headers). Operators handed several test accounts wrote a `profiles` block "to cover all users" and got exactly that dead scan in four of seven observed sessions (hawk 6.4.0). The same happens on any `hawk` build that predates the flag (`hawk scan --help | grep -q -- --profile-scan-mode` fails), because no mode can be passed at all.
 
-- **Default: configure one user** with the single-user recipes above. Having extra test accounts is not a reason to use `profiles`.
-- Use `profiles` only when the goal is cross-profile authorization testing (BOLA/BFLA). On a hawk that has it (`hawk scan --help | grep profile-scan-mode`), pass `--profile-scan-mode=primary-full` so the privileged profile still gets the full policy; without that flag, expect authorization findings only.
-- A `profiles` scan that returns 0 findings in under a minute is this trap, not a clean app: remove the block and scan as one user.
+**The fix is one of two shapes:**
+
+- **One user** (the default). Configure a single user with the recipes above. Extra test accounts by themselves are not a reason to write `profiles`.
+- **Profiles plus the mode**, when BOLA/BFLA coverage is the goal: write 2+ profiles and run every scan and rescan with `--profile-scan-mode=primary-full --full-scan-profile=<privileged-profile>` — full policy on the privileged profile, authorization testing on the rest. Detection of a multi-role app, the credential cascade, the profile shape, and the run command live in the hawkscan reference `authz-profiles.md` (Phase 1c.7); do not improvise them here.
+
+A `profiles` scan that returns 0 findings in under a minute is this trap, not a clean app: either add the mode or remove the block and scan as one user.
 
 **Scan as a non-privileged user, or pin a token.** The scanner exercises write endpoints (PUT/PATCH/DELETE) with mutated payloads. Scanned as an admin, an unauthenticated or self-targeting write can change the scan's own login mid-scan — *observed:* `PATCH /api/users/1` overwrote the admin's email, after which `hawk validate auth` and every later scan returned 401. Prefer:
 

@@ -261,9 +261,9 @@ hawk config show app.authentication --text
 
 If no row matches → jump to **Phase 1c.5**. Do not force-fit a recipe or proceed without auth.
 
-**One user, not `profiles`.** An `app.authentication.profiles` block switches the scan into cross-profile
-(BUSINESS_LOGIC) mode — only the authorization plugins run, ~30 s, 0 general findings — so use it only when that
-is the goal. Scan as a non-privileged user or pinned token; an admin scan can mutate its own login. → [`references/auth-config.md`](references/auth-config.md#profiles-and-scan-user)
+**One user, or `profiles` + `--profile-scan-mode=primary-full`.** A `profiles` block **without** that mode runs
+only the hidden BUSINESS_LOGIC preset (BOLA/BFLA, 2 plugins, ~30 s, 0 general findings); use profiles only for
+multi-role authz (`references/authz-profiles.md`). Scan as a non-privileged user or pinned token; an admin scan can mutate its own login. → [`references/auth-config.md`](references/auth-config.md#profiles-and-scan-user)
 
 **Step 3 — Fetch each relevant section:** `hawk config show <section> --text`. Use the returned YAML example as template.
 
