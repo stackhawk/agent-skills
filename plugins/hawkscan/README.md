@@ -60,7 +60,7 @@ You can also trigger it explicitly:
 
 ## Security Note
 
-Never hardcode credentials in `stackhawk.yml`. For local use, `hawk init` stores your API key in `~/.hawk/hawk.properties`. For CI/CD, set `HAWK_API_KEY` as a secret — never inline key values in config files or scripts.
+Never hardcode credentials in `stackhawk.yml`. For interactive local use, `hawk init` stores your API key in `~/.hawk/hawk.properties`. For any non-interactive session (CI, containers, headless agents), set `HAWK_API_KEY` as a secret — never inline key values in config files or scripts.
 
 ## Resources
 

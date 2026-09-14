@@ -52,7 +52,7 @@ Once installed, Claude will use the StackHawk API skill when you ask questions l
 
 ## Security Note
 
-Never hardcode your API key. For local/agentic use, `hawk init` stores credentials locally. For CI/CD, set `HAWK_API_KEY` as a pipeline secret — never inline key values in scripts or configs.
+Never hardcode your API key. For interactive local use, `hawk init` stores credentials locally. For any non-interactive session (CI, containers, headless agents), set `HAWK_API_KEY` as a secret — never inline key values in scripts or configs.
 
 ## Resources
 
