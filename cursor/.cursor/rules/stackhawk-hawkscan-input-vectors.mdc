@@ -22,7 +22,6 @@ stored-XSS sinks. Items marked *observed* come from those sessions.
 - [Rule: active injection needs a reachable sink](#rule-active-injection-needs-a-reachable-sink)
 - [HAR seed for XML and other non-JSON request bodies](#har-seed-for-xml-and-other-non-json-request-bodies)
 - [customVariables for per-resource values](#customvariables-for-per-resource-values)
-- [Checking that a vector was exercised](#checking-that-a-vector-was-exercised)
 
 ---
 
@@ -111,16 +110,3 @@ Fields (`hawk config show app.openApiConf.customVariables --text`): `field`, `va
 `includedMethods` control which methods receive injected values — DELETE is skipped by default
 so the scan does not delete its own seed data. GraphQL and gRPC have their own `customVariables`
 under `app.graphqlConf` and `app.grpcConf`.
-
-## Checking that a vector was exercised
-
-After the scan, list what was actually requested (skip if the subcommand is unavailable):
-
-```bash
-hawk op scan uris <scanId> --format json
-```
-
-Look for the XML operation with an *application* status (2xx/4xx), not 500, and for the
-parameterized route with the pinned id. A route that only ever returned 404 or 500 was not
-tested — fix the vector before reading its silence as a clean result. If the optimize skill is
-installed, `hawk op scan metrics <scanId>` shows per-path request health for the same purpose.

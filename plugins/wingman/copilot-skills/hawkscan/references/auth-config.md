@@ -97,7 +97,7 @@ After seeding, re-run `hawk validate auth stackhawk.yml` and continue.
 **The fix is one of two shapes:**
 
 - **One user** (the default). Configure a single user with the recipes above. Extra test accounts by themselves are not a reason to write `profiles`.
-- **Profiles plus the mode**, when BOLA/BFLA coverage is the goal: write 2+ profiles and run every scan and rescan with `--profile-scan-mode=primary-full --full-scan-profile=<privileged-profile>` — full policy on the privileged profile, authorization testing on the rest. Detection of a multi-role app, the credential cascade, the profile shape, and the run command live in the hawkscan reference `authz-profiles.md` (Phase 1c.7); do not improvise them here.
+- **Profiles plus the mode**, when BOLA/BFLA coverage is the goal and the installed hawk supports the flag: write 2+ profiles (`hawk config show app.authentication.profiles --text`, one named entry per role, each with its own credentials) and run every scan and rescan with `--profile-scan-mode=primary-full --full-scan-profile=<privileged-profile>` — full policy on the privileged profile, authorization testing on the rest. A build without `--profile-scan-mode` must not use profiles; scan as one user instead. A dedicated multi-role reference is arriving separately.
 
 A `profiles` scan that returns 0 findings in under a minute is this trap, not a clean app: either add the mode or remove the block and scan as one user.
 
