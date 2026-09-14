@@ -27,7 +27,7 @@ Validate every plugin id against the base policy's plugin list — never invent 
 Edit the fetched JSON as little as possible: keep every field on every plugin entry (dropping
 `pluginType` silently removes the passive rules) and never write `STRENGTH_LOW` /
 `THRESHOLD_LOW` (protobuf zero values are dropped on serialization, leaving the plugin with no
-strength/threshold). Keep the preset's values or omit the field.
+strength/threshold). Keep the preset's values; never delete or blank them.
 
 ## stackhawk.yml correctness
 - App type: SPA → enable SPA/spider settings; REST → leave spider conservative.

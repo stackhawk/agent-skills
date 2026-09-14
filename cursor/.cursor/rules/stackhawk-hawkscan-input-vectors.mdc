@@ -1,6 +1,6 @@
 ---
 description: >
-  HawkScan input-vectors reference: active injection rules need a reachable sink; HAR seed (hawk.spider.har) for XML and other non-JSON request bodies because the OpenAPI request builder emits JSON for application/xml operations and blocks XXE; app.openApiConf.customVariables scoped per resource with path regex and the field-name collision caveat; checking a vector was exercised via hawk op scan uris.
+  HawkScan input-vectors reference: active injection rules need a reachable sink; HAR seed (hawk.spider.har) for XML and other non-JSON request bodies because the OpenAPI request builder emits JSON for application/xml operations and blocks XXE; app.openApiConf.customVariables scoped per resource with path regex and the field-name collision caveat.
 globs:
   - "**/stackhawk.yml"
   - "**/stackhawk-*.yml"
