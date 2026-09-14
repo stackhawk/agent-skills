@@ -10,7 +10,6 @@ canonical in `hawk config show app.scanPolicy --text`; the optimize skill owns p
 - [Follow-up full scans: prune, do not crank](#follow-up-full-scans-prune-do-not-crank)
 - [Attaching a named org policy](#attaching-a-named-org-policy)
 - [Hand-built policy traps](#hand-built-policy-traps)
-- [Why Phase 0c runs on every fresh config](#why-phase-0c-runs-on-every-fresh-config)
 
 ---
 
@@ -24,34 +23,18 @@ canonical in `hawk config show app.scanPolicy --text`; the optimize skill owns p
   first completed broad scan reaches most of the findings any config can reach; further hours
   add a finding or two, and a follow-up at lowest threshold / HIGH strength adds time, not findings.
 - **Broadest scan last.** When several full scans run in one env, the **last completed scan is
-  the result** — on the platform and for anyone grading the output. Ending on a narrow scan
+  the result** on the platform. Ending on a narrow scan
   (`includePaths` on a few routes, a reduced plugin set) replaces the broad result. Narrow
   diagnostic scans are fine mid-session; finish with the broad one.
 
 ## Tech flags before the first scan
 
-A newly created app has **every** tech flag enabled. Left that way, the scan runs rules for
-databases, languages, and frameworks the app does not have, which roughly doubles scan time
-with no recall gain. Phase 0c via optimize Setup is the normal route: it writes the detected
-flags into the named policy. When Phase 0c is skipped, or optimize degrades to recommend-only,
-set the app's flags directly before the first scan:
-
-1. Detect the stack from the source — manifests and evidence files (`package.json`, `pom.xml`,
-   `go.mod`, `requirements.txt`, `Gemfile`, `*.csproj`, `docker-compose.yml`). Heuristics and
-   flag names are in the tech-flags reference linked from SKILL.md Phase 0c.
-2. Fetch the canonical flag list; only keys it returns are valid:
-   ```bash
-   hawk op app tech-flags get --app <NAME|UUID> --format json
-   ```
-3. Disable all, then enable only the detected flags (enable a parent with its child, e.g.
-   `Language.Java` with `Language.Java.Spring`):
-   ```bash
-   hawk op app tech-flags disable-all --app <NAME|UUID> --yes
-   hawk op app tech-flags set --app <NAME|UUID> <Flag.Key>=true <Other.Flag.Key>=true
-   ```
-
-If detection finds no evidence, leave the flags alone: a wrong "off" hides findings, a wrong
-"on" only costs time.
+A newly created app has **every** tech flag enabled, so the scan runs rules for databases,
+languages, and frameworks the app does not have and takes longer with no coverage gain. Before
+the first scan, set the flags to the detected stack: optimize Setup does this in Phase 0c, and
+SKILL.md Phase 0c gives the fallback when optimize is skipped or degrades to recommend-only.
+Detection heuristics and flag names are in tech-flags.md; the `hawk op app tech-flags` commands
+are in platform-model.md. If detection finds no evidence, leave the flags alone.
 
 ## Follow-up full scans: prune, do not crank
 
@@ -98,12 +81,3 @@ Before `hawk op policy create`, diff the JSON you are about to submit against th
 (`hawk op policy get --name <PRESET> --format json`): same plugin count, the same set of
 `PASSIVE`-tagged entries as the preset dump, no `STRENGTH_LOW`/`THRESHOLD_LOW`. Check *before* creating — on current hawk,
 `policy get` reads presets reliably but may not read back an org policy.
-
-## Why Phase 0c runs on every fresh config
-
-SKILL.md Phase 0c runs optimize Setup whenever a `stackhawk.yml` is **created** — not only the
-first time an *application* is onboarded. A reused app with a fresh config (new clone, new env,
-new operator) otherwise gets no policy step at all, and the agent hand-builds a policy and
-hits a trap above. Setup is
-non-destructive (a trial policy referenced by `app.scanPolicy.name`; the app's own flags are
-untouched), so re-running it on a reused app is safe.
