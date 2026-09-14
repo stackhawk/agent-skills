@@ -7,7 +7,7 @@ alwaysApply: false
 # Trial Lifecycle
 
 > Setup mode builds + references the policy (steps 1–4, no scan); Refine mode runs the trial
-> scan and promotes/discards (steps 5–9). Setup is re-runnable and is what hawkscan onboarding invokes.
+> scan and promotes/discards (steps 5–9). Setup is re-runnable and is what hawkscan Phase 0c invokes on every fresh `stackhawk.yml`.
 
 ## How a named policy reaches a scan (why this is non-destructive)
 When `app.scanPolicy.name` is set in `stackhawk.yml`, HawkScan bootstrap detects an

@@ -26,7 +26,7 @@ If `hawk config` is unrecognized, upgrade hawk before running this skill.
   - [Verify Installation](#verify-installation)
 - [Post-Install Setup](#post-install-setup)
   - [Authenticate with hawk init](#authenticate-with-hawk-init)
-  - [CI/CD: Set HAWK_API_KEY as a Secret](#cicd-set-hawk_api_key-as-a-secret)
+  - [Non-Interactive Sessions: Set HAWK_API_KEY](#non-interactive-sessions-set-hawk_api_key)
 - [Docker (Alternative to CLI)](#docker-alternative-to-cli)
 
 ---
@@ -129,10 +129,11 @@ paste an API key (format: `hawk.xxxxxxxxxx.xxxxxxxxxx`) when prompted:
 2. Go to Settings → API Keys
 3. Create or copy an existing key (keys only display once on creation)
 
-### CI/CD: Set `HAWK_API_KEY` as a Secret
+### Non-Interactive Sessions: Set `HAWK_API_KEY`
 
-For pipeline runs where `hawk init --browser` cannot be used interactively, set `HAWK_API_KEY` as a
-CI secret and prefix each invocation:
+In any non-interactive session — a CI pipeline, a container, a headless agent — `hawk init`
+has no browser and no person to answer it. Set `HAWK_API_KEY` (as a secret in CI) and prefix
+each invocation:
 
 ```bash
 API_KEY=$HAWK_API_KEY hawk scan
@@ -140,7 +141,7 @@ API_KEY=$HAWK_API_KEY hawk scan
 
 The CLI resolves keys in this order: `--api-key` flag → `API_KEY` env var → `~/.hawk/hawk.properties`.
 
-For local/agentic use, `hawk init --browser` is the preferred approach — no env var needed.
+For interactive local use, `hawk init --browser` is the preferred approach — no env var needed.
 
 ---
 

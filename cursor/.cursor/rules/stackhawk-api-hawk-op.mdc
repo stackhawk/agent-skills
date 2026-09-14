@@ -55,7 +55,7 @@ hawk op status         # Confirm auth
 `hawk init` writes credentials to `~/.hawk/hawk.properties`.  
 `hawk op` reads that file plus the `HAWK_API_KEY` env var.
 
-**CI/CD only:** For pipeline use, set `HAWK_API_KEY` directly as a secret.
+**Non-interactive sessions (CI, containers, headless agents):** set `HAWK_API_KEY` directly as a secret.
 Org ID and output format can be set via env vars:
 
 ```bash

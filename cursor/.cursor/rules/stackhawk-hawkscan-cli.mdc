@@ -9,13 +9,14 @@ alwaysApply: false
 The `hawk` CLI is preferred for local/agentic use — lower overhead than Docker,
 faster iteration on config, and better localhost networking.
 
-**Option resolution order:** CLI flag → `API_KEY` environment variable → `~/.hawk/hawk.properties`. For local/agentic use, run `hawk init --browser` to write credentials to `~/.hawk/hawk.properties` — no env var needed. For CI/CD pipelines, prefix invocations with `API_KEY=$HAWK_API_KEY hawk ...`.
+**Option resolution order:** CLI flag → `API_KEY` environment variable → `~/.hawk/hawk.properties`. In any **non-interactive session** (CI, containers, headless agents), prefix every invocation with `API_KEY=$HAWK_API_KEY hawk ...` — `hawk init` needs a browser and a person. In an interactive session, `hawk init --browser` writes credentials to `~/.hawk/hawk.properties` once and no env var is needed.
 
 ## Contents
 - [Top-Level Options](#top-level-options)
 - [Setup](#setup)
 - [Core Scan Commands](#core-scan-commands)
 - [Scan Flags for Agentic Loops](#scan-flags-for-agentic-loops)
+- [Memory and Crash Detection](#memory-and-crash-detection)
 - [Validation Commands](#validation-commands)
 - [hawk config](#hawk-config)
 - [Diagnostic Commands](#diagnostic-commands)
@@ -44,7 +45,7 @@ hawk --log-files-count=10 scan           # max rolled log files to upload (defau
 
 ```bash
 hawk init --browser                      # first-time: browser device-flow auth, saves to ~/.hawk/hawk.properties
-API_KEY=$HAWK_API_KEY hawk scan          # CI/CD: pass key directly when no local config (pipelines, Docker)
+API_KEY=$HAWK_API_KEY hawk scan          # any non-interactive session (CI, containers, headless agents): pass the key directly
 ```
 
 ---
@@ -98,7 +99,7 @@ hawk scan --json-output                  # output findings as JSON to stdout (be
 hawk scan --verbose                      # stream log output to stdout (useful for capturing progress)
 hawk scan --debug                        # enable debug logging (use when diagnosing failures)
 hawk scan --trace                        # trace-level HTTP logging (auth debugging)
-hawk scan --hawk-mem=2g                  # increase JVM memory for large apps (default: 9g)
+hawk scan --hawk-mem=12g                 # scanner heap (default: 9g) — raise for large apps; see Memory and Crash Detection
 ```
 
 **For agentic use, prefer `--json-output`** for structured findings parsing. When you
@@ -109,6 +110,43 @@ with exit code 1 if both are set.
 
 **Note:** `--json-output` requires at least HawkScan Dev Release v5.3.41. If not
 available in your version, fall back to `hawk --no-color scan --verbose` and parse stdout.
+
+---
+
+## Memory and Crash Detection
+
+**Heap.** `--hawk-mem=<size>` sets the scanner JVM heap; the **default is `9g`**. Raise it
+(e.g. `12g`) for large apps — thousands of URLs, a big spec, a long passive backlog — and
+whenever a scan dies late with **SIGABRT** (the JVM aborts once the heap is exhausted; the scan
+log from `hawk download log` shows the out-of-memory error). A constrained container must use a
+value that fits its memory limit; *observed on hawk 6.4.0:* a 2g heap did not survive a
+two-hour web-app scan and aborted at 93%.
+
+**Never trade rule time for memory.** When the heap runs out, the fix is more heap — not a
+shorter `hawk.scan.maxRuleDurationMinutes`. A per-rule cap short enough to "fit" the heap
+truncates the active injection rules (*observed:* a 1-minute cap cut off command injection
+`90020` and code injection `90019`), and an aborted scan also never finishes its passive pass, so
+missing-header and hidden-file findings vanish too. Leave the rule cap at its default (`0`,
+unlimited) unless one specific rule is provably stuck.
+
+**Crash detection.** `hawk.scan.crashDetection` counts timeouts plus connection failures and,
+past `maxTimeouts` (default 5× `hawk.scan.concurrentRequests`), probes `app.waitForAppTarget`;
+on a confirmed failure the default `action: ABORT` ends the scan. Endpoints that block on DNS or
+shell out (a `ping`/health route, a URL fetcher) time out under load and produce **false
+aborts** — *observed:* two sessions aborted at ~13 minutes on a `ping.php` route. For those apps:
+
+```yaml
+hawk:
+  scan:
+    crashDetection:
+      action: WARN                # ABORT (default) | WARN | DISABLED
+app:
+  waitForAppTarget:
+    path: <fast-static-route>     # e.g. /  — the liveness probe hits this; keep it off the slow endpoint
+```
+
+Confirm the fields with `hawk config show hawk.scan.crashDetection --text` (hawk 6.3.0 lists only
+the type; the fields above are from docs.stackhawk.com).
 
 ---
 

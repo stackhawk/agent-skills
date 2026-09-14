@@ -3,6 +3,7 @@
 ## Contents
 - [Phase 1c: Configure auth with hawk config show](#phase-1c-configure-auth-with-hawk-config-show)
 - [Phase 1c.6: Seed backend when auth fails on an empty datastore](#phase-1c6-seed-backend-when-auth-fails-on-an-empty-datastore)
+- [Profiles and scan user](#profiles-and-scan-user)
 
 ---
 
@@ -86,3 +87,19 @@ If the recipe itself is wrong or ambiguous instead, use **Phase 1c.5** (return t
 - **Cross-repo:** for a gateway / multi-service app the credential or entity usually lives in an **upstream** service's datastore (e.g. the auth service), not the target repo. Run the seed against that upstream repo; seeding the gateway repo alone finds no local storage and produces a no-op.
 
 After seeding, re-run `hawk validate auth stackhawk.yml` and continue.
+
+---
+
+## Profiles and scan user
+
+**One user, not `profiles`.** `app.authentication.profiles` (`hawk config show app.authentication.profiles --text`) declares several users for a **cross-profile authorization scan**. Declaring it switches the engine into profile (BUSINESS_LOGIC) mode: only the cross-profile authorization plugins run, the scan finishes in about 30 seconds, and general findings are 0. Operators handed several test accounts wrote a `profiles` block "to cover all users" and got exactly that dead scan in four of seven observed sessions (hawk 6.4.0). Rules:
+
+- **Default: configure one user** with the single-user recipes above. Having extra test accounts is not a reason to use `profiles`.
+- Use `profiles` only when the goal is cross-profile authorization testing (BOLA/BFLA). On a hawk that has it (`hawk scan --help | grep profile-scan-mode`), pass `--profile-scan-mode=primary-full` so the privileged profile still gets the full policy; without that flag, expect authorization findings only.
+- A `profiles` scan that returns 0 findings in under a minute is this trap, not a clean app: remove the block and scan as one user.
+
+**Scan as a non-privileged user, or pin a token.** The scanner exercises write endpoints (PUT/PATCH/DELETE) with mutated payloads. Scanned as an admin, an unauthenticated or self-targeting write can change the scan's own login mid-scan — *observed:* `PATCH /api/users/1` overwrote the admin's email, after which `hawk validate auth` and every later scan returned 401. Prefer:
+
+- a dedicated **non-privileged test user** whose own record the scan cannot reach, or
+- `app.authentication.external` with a **pre-issued token** (login is never replayed, so a mutated password or email does not break the scan); and
+- if a scan did break the user, re-seed it (`stackhawk-data-seed`, Phase 1c.6) instead of scanning on as admin.

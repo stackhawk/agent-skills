@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 2.5.1
+version: 2.6.0
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Performs
@@ -115,8 +115,8 @@ completion after. Status output, **not** a prompt — never pause for input. E.g
 
 ## Phase 0: App Setup & Verification
 
-Run Phase 0 **once** when onboarding a new application (`stackhawk.yml` being created for
-the first time). Do NOT run on every scan.
+Run Phase 0 whenever a `stackhawk.yml` is being **created** — a new application, or a reused
+app with a fresh config. Do NOT run on every scan (0a/0b are idempotent; 0c is non-destructive).
 
 **Phase 0a — Repo Linking:** Associate the app with its source repo in Attack Surface
 Management. Get the git remote URL, normalize it (lowercase, strip `.git`, strip host prefix
@@ -132,17 +132,17 @@ tags:
     value: ${HAWK_AGENT:none}
 ```
 
-**Phase 0c — Scan Policy & Tech Flags (via optimize):** Set up the scan policy + tech flags
-through the **optimize skill's Setup mode** (non-destructive — builds a named scan policy and
-references it in `stackhawk.yml`, never mutating the app's own flags). Run optimize Setup once
-here at onboarding; it stays re-runnable later via `/optimize`.
+**Phase 0c — Scan Policy & Tech Flags (via optimize):** Run the **optimize skill's Setup mode**
+on **every fresh `stackhawk.yml`** — not only the first time an app is onboarded. Setup is
+non-destructive (a named trial policy referenced via `app.scanPolicy.name`; the app's own flags
+are untouched) and stays re-runnable via `/optimize`. Skipping it leaves the agent hand-building
+a policy, which silently hits the traps in [`references/scan-policy.md`](references/scan-policy.md)
+(dropped `STRENGTH_LOW`/`THRESHOLD_LOW`, lost passive rules) — read that file before any policy edit.
 → **Fallback** (no policy permissions): if optimize's `hawk op policy create --dry-run` reports
 a missing `ORG_POLICY_MANAGEMENT` / `WRITE_POLICY` / feature flag, it degrades to recommend-only.
-In that case, fall back to direct tech-flag detection on the app: detect codebase evidence
-(package.json, pom.xml, go.mod, requirements.txt, Gemfile, *.csproj); if found, disable all then
-enable only detected flags via `hawk op app tech-flags`; if none, skip.
-→ Optimize Setup workflow: the `optimize` skill. Fallback detection heuristics + flag names:
-[`references/tech-flags.md`](references/tech-flags.md)
+Then detect codebase evidence (package.json, pom.xml, go.mod, requirements.txt, Gemfile, *.csproj)
+and, if found, disable all then enable only detected flags via `hawk op app tech-flags`; if none, skip.
+→ Fallback detection heuristics + flag names: [`references/tech-flags.md`](references/tech-flags.md)
 
 ---
 
@@ -168,7 +168,8 @@ run a container, or bring up a server to discover *what* to scan; standing up th
 a scan-time step (Step 1c), not part of discovery.
 
 → Full discovery workflow — per-surface detection, route-inventory derivation, gap
-  recommendations, and the user-confirmed summary required before the first scan:
+  recommendations, and the pre-scan summary (user-confirmed when interactive; headless: print
+  it, proceed, and record each assumption as a `stackhawk.yml` comment):
   [`references/scan-planning.md`](references/scan-planning.md)
 → Docs-first source table (which files to read and what to harvest):
   [`references/app-discovery.md`](references/app-discovery.md)
@@ -185,9 +186,9 @@ strategy, frontend-vs-backend scenarios, and config templates:
 
 1. **App running?** HawkScan requires a live target. Start it first if not running.
 2. **`stackhawk.yml` present?** If missing → Step 2a (generate). If present → Step 2b (tune).
-3. **Credentials?** Check `~/.hawk/hawk.properties` (written by `hawk init`). If missing: run
-   `hawk init --browser`. For CI/CD: set `HAWK_API_KEY` as a secret and prefix invocations with
-   `API_KEY=$HAWK_API_KEY hawk <cmd>`. If a later command returns 401/403, re-run `hawk init --browser`.
+3. **Credentials?** Any **non-interactive session** (CI, container, headless agent): set `HAWK_API_KEY`
+   and prefix every invocation with `API_KEY=$HAWK_API_KEY hawk <cmd>` — no `hawk init`, no browser;
+   a 401/403 means the key is wrong or missing. Interactive only: `hawk init --browser` (re-run it on a later 401/403).
 4. **Runtime?** Check `which hawk`. If found: use CLI. If not: check `docker --version`.
    If both absent: see `references/installation.md`.
 5. **App exists?** Run `hawk op app list --format json`. Match by name (normalized: lowercased,
@@ -232,6 +233,8 @@ Do not proceed to Step 3 until validation passes.
 
 → API-type-specific config (OpenAPI, GraphQL, gRPC, seed paths, spider tuning):
   [`references/config-patterns.md`](references/config-patterns.md)
+→ Input vectors — HAR seed for XML/non-JSON bodies, `customVariables` scoped per resource, and
+  the reachable-sink rule for injection plugins: [`references/input-vectors.md`](references/input-vectors.md)
 
 **REST surface? Get an accurate OpenAPI spec BEFORE the first scan — this is not optional.**
 A REST scan with no spec (spider/`seedPaths` only) reaches a small fraction of the API; a
@@ -258,6 +261,10 @@ hawk config show app.authentication --text
 
 If no row matches → jump to **Phase 1c.5**. Do not force-fit a recipe or proceed without auth.
 
+**One user, not `profiles`.** An `app.authentication.profiles` block switches the scan into cross-profile
+(BUSINESS_LOGIC) mode — only the authorization plugins run, ~30 s, 0 general findings — so use it only when that
+is the goal. Scan as a non-privileged user or pinned token; an admin scan can mutate its own login. → [`references/auth-config.md`](references/auth-config.md#profiles-and-scan-user)
+
 **Step 3 — Fetch each relevant section:** `hawk config show <section> --text`. Use the returned YAML example as template.
 
 **Step 4 — Always include a testPath:** `hawk config show app.authentication.testPath --text`. The `testPath` must return 401/403 without auth and 200 with auth.
@@ -276,9 +283,9 @@ Invoke when: (1) auth signals exist but pattern doesn't match any Phase 1c table
 (2) `hawk validate auth` returned non-zero after Phase 1c (wrong recipe, not empty datastore);
 (3) user explicitly requests interactive setup.
 
-`hawk perch onboard` is the wizard — it captures real HTTP traffic via Chrome, runs the
-validate-auth loop with structured per-field errors, and streams JSONL phase events.
-Always run `hawk perch stop` on every exit path (onboard does not own the daemon).
+`hawk perch onboard` is the wizard — **interactive only** (a person logs in through Chrome). It runs the
+validate-auth loop with structured per-field errors and streams JSONL phase events. Always run `hawk perch stop`
+on every exit path. Headless: skip the wizard; build the block from `hawk config show app.authentication --text`.
 
 → Full flow, event handler matrix, error table, and re-run behavior:
   [`references/auth-analyzer-fallback.md`](references/auth-analyzer-fallback.md)
@@ -308,7 +315,7 @@ Review the config against the current app state:
   auth) — additive-only; see [`references/scan-quality.md`](references/scan-quality.md).
 - **Low path count?** For a REST surface the fix is almost always an accurate spec — get one per `references/openapi-specs.md` (a wired, resolving `openApiConf` is worth far more than any spider tuning). Then: SPA/JS app → `hawk.spider.ajax: true`; GraphQL → wire `graphqlConf`. `hawk.spider.seedPaths` is a last resort (URLs only — no methods/bodies/params, so it can't reach POST/PUT or parameterized routes); prefer even a hand-derived spec over it, and omit it entirely once a spec is wired.
 - **Auth failing?** Verify `authentication` block; re-fetch the relevant recipe via `hawk config show <section> --text` (Phase 1c).
-- **Too noisy / too slow?** Add `app.excludePaths` or `app.includePaths`; tune `hawk.spider.maxDurationMinutes`.
+- **Too noisy / too slow?** Add `app.excludePaths` or `app.includePaths`; tune `hawk.spider.maxDurationMinutes`. A follow-up full scan **prunes** (unused tech flags, noisy paths) or fixes auth/spec — it never raises strength or lowers threshold across all plugins ([`references/scan-policy.md`](references/scan-policy.md)).
 - **New API type added?** Add corresponding `graphqlConf`, `openApiConf`, etc.
 - **Need custom headers?** Use `hawkAddOn.replacer` for tenant or API version headers.
 - **Running in CI?** Add commit SHA tags (top-level in `stackhawk.yml`, not under `app:`):
@@ -329,7 +336,7 @@ timeout 30 hawk validate config stackhawk.yml || echo "Validate timed out — en
 
 ## Step 3: Validate and Run
 
-> **Pre-flight:** Run scan commands synchronously — never with `&` or `nohup`. Wait for the exit code. Do not start a new scan while one is already running for this app/env.
+> **Pre-flight:** Run scan commands synchronously — never with `&` or `nohup`. Wait for the exit code. Do not start a new scan while one is already running for this app/env. **First scan = one broad detected-stack policy, run to completion; if several full scans run, the broadest runs last** — the last completed scan is the result ([`references/scan-policy.md`](references/scan-policy.md)).
 
 Set env vars, then validate:
 ```bash
@@ -357,6 +364,10 @@ adding or modifying OpenAPI spec references. Run `hawk validate auth` whenever t
 arguments only — no `-c` or `--config` flag. Use bare filenames (not absolute paths). See
 [`references/cli-reference.md`](references/cli-reference.md#config-file-path-rules).
 
+**Memory & crash detection:** the scanner heap defaults to 9g (`--hawk-mem`). A scan that dies with SIGABRT late
+in the run exhausted it — raise `--hawk-mem`, never cut `hawk.scan.maxRuleDurationMinutes` (that truncates injection
+rules). False "target crashed" aborts on slow endpoints → `hawk.scan.crashDetection.action: WARN`. See [`references/cli-reference.md`](references/cli-reference.md#memory-and-crash-detection).
+
 ### CLI Reference
 
 → Full command reference (flags, diagnostics, perch daemon, exit codes):
@@ -371,11 +382,8 @@ hawk rescan --scan-id <SCAN_ID> --json-output      # fast fix verification — r
 **Always rescan against the original full-scan ID.** Rescan IDs are not valid parent scan references.
 
 ### Exit Codes
-| Code | Meaning |
-|------|---------|
-| `0`  | Scan complete, no findings at or above `failureThreshold` |
-| `1`  | Scan failed (config error, app unreachable, auth failure) |
-| `42` | Scan complete, findings met or exceeded `failureThreshold` |
+`0` complete, nothing at/above `failureThreshold` · `1` scan failed (config, unreachable, auth) ·
+`42` complete, findings at/above `failureThreshold`. Table: [`references/cli-reference.md`](references/cli-reference.md#exit-codes)
 
 ---
 

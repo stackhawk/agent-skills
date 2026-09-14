@@ -8,11 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `hawkscan`: `references/scan-policy.md` — the first scan is one broad detected-stack policy run to completion; when several full scans run, the broadest runs last (the last completed scan is the result); follow-up full scans prune tech flags or fix auth/spec rather than raising strength across all plugins; a named org policy attaches only via `app.scanPolicy.name`; hand-built policy traps (`STRENGTH_LOW`/`THRESHOLD_LOW` are protobuf zero values and are silently dropped; stripping `pluginType` drops every passive rule). Evidence: seven headless first-run sessions on hawk 6.4.0 / wingman 2.5.0.
+- `hawkscan`: `references/input-vectors.md` — HAR seed (`hawk.spider.har`) for `application/xml` and other non-JSON bodies (the OpenAPI request builder emits JSON for XML operations, which 500s and blocks XXE), `app.openApiConf.customVariables` scoped per resource with the field-name collision caveat, and the rule that active injection rules need a reachable sink.
+- `hawkscan`: auth guidance now warns that an `app.authentication.profiles` block switches the scan into cross-profile (BUSINESS_LOGIC) mode with 0 general findings unless a cross-profile authorization scan is the goal, and to scan as a non-privileged user or pinned token because an admin scan can mutate its own login.
+- `hawkscan`: memory and crash-detection guidance — `--hawk-mem` default (9g), the SIGABRT heap-exhaustion symptom, never shortening `hawk.scan.maxRuleDurationMinutes` to fit memory (it truncates injection rules), and `hawk.scan.crashDetection.action: WARN` for endpoints that block on DNS or shell out.
+- `stackhawk-api`: names the 10-plugin cap of `hawk op scan get --detail full` and points at the `hawk scan --json-output` file as the complete list.
 - `skill-authoring` skill: changelog update guidance — documents when and how to add CHANGELOG entries for every substantive skill change
 - `wingman` umbrella plugin: `/plugin install wingman@stackhawk` installs the default skill set.
 - `skills` CLI support: `npx skills add stackhawk/agent-skills-marketplace --all` installs the current GA release for any agent the CLI detects, and `npx skills update` moves to the next release. The CLI discovers SKILL.md files only and ignores marketplace.json, so `release.yml` now vendors the five public skills (`hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, `stackhawk-optimize`; namespaced like the wingman Copilot bundle) into the marketplace repo's `skills/` via the new `scripts/generate-marketplace-skills.py`. Previously `npx skills add stackhawk/agent-skills-marketplace` found nothing and `npx skills add stackhawk/agent-skills` installed unversioned `main` plus the maintainer-only `skill-authoring` skill. A `skills-cli` job in `marketplace-install-verify.yml` checks the vendored output.
 
+### Fixed
+- `hawkscan` `cli-reference.md`: the `--hawk-mem` example said `2g` while claiming to "increase" memory from a 9g default.
+
 ### Changed
+- `hawkscan` Phase 0c now runs optimize Setup on **every fresh `stackhawk.yml`**, not only on first app onboarding — reused apps skipped policy setup entirely and every operator hand-built a policy. `optimize` and `platform-model.md` wording updated to match.
+- `hawkscan`/`stackhawk-api`: `API_KEY=$HAWK_API_KEY hawk …` is now the documented answer for any non-interactive session (CI, containers, headless agents), not "CI/CD only"; "re-run `hawk init --browser` on a 401" applies to interactive sessions only. Steps that need a person (`hawk perch onboard` via Chrome, the pre-scan confirmation) are marked interactive-only with a one-line headless alternative.
+- `stackhawk-optimize`: the GraphQL mapping no longer suggests `app.autoPolicy: true` (it narrows the plugin set and is not a `stackhawk.yml` section on current hawk); keep the broad GraphQL preset for the first scan. Added the hand-built policy traps to the plugin-editing guidance.
 - Skills now drive the combined `hawk` binary (`hawk op …`); the `api` skill's raw-REST fallback was removed.
 - `skill-authoring` moved from `plugins/skill-authoring/` to `.claude/skills/skill-authoring/` (maintainer skill, not a marketplace plugin)
 - `.gitignore` updated: `.claude/skills/` is now tracked so contributor skills are version-controlled

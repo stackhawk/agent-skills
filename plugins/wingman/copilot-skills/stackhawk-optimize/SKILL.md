@@ -1,14 +1,14 @@
 ---
 name: stackhawk-optimize
-version: 2.5.1
+version: 2.6.0
 description: >
   Analyze a codebase and produce an optimal HawkScan setup — tech flags, scan-policy
   plugin selection, and stackhawk.yml corrections — then apply it as a non-destructive
   trial, run ONE trial scan, and promote or discard. Use when the user asks to
   "optimize my scan", "tune HawkScan", "make my scan faster", "reduce false positives",
   "pick the right plugins/policy for my app", or invokes /optimize. Also invoked
-  automatically by the hawkscan skill once at onboarding to set up the scan policy +
-  tech flags (Setup mode), and re-runnable anytime via /optimize; the metrics Refine
+  automatically by the hawkscan skill on every fresh stackhawk.yml (Phase 0c) to set up
+  the scan policy + tech flags (Setup mode), and re-runnable anytime via /optimize; the metrics Refine
   mode is surfaced when a scan is slow. Do NOT use for: a normal security scan or
   fixing vulnerabilities (use the hawkscan skill); querying existing findings or
   posture (use the api skill); or editing stackhawk.yml without optimizing/scanning.
@@ -54,7 +54,7 @@ export _STACKHAWK_SKILL=optimize
 ## Workflow
 
 Two modes. **Setup** configures scan policy + tech flags (no scan) and is what hawkscan
-onboarding invokes; it is also re-runnable anytime via `/optimize`. **Refine** runs a trial
+Phase 0c invokes on every fresh `stackhawk.yml`; it is also re-runnable anytime via `/optimize`. **Refine** runs a trial
 scan and tunes from per-path metrics; it runs only via `/optimize` or when a scan is slow.
 
 0. **Preflight** (above).
