@@ -27,8 +27,8 @@ strength/threshold). Keep the preset's values; never delete or blank them.
 - App type: SPA → enable SPA/spider settings; REST → leave spider conservative.
 - OpenAPI spec present → set `app.openApiConf` to point at it.
 - GraphQL → wire `app.graphqlConf` and keep the **broad GraphQL preset** as the first-scan policy.
-  Do not narrow the plugin set before one broad scan has completed (auto-narrowing settings
-  shrink coverage; `autoPolicy` is not a `stackhawk.yml` section on current hawk). Prune after.
+  Do not narrow the plugin set before one broad scan has completed (`app.autoPolicy: true`
+  narrows the plugin set; leave it unset for the first broad scan). Prune after.
 - Base paths → set sensible scope.
 - Auth → FLAG for the user; never fabricate credentials.
 

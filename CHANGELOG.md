@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `hawkscan` Phase 0c now runs optimize Setup on **every fresh `stackhawk.yml`**, not only on first app onboarding — reused apps skipped policy setup entirely and every operator hand-built a policy. `optimize` and `platform-model.md` wording updated to match.
 - `hawkscan`/`stackhawk-api`: `API_KEY=$HAWK_API_KEY hawk …` is now the documented answer for any non-interactive session (CI, containers, headless agents), not "CI/CD only"; "re-run `hawk init --browser` on a 401" applies to interactive sessions only. Steps that need a person (`hawk perch onboard` via Chrome, the pre-scan confirmation) are marked interactive-only with a one-line headless alternative.
-- `stackhawk-optimize`: the GraphQL mapping no longer suggests `app.autoPolicy: true` (it narrows the plugin set and is not a `stackhawk.yml` section on current hawk); keep the broad GraphQL preset for the first scan. Added the hand-built policy traps to the plugin-editing guidance.
+- `stackhawk-optimize`: the GraphQL mapping no longer suggests `app.autoPolicy: true` (it narrows the plugin set; leave it unset for the first broad scan); keep the broad GraphQL preset for the first scan. Added the hand-built policy traps to the plugin-editing guidance.
 - Skills now drive the combined `hawk` binary (`hawk op …`); the `api` skill's raw-REST fallback was removed.
 - `skill-authoring` moved from `plugins/skill-authoring/` to `.claude/skills/skill-authoring/` (maintainer skill, not a marketplace plugin)
 - `.gitignore` updated: `.claude/skills/` is now tracked so contributor skills are version-controlled

@@ -137,6 +137,8 @@ hawk:
 app:
   waitForAppTarget:
     path: <fast-static-route>     # e.g. /  — the liveness probe hits this; keep it off the slow endpoint
+    waitTimeoutMillis: 60000      # required alongside path; hawk validate config rejects path alone
+    pollDelay: 1000               # required; minimum 50
 ```
 
 Confirm the fields with `hawk config show hawk.scan.crashDetection --text` (hawk 6.3.0 lists only
