@@ -144,7 +144,8 @@ Code exploration sometimes can't account for the whole URL space:
 When code can't answer a surface question, ask the user directly — for the missing service's
 repo, the gateway's route table, or the runtime detail that would resolve it. Don't guess a
 plausible-looking answer and don't stall the whole discovery pass waiting on one open
-question if other surfaces are ready to configure.
+question if other surfaces are ready to configure. In a headless session there is no one to
+ask: state the assumption you are proceeding on as a `stackhawk.yml` comment and continue.
 
 Once the user answers, that answer has nowhere else to live — there is no plan file to record
 it in. Persist it as a comment next to the relevant `stackhawk.yml` block (e.g. `# gateway
@@ -188,8 +189,10 @@ For each surface:
    hawk validate auth <file>      # when authentication: is present
    ```
 
-**Before the first scan of a fresh repo, present a one-screen summary and get the user's
-confirmation.** The summary should state, per surface: the surface type, which config file
+**Before the first scan of a fresh repo, present a one-screen summary and — in an interactive
+session — get the user's confirmation.** Headless (no one to answer): print the same summary,
+proceed, and record each assumption as a comment in `stackhawk.yml` (see "Ask, don't guess").
+The summary should state, per surface: the surface type, which config file
 covers it, the scan order and why, the auth approach, the expected route count with how it
 was derived (the same grep/spec-count evidence gathered above), and — for any REST surface
 with a wired spec — the result of the mandatory resolve-check (e.g. "3/3 sample spec paths

@@ -22,7 +22,7 @@ Claude will automatically:
 - A [StackHawk account](https://app.stackhawk.com) (free tier available)
 - A StackHawk API key — generate one at **Settings → API Keys**
 - HawkScan CLI (`hawk`) or Docker installed
-- `hawk init --browser` run to store credentials locally (for local/agentic use); or `HAWK_API_KEY` set as a CI secret (for pipelines)
+- `hawk init --browser` run to store credentials locally (interactive use); or `HAWK_API_KEY` set for any non-interactive session (CI, containers, headless agents)
 
 ## Installation
 
@@ -60,7 +60,7 @@ You can also trigger it explicitly:
 
 ## Security Note
 
-Never hardcode credentials in `stackhawk.yml`. For local use, `hawk init` stores your API key in `~/.hawk/hawk.properties`. For CI/CD, set `HAWK_API_KEY` as a secret — never inline key values in config files or scripts.
+Never hardcode credentials in `stackhawk.yml`. For interactive local use, `hawk init` stores your API key in `~/.hawk/hawk.properties`. For any non-interactive session (CI, containers, headless agents), set `HAWK_API_KEY` as a secret — never inline key values in config files or scripts.
 
 ## Resources
 

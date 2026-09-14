@@ -3,6 +3,7 @@
 ## Contents
 - [Phase 1c: Configure auth with hawk config show](#phase-1c-configure-auth-with-hawk-config-show)
 - [Phase 1c.6: Seed backend when auth fails on an empty datastore](#phase-1c6-seed-backend-when-auth-fails-on-an-empty-datastore)
+- [Profiles and scan user](#profiles-and-scan-user)
 
 ---
 
@@ -86,3 +87,22 @@ If the recipe itself is wrong or ambiguous instead, use **Phase 1c.5** (return t
 - **Cross-repo:** for a gateway / multi-service app the credential or entity usually lives in an **upstream** service's datastore (e.g. the auth service), not the target repo. Run the seed against that upstream repo; seeding the gateway repo alone finds no local storage and produces a no-op.
 
 After seeding, re-run `hawk validate auth stackhawk.yml` and continue.
+
+---
+
+## Profiles and scan user
+
+**The trap: `profiles` without `--profile-scan-mode=primary-full`.** `app.authentication.profiles` (`hawk config show app.authentication.profiles --text`) declares several users for multi-role authorization testing (BOLA/BFLA). With 2+ profiles present, `--profile-scan-mode` decides how coverage is spread, and its default is `business-logic`: every profile is scanned with the hidden `BUSINESS_LOGIC` preset only — Cross Platform BOLA and BFLA, 2 plugins — so the scan finishes in about 30 seconds with **0 general findings** (no XSS, no injection, no headers). Being handed several test accounts is the usual reason to write a `profiles` block "to cover all users", and the result is exactly that dead scan. The same happens on any `hawk` build that predates the flag (`hawk scan --help | grep -q -- --profile-scan-mode` fails), because no mode can be passed at all.
+
+**The fix is one of two shapes:**
+
+- **One user** (the default). Configure a single user with the recipes above. Extra test accounts by themselves are not a reason to write `profiles`.
+- **Profiles plus the mode**, when BOLA/BFLA coverage is the goal and the installed hawk supports the flag: write 2+ profiles (`hawk config show app.authentication.profiles --text`, one named entry per role, each with its own credentials) and run every scan and rescan with `--profile-scan-mode=primary-full --full-scan-profile=<privileged-profile>` — full policy on the privileged profile, authorization testing on the rest. A build without `--profile-scan-mode` must not use profiles; scan as one user instead. A dedicated multi-role reference is arriving separately.
+
+A `profiles` scan that returns 0 findings in under a minute is this trap, not a clean app: either add the mode or remove the block and scan as one user.
+
+**Scan as a non-privileged user, or pin a token.** The scanner exercises write endpoints (PUT/PATCH/DELETE) with mutated payloads. Scanned as an admin, an unauthenticated or self-targeting write can change the scan's own login mid-scan — e.g. an unauthenticated `PATCH /api/users/<id>` that overwrites the admin's email, after which `hawk validate auth` and every later scan return 401. Prefer:
+
+- a dedicated **non-privileged test user** whose own record the scan cannot reach, or
+- `app.authentication.external` with a **pre-issued token** (login is never replayed, so a mutated password or email does not break the scan); and
+- if a scan did break the user, re-seed it (`stackhawk-data-seed`, Phase 1c.6) instead of scanning on as admin.

@@ -1,0 +1,108 @@
+---
+description: >
+  HawkScan input-vectors reference: active injection rules need a reachable sink; HAR seed (hawk.spider.har) for XML and other non-JSON request bodies because the OpenAPI request builder emits JSON for application/xml operations and blocks XXE; app.openApiConf.customVariables scoped per resource with path regex and the field-name collision caveat.
+globs:
+  - "**/stackhawk.yml"
+  - "**/stackhawk-*.yml"
+alwaysApply: false
+---
+# Input Vectors Reference
+
+Active injection rules fire only on requests that carry an input **and** reach a live sink. A
+spec that renders the wrong request body, a path parameter with no real id behind it, or a
+GET-only crawl leaves whole rule families with nothing to test — and the scan reports nothing,
+which reads as "clean". This file gives the three recipes that fix that. Field syntax is
+canonical in `hawk config show <field-path> --text`; the YAML below shows shape only, with
+placeholders you must replace.
+
+## Contents
+- [Rule: active injection needs a reachable sink](#rule-active-injection-needs-a-reachable-sink)
+- [HAR seed for XML and other non-JSON request bodies](#har-seed-for-xml-and-other-non-json-request-bodies)
+- [customVariables for per-resource values](#customvariables-for-per-resource-values)
+
+---
+
+## Rule: active injection needs a reachable sink
+
+An active rule (SQL injection, XSS, XXE, XPath, command injection) injects into a parameter and
+watches the response. That only works when:
+
+1. the request **reaches the handler** — a real id or parent resource exists (`GET /p/<id>` with
+   an id that is in the database, not a generated one), and
+2. the request **carries the parameter in the shape the handler parses** — JSON for a JSON
+   handler, XML for an XML handler, a query string for a query handler.
+
+If either fails, the handler 404s or 500s *before* it parses input, and the rule reports
+nothing. That is an unexercised vector, not a clean result. Seed data (the `stackhawk-data-seed`
+skill, SKILL.md Phase 1c.6) fixes an empty database; the two recipes below fix the body shape
+and the id when the spec cannot express them.
+
+## HAR seed for XML and other non-JSON request bodies
+
+**Why.** The OpenAPI request builder emits a **JSON** body for operations declared as
+`application/xml`. The XML handler 500s on it, so the XXE rule (and every other rule on that
+operation) never runs. With a HAR that carries a real `application/xml` POST, the XXE rule runs.
+
+**Recipe.** Record one real request per non-JSON operation — a curl against the running app, a
+browser session, or `hawk perch browser` — and import the HAR **alongside** the spec. HAR
+supplements `openApiConf`; it does not replace it.
+
+```yaml
+hawk:
+  spider:
+    har:
+      file:
+        paths:
+          - <path/to/recorded.har>   # e.g. hawk/xml-ops.har, recorded against the running app
+      # replaceHost: <recorded-host> # only if the HAR was captured against a host other than app.host
+```
+
+A directory works too: `hawk.spider.har.dir.path: <dir>` loads every `.har` in alphanumeric
+order. Confirm the shape with `hawk config show hawk.spider.har --text`.
+
+A minimal hand-written HAR (one entry; the `postData.mimeType` and `text` must be real):
+
+```json
+{"log":{"version":"1.2","creator":{"name":"hand","version":"1"},"entries":[{
+  "request":{"method":"POST","url":"<app.host><xml-path>","httpVersion":"HTTP/1.1",
+    "headers":[{"name":"Content-Type","value":"application/xml"}],"queryString":[],"cookies":[],
+    "postData":{"mimeType":"application/xml","text":"<?xml version=\"1.0\"?><order><id>1</id></order>"},
+    "headersSize":-1,"bodySize":-1},
+  "response":{"status":200,"statusText":"OK","httpVersion":"HTTP/1.1","headers":[],"cookies":[],
+    "content":{"size":0,"mimeType":"application/xml"},"redirectURL":"","headersSize":-1,"bodySize":-1},
+  "cache":{},"timings":{"send":0,"wait":0,"receive":0}}]}}
+```
+
+The same recipe covers form-encoded, multipart, SOAP, and any other body the spec builder does
+not render faithfully.
+
+## customVariables for per-resource values
+
+**Why.** Spec path parameters get generated values by default. `GET /p/{id}` with a random id
+404s, so the reflected-XSS rule on its `?q=` parameter never reaches the page; a stored-XSS
+rule on `POST /reviews` needs a body whose product reference exists so the review is stored and
+later rendered. `customVariables` pins real values.
+
+**Collision caveat.** Scope each variable with `path`. A variable keyed by `field` alone applies
+to *every* operation that has a parameter of that name — `id` for products also becomes `id`
+for users, orders, and reviews, and the wrong id 404s all of them.
+
+```yaml
+app:
+  openApiConf:
+    filePath: <spec-file>
+    customVariables:
+      - field: <param-name>              # e.g. id
+        path: <path-regex>               # e.g. ^/p/.*  — scope to one resource
+        values: ["<known-good-value>"]   # e.g. "1" — an id that exists in the seeded database
+        # requestMethods: [GET]          # optional; by default all methods except DELETE receive values
+      - field: <param-name>              # same field name, another resource → its own path regex
+        path: <other-path-regex>
+        values: ["<known-good-value>"]
+```
+
+Fields (`hawk config show app.openApiConf.customVariables --text`): `field`, `values`, `path`
+(a regex on the request path), `requestMethods`. `app.openApiConf.includeAllMethods` /
+`includedMethods` control which methods receive injected values — DELETE is skipped by default
+so the scan does not delete its own seed data. GraphQL and gRPC have their own `customVariables`
+under `app.graphqlConf` and `app.grpcConf`.

@@ -20,7 +20,7 @@ Say: `StackHawk | Implementation complete - running a security scan against the 
 
 Verify the App and Env exist via Step 1c checks 5–6 (prevents duplicate App creation on every autonomous run).
 
-If no `stackhawk.yml` exists: generate one (Step 2a) and **immediately run Phase 0** (repo linking, agent tagging, tech flag detection).
+If no `stackhawk.yml` exists: generate one (Step 2a) and **immediately run Phase 0** (repo linking, agent tagging, scan policy setup via optimize — Phase 0c runs on every fresh config).
 
 If `stackhawk.yml` exists: ensure it has commit SHA tags **top-level** (not under `app:`) and the `_STACKHAWK_AGENT` tag:
 
