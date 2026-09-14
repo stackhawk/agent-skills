@@ -17,7 +17,7 @@ The skill uses the combined `hawk` CLI (`hawk op …`) — most operations colla
 - A [StackHawk account](https://app.stackhawk.com) (free tier available)
 - A StackHawk API key — generate one at **Settings → API Keys**
 - The `hawk` CLI installed and initialized via `hawk init --browser` (stores credentials in `~/.hawk/hawk.properties`)
-- For CI/CD pipelines: `HAWK_API_KEY` set as an environment variable
+- For any non-interactive session (CI, containers, headless agents): `HAWK_API_KEY` set as an environment variable
 - `jq` installed (used for JSON processing in recipes)
 
 ## Installation

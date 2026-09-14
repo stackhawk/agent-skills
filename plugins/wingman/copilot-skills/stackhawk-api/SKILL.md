@@ -44,7 +44,7 @@ Before making any calls, check what's available:
    - not installed → instruct the user to install the `hawk` CLI (docs:
      [docs.stackhawk.com](https://docs.stackhawk.com)) and stop; do **not** fall back to curl.
 
-2. **Is `hawk op` authenticated?** For local/agentic use, `hawk init --browser` stores
+2. **Is `hawk op` authenticated?** For interactive local use, `hawk init --browser` stores
    credentials in `~/.hawk/hawk.properties` — no env var needed for interactive
    sessions. Verify:
    ```bash
