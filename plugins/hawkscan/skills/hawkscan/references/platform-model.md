@@ -244,7 +244,8 @@ concerns.
 ### Setting tech flags via `hawk op`
 
 Tech flags are set via the `hawk op` commands during Phase 0 of the scan workflow
-(app onboarding). The process is: disable-all first (to clear the platform's
+(whenever a `stackhawk.yml` is created), as the fallback when the optimize skill cannot
+create a scan policy. The process is: disable-all first (to clear the platform's
 all-true default), then enable only what codebase evidence supports.
 
 ```bash
@@ -258,7 +259,7 @@ hawk op app tech-flags disable-all --app <APP_NAME> --yes
 hawk op app tech-flags set --app <APP_NAME> Language.Java=true Language.Java.Spring=true
 ```
 
-Phase 0 runs once at app onboarding, not on every scan.
+Phase 0 runs whenever a `stackhawk.yml` is created (new app or reused app), not on every scan.
 
 → Full detection heuristics, matching algorithm, and edge cases: see `references/tech-flags.md` via SKILL.md Phase 0c.
 

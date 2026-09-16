@@ -43,7 +43,7 @@ export _STACKHAWK_SKILL=optimize
 ## Workflow
 
 Two modes. **Setup** configures scan policy + tech flags (no scan) and is what hawkscan
-onboarding invokes; it is also re-runnable anytime via `/optimize`. **Refine** runs a trial
+Phase 0c invokes on every fresh `stackhawk.yml`; it is also re-runnable anytime via `/optimize`. **Refine** runs a trial
 scan and tunes from per-path metrics; it runs only via `/optimize` or when a scan is slow.
 
 0. **Preflight** (above).

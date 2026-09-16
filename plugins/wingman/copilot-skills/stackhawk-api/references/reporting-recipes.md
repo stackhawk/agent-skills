@@ -1,10 +1,10 @@
 # StackHawk API Reporting Recipes
 
 Pre-built compositions for common security reporting questions using `hawk op`.
-Run `hawk op status` first to confirm authentication; set `HAWK_API_KEY` for
-CI/CD pipelines.
+Run `hawk op status` first to confirm authentication; set `HAWK_API_KEY` in any
+non-interactive session (CI, containers, headless agents).
 
-**Setup (run once per shell session for CI/CD):**
+**Setup (run once per shell session when non-interactive):**
 
 ```bash
 export HAWK_API_KEY="hawk.xxxxxxxxxxxx"   # from app.stackhawk.com → Settings → API Keys
