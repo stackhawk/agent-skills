@@ -64,6 +64,7 @@
       "type": "output_contains",
       "signals": [
         "hawkscan skill",
+        "`hawkscan` skill",
         "working local scan",
         "run the hawkscan",
         "invoke the hawkscan"
