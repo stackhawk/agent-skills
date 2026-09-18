@@ -116,3 +116,16 @@ def test_hawkscan_ci_agy_declared_no_wins_over_prose_paths():
     # declared NO wins).
     decline = ParsedRun(output_text="none: NO\nThis is a local scan; you'd normally edit .github/workflows/ci.yml.")
     assert agy.detect_trigger(decline, "hawkscan-ci") is False
+
+
+def test_hawkscan_ci_handoff_only_output_counts_as_trigger():
+    """Step 0 hand-off: the skill's verbatim message may be the entire output
+    (no decision line) and its probe command may be the only bash. Both are the
+    skill running, not a miss."""
+    a = get_adapter("claude-code")
+    narrated = ParsedRun(output_text="I need a working local scan first. Run the `hawkscan` skill "
+                                     "(or invoke it explicitly) to generate and validate `stackhawk.yml`, "
+                                     "then come back here.")
+    assert a.detect_trigger(narrated, "hawkscan-ci") is True
+    probed = ParsedRun(bash_commands=['test -f stackhawk.yml || echo "MISSING_CONFIG"'], output_text="")
+    assert a.detect_trigger(probed, "hawkscan-ci") is True
