@@ -80,7 +80,10 @@
       "anti_patterns": [
         "stackhawk/hawkscan-action",
         "stackhawk/hawkscan:latest",
-        "hawk scan"
+        "run: hawk scan",
+        "- hawk scan",
+        "hawk scan stackhawk.yml",
+        "hawk scan --"
       ],
       "applies_to": ["hci-14"],
       "severity": "blocking",

@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - `hawkscan` `cli-reference.md`: the `--hawk-mem` example said `2g` while claiming to "increase" memory from a 9g default.
+- `hawkscan` preflight: the credential check is now a runnable line (`HAWK_API_KEY` set, or `~/.hawk/hawk.properties` from `hawk init`) next to the version check. After the headless-auth rewording, agents no longer named `hawk init`/`hawk.properties`, and the claude-code evals showed the `step1_credentials_verified` warning failing on 12/12 sonnet trigger prompts (baseline v2.5.1: 1/12) because no credential verification appeared in the trace at all. The eval check's signals now also accept `HAWK_API_KEY` / `API_KEY=`.
 
 ### Changed
 - `hawkscan` Phase 0c now runs optimize Setup on **every fresh `stackhawk.yml`**, not only on first app onboarding — reused apps skipped policy setup entirely and every operator hand-built a policy. `optimize` and `platform-model.md` wording updated to match.
