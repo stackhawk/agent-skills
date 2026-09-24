@@ -54,15 +54,17 @@
     {
       "id": "step1_credentials_verified",
       "phase": "step_1",
-      "description": "Agent verifies hawk credentials exist (~/.hawk/hawk.properties) or runs hawk init before scanning.",
+      "description": "Agent verifies hawk credentials exist before scanning: HAWK_API_KEY set (non-interactive sessions), or ~/.hawk/hawk.properties written by hawk init (interactive).",
       "type": "command_or_file_check",
       "signals": [
+        "HAWK_API_KEY",
+        "API_KEY=",
         "hawk init",
         "hawk.properties",
         "~/.hawk/"
       ],
       "severity": "warning",
-      "failure_guidance": "Scanning without credentials fails with 401. Better to verify credentials early and fail fast."
+      "failure_guidance": "Scanning without credentials fails with 401. Verify HAWK_API_KEY (headless) or hawk.properties (interactive) early and fail fast."
     },
     {
       "id": "step1_app_running_confirmed",

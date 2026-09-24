@@ -1,6 +1,6 @@
 ---
 name: hawkscan-ci
-version: 2.6.0
+version: 2.6.1
 description: >
   Use when the user wants to WIRE HawkScan into a CI/CD pipeline config
   file — triggers on "set up hawkscan in CI", "add stackhawk to my
@@ -49,7 +49,9 @@ still a placeholder (`${APP_ID}` with no real value, or literal
 > invoke it explicitly) to generate and validate `stackhawk.yml`, then
 > come back here."
 
-Stop. Do not proceed.
+Stop. Do not proceed. That message is the entire output: do not preview
+the pipeline (no action names, images, secrets, triggers, or workflow
+snippets) — the provider and shape are decided only once `stackhawk.yml` validates.
 
 ---
 

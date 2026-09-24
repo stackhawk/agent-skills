@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 2.6.0
+version: 2.6.1
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Performs
@@ -34,12 +34,12 @@ This skill requires **hawk v6.0.0 or newer**. Verify:
 ```bash
 hawk version
 hawk config --help >/dev/null 2>&1 || echo "MISSING: hawk config — upgrade hawk to v6.0.0+"
+[ -n "${HAWK_API_KEY:-}" ] || [ -f ~/.hawk/hawk.properties ] || echo "MISSING: credentials — set HAWK_API_KEY (headless) or run hawk init --browser (interactive)"
 hawk skills status
 ```
 
-If hawk is older than `6.0.0` or `hawk config --help` fails, stop and tell the user to
-upgrade before proceeding. Do not inline auth recipes from memory — they live in
-`hawk config show` and are stale by design when hardcoded.
+If hawk is older than `6.0.0` or `hawk config --help` fails, stop and tell the user to upgrade first.
+Do not inline auth recipes from memory — they live in `hawk config show` and are stale by design when hardcoded.
 
 **`hawk skills status`** reports whether the installed StackHawk agent skills are current.
 If it lists anything out of date, surface the exact upgrade command it prints (e.g.
@@ -186,9 +186,9 @@ strategy, frontend-vs-backend scenarios, and config templates:
 
 1. **App running?** HawkScan requires a live target. Start it first if not running.
 2. **`stackhawk.yml` present?** If missing → Step 2a (generate). If present → Step 2b (tune).
-3. **Credentials?** Any **non-interactive session** (CI, container, headless agent): set `HAWK_API_KEY`
-   and prefix every invocation with `API_KEY=$HAWK_API_KEY hawk <cmd>` — no `hawk init`, no browser;
-   a 401/403 means the key is wrong or missing. Interactive only: `hawk init --browser` (re-run it on a later 401/403).
+3. **Credentials?** The preflight line verifies them (`HAWK_API_KEY`, or `~/.hawk/hawk.properties` from `hawk init`).
+   Any **non-interactive session** (CI, container, headless agent): set `HAWK_API_KEY` and prefix every invocation
+   with `API_KEY=$HAWK_API_KEY hawk <cmd>` — no `hawk init`, no browser; 401/403 = key wrong or missing. Interactive only: `hawk init --browser`.
 4. **Runtime?** Check `which hawk`. If found: use CLI. If not: check `docker --version`.
    If both absent: see `references/installation.md`.
 5. **App exists?** Run `hawk op app list --format json`. Match by name (normalized: lowercased,

@@ -88,6 +88,9 @@ INVOCATION_SIGNALS: dict[str, list[str]] = {
         "hawkscan-ci — yes", "hawkscan-ci - yes",
         "set up hawkscan in ci", "wire hawkscan into", "stackhawk/hawkscan-action",
         "add stackhawk to my pipeline", "hawkscan in your pipeline",
+        # Step 0 hand-off: the skill's own verbatim message when stackhawk.yml is
+        # missing. A correct hand-off may be the ENTIRE output (no decision line).
+        "i need a working local scan first",
     ],
 }
 

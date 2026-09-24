@@ -108,6 +108,36 @@ If `should_trigger=false` and the skill correctly did not fire, no process check
 - `detect_trigger(run, skill)` — checks CLI command signals and invocation-phrase signals
 - `launch(prompt, skill, run_id, ...)` — spawns `claude -p` in a temp directory, captures stdout in-memory, and returns a `ParsedRun`
 
+## Running locally the way CI does
+
+The `eval-claude-code` job in `.github/workflows/skill-evals.yml` runs on a fresh
+runner: an empty `~/.claude`, API-key auth, plugins loaded per cell via `--plugin-dir`,
+no `--bare`. Reproduce that on a workstation with a throwaway config directory so your
+own plugins, hooks, and login do not shape the run:
+
+```bash
+export ANTHROPIC_API_KEY=...                 # a dedicated Console workspace key, not your login
+export CLAUDE_CONFIG_DIR="$(mktemp -d)"      # empty = same as a fresh CI runner
+export HAWK_FORMAT=json                      # HAWK_API_KEY as in CI
+claude auth status                           # expect authMethod=api_key, configDirectory=$CLAUDE_CONFIG_DIR
+uv run evals --harness claude-code --skill hawkscan --model claude-sonnet-4-6 --max-budget 0.15 --rubric
+```
+
+Notes from a full local pass (2026-09-17):
+
+- `results/<skill>/` is per skill, not per model — copy it aside before the next model.
+- The four hawkscan `target_repo` cells are capped at 2 USD each (`DISCOVERY_MAX_BUDGET_USD`),
+  ignore `--max-budget`, and clone through your git credential helper when
+  `RESEARCH_REPO_TOKEN` is unset; in CI they need the research-org token.
+- Recorded `cost_usd` for all five skills (87 prompts): about 7 USD on sonnet-4-6 and
+  3.3 USD on haiku-4-5 with the discovery cells running; the v2.5.1 baseline recorded
+  11.3 USD for opus-4-7 without them. The sonnet-5 discovery judge calls are not recorded.
+- One prompt takes 1–2 minutes, so a five-skill pass is roughly two hours per model.
+- To diff against the released baseline like the `report` job:
+  `gh run download <capture-baseline run id> -p 'baseline-*' -D baseline` then
+  `uv run report --pr --results-dir <your results> --baseline-dir baseline --out digest.md`.
+  The ±3 score band hides warning-level regressions; also compare per-check failure counts.
+
 ## CI usage
 
 ```yaml

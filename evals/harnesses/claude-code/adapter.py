@@ -39,7 +39,9 @@ CLI_SIGNALS = {
     # it WRITES (stackhawk/hawkscan-action, the docker image) are narrated output, so
     # they live in INVOCATION_SIGNALS, not here.
     "hawkscan-ci": [".github/workflows", ".gitlab-ci.yml", "Jenkinsfile",
-                    ".circleci/config.yml"],
+                    ".circleci/config.yml",
+                    # Step 0 hand-off probe (`test -f stackhawk.yml || echo "MISSING_CONFIG"`)
+                    "MISSING_CONFIG"],
 }
 
 INVOCATION_SIGNALS = {
@@ -82,6 +84,9 @@ INVOCATION_SIGNALS = {
         "hawkscan-ci — yes", "hawkscan-ci - yes",
         "set up hawkscan in ci", "wire hawkscan into", "stackhawk/hawkscan-action",
         "add stackhawk to my pipeline", "hawkscan in your pipeline",
+        # Step 0 hand-off: the skill's own verbatim message when stackhawk.yml is
+        # missing. A correct hand-off may be the ENTIRE output (no decision line).
+        "i need a working local scan first",
     ],
 }
 
