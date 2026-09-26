@@ -94,6 +94,14 @@ This script:
 7. Pushes the tag to origin
 8. Creates a GitHub Release with the changelog section as the release notes
 
+### Step 5: Propose the Marketplace Sync
+
+Run the release workflow from the new tag. It is manually dispatched, so pushing the tag alone does not start it. The workflow accepts the GitHub Release created in Step 4, re-validates the tag, and opens a marketplace sync PR for review.
+
+```bash
+gh workflow run release.yml --ref "v$(cat VERSION)"
+```
+
 ## Pre-Release Versions
 
 For pre-release versions (beta, release candidate), use semantic versioning with a pre-release suffix:
@@ -144,11 +152,11 @@ Consumers should clear their cache after pulling a new version. This is document
 
 ## What the Release Workflow Does
 
-The GitHub Actions workflow (`.github/workflows/release.yml`) runs automatically when a `v*.*.*` tag is pushed:
+The GitHub Actions workflow (`.github/workflows/release.yml`) runs when manually dispatched from an existing release tag:
 
 ### Pre-Release Validation
 
-When triggered by a tag push, the workflow:
+When dispatched from a tag, the workflow:
 
 1. **Extracts the version from the tag** — e.g., `v1.5.5` → `1.5.5`
 2. **Validates VERSION file matches the tag** — Ensures `VERSION` file contains exactly the tag version
@@ -167,10 +175,10 @@ When triggered by a tag push, the workflow:
 
 If all validation passes, the workflow:
 
-- **Creates a GitHub Release** with the tag as title and changelog section as body
-- **Makes the release available** to marketplace consumers and integrations
+- **Creates a GitHub Release** with the tag as title and changelog section as body if the standalone release script has not already created it
+- **Makes the tag and release available** for the marketplace sync; marketplace consumers receive the new version after its sync PR is merged
 
-If validation fails, the workflow exits with an error and no release is created. Fix the issue locally, amend the commit, force-push if needed, and retry.
+If validation fails, the workflow exits before the marketplace sync. Resolve the tag or version mismatch before rerunning it.
 
 ## Recovering from a Bad Tag
 
@@ -202,36 +210,14 @@ bash scripts/release.sh
 
 ## Updating the Marketplace Catalog
 
-The `update-marketplace` job in `.github/workflows/release.yml` does this automatically after the GitHub Release is created. It clones [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace) and pushes one commit to `main` (`chore: pin agent-skills to vX.Y.Z and vendor skills`) containing two generated outputs:
+The `update-marketplace` job in `.github/workflows/release.yml` runs after the GitHub Release is created. It clones [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace), runs that repository's `scripts/sync-agent-skills.py` against the release tag, validates its generated layout, and opens a sync PR for review. It does not push to the marketplace's `main` branch. Merge the marketplace repository's sync-script change before the next agent-skills release.
 
-1. **Catalogs** — `scripts/generate-marketplace-catalogs.py` regenerates `.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, and `.codex-plugin/marketplace.json`, pinning every plugin source to the release tag and commit SHA. Claude Code, Codex, and Copilot plugin installs read these.
-2. **Vendored skills** — `scripts/generate-marketplace-skills.py --out-dir <marketplace checkout>` deletes and rebuilds the marketplace repo's `skills/` directory with a copy of each released public skill (`hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, `stackhawk-optimize`; `wingman` is excluded). Symlinks are dereferenced and the `name:` frontmatter is rewritten to the namespaced plugin name. The [`skills` CLI](https://github.com/vercel-labs/skills) (`npx skills add stackhawk/agent-skills-marketplace`) discovers only SKILL.md files and ignores the catalogs, so without this step it would find nothing there. `npx skills update` re-fetches the marketplace tree and re-copies changed skills, so consumers are expected to move to the next GA release; confirm this after each release (see the test plan in the introducing PR).
+The sync script owns all marketplace release outputs:
 
-The marketplace repo is therefore catalogs + vendored skills, all generated. Never edit its `skills/` directory by hand — the next release overwrites it.
+1. **Claude plugin snapshots and catalog:** It copies the released plugin folders into `plugins/` and writes `.claude-plugin/marketplace.json` with local `./plugins/<name>` sources, so directory validation can inspect each plugin.
+2. **Codex and Copilot catalogs:** It pins remote plugin sources to the same release tag and commit SHA using each tool's source schema.
+3. **Standalone skills:** It rebuilds `skills/` for the [`skills` CLI](https://github.com/vercel-labs/skills), which discovers `SKILL.md` files and ignores marketplace catalogs.
 
-To verify the vendored output before a release, run the `Marketplace Install Verify` workflow with `tool: skills-cli` (local mode generates both outputs from the latest tag and runs `npx skills add <dir> --list` against them).
+Review the generated diff in the sync PR before merging. In its checkout, run `claude plugin validate --strict .`, validate each `plugins/<name>` folder, and run `python3 -m unittest discover -s tests`. The release job runs the marketplace tests before opening the PR. The separate `Marketplace Install Verify` workflow in this repository tests pinned remote-source compatibility and standalone skill discovery from local fixtures.
 
-The rest of this section describes the manual fallback if the workflow job fails: the marketplace repository's `marketplace.json` should be updated to reference the new tag and commit SHA.
-
-Update entries in that repo's catalog with:
-
-- **`ref`** — The new tag (e.g., `v1.5.5`)
-- **`sha`** — The commit SHA of the tag (run `git rev-parse v1.5.5` to get it)
-- **`version`** — The version number (e.g., `1.5.5`)
-
-This allows marketplace consumers to discover and install the new version.
-
-### Example update:
-
-```json
-{
-  "name": "agent-skills",
-  "title": "StackHawk Agent Skills",
-  "description": "...",
-  "ref": "v1.5.5",
-  "sha": "abc1234567890def...",
-  "version": "1.5.5"
-}
-```
-
-Submit a PR to the marketplace repo with this update.
+If the workflow fails, follow the marketplace repository's README section on updating the pinned version from a tagged agent-skills checkout, then open a sync PR. Do not hand-edit generated catalogs, plugin snapshots, or standalone skills.

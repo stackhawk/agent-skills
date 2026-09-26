@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Generate the agent-skills-marketplace catalogs from this repo's local catalogs.
+"""Generate remote-source catalogs for local install verification.
 
-The marketplace repo (stackhawk/agent-skills-marketplace) holds curated,
-version-pinned catalogs that point BACK at this repo at a tagged release. The
-in-repo catalogs (.claude-plugin/marketplace.json, .codex-plugin/marketplace.json)
-use LOCAL-path plugin sources (./plugins/<name>) because the plugin dirs are
-co-located. A marketplace consumer, however, clones the marketplace repo — the
-plugins are NOT there — so each plugin source must be a REMOTE source that points
-at this repo, at a subdirectory `path`, pinned to a tag + sha.
+The published agent-skills-marketplace now vendors the released plugin folders
+and uses local Claude sources. Its own scripts/sync-agent-skills.py creates the
+release layout. This helper remains for marketplace-install-verify.yml, which
+tests pinned remote-source installs from a disposable local catalog. It does not
+write the published marketplace.
 
 Three flavors, three remote-source schemas, verified empirically (no-SSH-keys
 Docker containers, current CLIs) because each tool's plugin-install code path
@@ -42,14 +40,10 @@ marketplace.json, .plugin/marketplace.json, .github/plugin/marketplace.json,
 while Claude Code (which only ever reads .claude-plugin/marketplace.json) is
 unaffected by the new file's existence.
 
-The original hand-maintained marketplace catalogs omitted `path` entirely, so every
-tool resolved this repo's ROOT and failed to find the plugins (which live under
-plugins/<name>). This generator is the single source of truth that prevents that.
-
-The release publisher (release.yml `update-marketplace`) runs this against the
-release tag and pushes the output into the marketplace repo. It is also exercised
-by marketplace-install-verify.yml, which installs the generated catalogs through
-each tool to prove they resolve.
+The original hand-maintained remote catalogs omitted `path` entirely, so every
+tool resolved this repo's root instead of plugins/<name>. This test fixture keeps
+the remote-source compatibility checks for Codex and Copilot, and exercises the
+Claude git-subdir install path separately from the published local-path catalog.
 
 Usage:
   generate-marketplace-catalogs.py --tag v1.13.0 --sha <40-char-sha> --out-dir DIR
@@ -70,7 +64,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # intentionally not a separate output here — it doesn't go through this
 # marketplace-catalog model at all.
 # Per-flavor IO. `read` is the local in-repo catalog we pull plugin metadata from;
-# `writes` are the catalog paths to emit in the marketplace repo. Codex's CURRENT CLI
+# `writes` are catalog paths in the local verification fixture. Codex's CURRENT CLI
 # reads .agents/plugins/marketplace.json (verified against the real #1 codex
 # marketplace); the legacy .codex-plugin/marketplace.json is also emitted for older
 # CLIs. Copilot reads its own catalog (see module docstring) built from the same
@@ -85,7 +79,8 @@ FLAVORS = (
 # Default curation: the set currently published to the marketplace. Keeping this
 # explicit avoids silently promoting in-development plugins to the public catalog.
 # NOTE: every plugin documented as marketplace-installable in README.md must be
-# listed here, or `release.yml`'s update-marketplace job will silently omit it.
+# listed here for the local install verification workflow. The marketplace repo
+# has its own curated plugin mapping in sources.json for published releases.
 DEFAULT_PLUGINS = [
     "hawkscan",
     "stackhawk-api",

@@ -131,6 +131,10 @@ jobs:
       - name: Create GitHub Release
         if: inputs.dry_run != true
         run: |
+          if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            echo "GitHub Release already exists for ${{ steps.version.outputs.tag }}"
+            exit 0
+          fi
           gh release create "${{ steps.version.outputs.tag }}" \
             --title "${{ steps.version.outputs.tag }}" \
             --notes-file /tmp/release-notes.txt
@@ -160,7 +164,7 @@ jobs:
         run: gh workflow run capture-baseline.yml -f tag="$RELEASE_TAG"
 
   update-marketplace:
-    name: Update marketplace pin
+    name: Propose marketplace sync
     needs: release
     if: inputs.dry_run != true
     runs-on: agent-skills-amd-4cpu
@@ -179,60 +183,70 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           ref: ${{ needs.release.outputs.tag }}
+          fetch-depth: 0
 
       - name: Resolve commit SHA
         id: sha
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Clone agent-skills-marketplace
-        run: |
-          GH_PAT=$(aws ssm get-parameter --name TF_GITHUB_TOKEN --query 'Parameter.Value' --output text --with-decryption)
-          echo "::add-mask::${GH_PAT}"
-          git clone https://github.com/stackhawk/agent-skills-marketplace.git /tmp/marketplace
-          git -C /tmp/marketplace remote set-url origin \
-            "https://x-access-token:${GH_PAT}@github.com/stackhawk/agent-skills-marketplace.git"
+        run: git clone https://github.com/stackhawk/agent-skills-marketplace.git /tmp/marketplace
 
-      - name: Generate marketplace catalogs
-        # Single source of truth (scripts/generate-marketplace-catalogs.py): emits
-        # .claude-plugin/marketplace.json (also read by GitHub Copilot CLI),
-        # .agents/plugins/marketplace.json (current Codex CLI) and
-        # .codex-plugin/marketplace.json (legacy), translating local-path plugin
-        # sources into pinned remote sources WITH the per-tool schema + `path`.
-        # Replaces the old claude-only ref/sha rewrite, which left codex orphaned and
-        # never added `path` (so installs resolved the repo root and failed).
+      - name: Reuse or create sync branch
+        id: sync-branch
+        env:
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          branch="automation/sync-agent-skills-${TAG}"
+          if [ -n "$(git -C /tmp/marketplace ls-remote --heads origin "$branch")" ]; then
+            git -C /tmp/marketplace fetch origin "refs/heads/${branch}:refs/remotes/origin/${branch}"
+            git -C /tmp/marketplace switch -c "$branch" --track "origin/$branch"
+          else
+            git -C /tmp/marketplace switch -c "$branch"
+          fi
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Sync marketplace from release tag
+        env:
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          python3 /tmp/marketplace/scripts/sync-agent-skills.py \
+            --source-repo "$GITHUB_WORKSPACE" --tag "$TAG"
+          python3 -m unittest discover -s /tmp/marketplace/tests
+
+      - name: Open marketplace sync PR
         env:
           TAG: ${{ needs.release.outputs.tag }}
           SHA: ${{ steps.sha.outputs.sha }}
-        run: |
-          python3 scripts/generate-marketplace-catalogs.py \
-            --tag "$TAG" --sha "$SHA" --out-dir /tmp/marketplace
-
-      - name: Vendor released skills for the skills CLI
-        # The `skills` CLI (vercel-labs/skills, `npx skills add <github-repo>`) discovers
-        # only SKILL.md files and ignores marketplace.json. Without vendored skills,
-        # `npx skills add stackhawk/agent-skills-marketplace` finds nothing, and
-        # `npx skills add stackhawk/agent-skills` installs unversioned main (plus the
-        # maintainer-only .claude/skills/skill-authoring). So each release copies the
-        # released skill dirs into the marketplace repo's skills/ (symlinks dereferenced,
-        # skill names namespaced: api -> stackhawk-api, optimize -> stackhawk-optimize).
-        # `npx skills update` re-fetches the marketplace tree and moves consumers to the
-        # next GA release automatically. Plugin installs via the catalogs are unchanged.
-        run: |
-          python3 scripts/generate-marketplace-skills.py --out-dir /tmp/marketplace
-
-      - name: Commit and push
-        # One commit carries both the regenerated catalogs and the vendored skills/.
-        # `git add -A` also stages deletions from the script's rebuild of skills/.
-        env:
-          TAG: ${{ needs.release.outputs.tag }}
+          SYNC_BRANCH: ${{ steps.sync-branch.outputs.branch }}
         run: |
           cd /tmp/marketplace
           git config user.name "hawkdeploy"
           git config user.email "hawkdeploy@stackhawk.com"
           git add -A
-          if git diff --cached --quiet; then
-            echo "No changes — marketplace catalogs and vendored skills already at ${TAG}"
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: sync agent-skills ${TAG}"
+          fi
+          if git diff --quiet origin/main HEAD; then
+            echo "Marketplace already contains ${TAG}"
             exit 0
           fi
-          git commit -m "chore: pin agent-skills to ${TAG} and vendor skills"
-          git push origin HEAD:main
+          GH_PAT=$(aws ssm get-parameter --name TF_GITHUB_TOKEN --query 'Parameter.Value' --output text --with-decryption)
+          echo "::add-mask::${GH_PAT}"
+          export GH_TOKEN="$GH_PAT"
+          git remote set-url origin "https://x-access-token:${GH_PAT}@github.com/stackhawk/agent-skills-marketplace.git"
+          git push --set-upstream origin "HEAD:${SYNC_BRANCH}"
+          existing_pr=$(gh pr list --repo stackhawk/agent-skills-marketplace --state open \
+            --head "$SYNC_BRANCH" --json url --jq '.[0].url // empty')
+          if [ -n "$existing_pr" ]; then
+            echo "Marketplace sync PR already open: $existing_pr"
+            exit 0
+          fi
+          printf 'Sync the marketplace snapshots from agent-skills %s (%s).\n\n' "$TAG" "$SHA" > /tmp/marketplace-sync-pr-body.md
+          cat >> /tmp/marketplace-sync-pr-body.md <<'EOF'
+          The marketplace sync script regenerates local Claude plugin sources, pinned Codex and Copilot catalogs, and standalone skills. Review the generated diff before merging. Directory submission remains a separate manual step.
+          EOF
+          gh pr create --repo stackhawk/agent-skills-marketplace \
+            --base main --head "$SYNC_BRANCH" \
+            --title "chore: sync agent-skills ${TAG}" \
+            --body-file /tmp/marketplace-sync-pr-body.md

@@ -1,26 +1,12 @@
 #!/usr/bin/env python3
-"""Vendor the released skill directories into the agent-skills-marketplace repo.
+"""Build standalone skill copies for local marketplace install verification.
 
-The marketplace repo (stackhawk/agent-skills-marketplace) publishes plugin
-CATALOGS (marketplace.json per flavor, see generate-marketplace-catalogs.py)
-that point back at this repo at a tagged release. Claude Code, Codex, and
-Copilot all read those catalogs. The `skills` CLI (vercel-labs/skills, run as
-`npx skills add stackhawk/agent-skills-marketplace`) does NOT: it ignores
-marketplace.json entirely and discovers skills by walking the GitHub tree of the
-DEFAULT BRANCH for SKILL.md files. A catalog-only marketplace therefore looks
-empty to it.
-
-So the release publisher (release.yml `update-marketplace`) also runs this
-script, which copies each curated plugin's skill directory into
-`<out-dir>/skills/<plugin-name>/` — symlinks dereferenced, because this repo
-reaches skills through symlinks and the marketplace repo has no plugins/ tree for
-them to point at. Why vendor into the marketplace repo rather than point the CLI
-at this repo? Because the CLI tracks the default branch, so publishing only on
-release gives GA cadence (the marketplace default branch only ever holds released
-skills), whereas this repo's main holds in-development work. `npx skills update`
-re-fetches the GitHub tree and compares per-folder content hashes against the
-installed copy, so a full rebuild here (stale files removed) is what makes an
-update land exactly the released content.
+The marketplace repository now owns its published skill copies through
+scripts/sync-agent-skills.py. This helper remains for the on-demand
+marketplace-install-verify.yml workflow. The `skills` CLI ignores plugin
+catalogs and discovers SKILL.md files in the repository tree, so the workflow
+uses this helper to build the local test fixture. It copies each curated skill
+into `<out-dir>/skills/<plugin-name>/`, dereferencing this repo's symlinks.
 
 Curation is in lockstep with the catalogs: the default plugin list is
 DEFAULT_PLUGINS imported from generate-marketplace-catalogs.py, minus `wingman`.
@@ -56,11 +42,12 @@ EXCLUDED_PLUGINS = frozenset({"wingman"})
 # with their own name: keys, so we rewrite exactly one match, never globally.
 NAME_LINE = re.compile(r"^name:[ \t]*(.*)$", re.MULTILINE)
 
-README_TEXT = """# GENERATED — do not edit
+README_TEXT = """# GENERATED - do not edit
 
 Produced by `scripts/generate-marketplace-skills.py` in stackhawk/agent-skills on
-every release. Edit the source skills under `plugins/*/skills/*/` in that repo and
-cut a release; the next publish fully rebuilds this directory.
+local install verification runs. Edit the source skills under
+`plugins/*/skills/*/` in that repo. The published marketplace copies are built
+by its own `scripts/sync-agent-skills.py` from a release tag.
 
 These vendored copies exist for the `skills` CLI (`npx skills add
 stackhawk/agent-skills-marketplace`), which discovers SKILL.md files in this

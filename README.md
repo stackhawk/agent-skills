@@ -290,11 +290,11 @@ skills/                          Symlinks for Gemini/Copilot discovery
 cursor/                          Generated Cursor .mdc rules
 scripts/install.sh               Installer for Cursor and Copilot (macOS/Linux)
 scripts/install.ps1              Installer for Cursor and Copilot (Windows)
-scripts/generate-marketplace-catalogs.py   Emits the pinned marketplace catalogs at release time
-scripts/generate-marketplace-skills.py     Vendors released skills into the marketplace repo for the skills CLI
+scripts/generate-marketplace-catalogs.py   Builds local install verification catalogs
+scripts/generate-marketplace-skills.py     Builds local skills CLI verification copies
 ```
 
-Released skills are published to [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace): plugin catalogs pinned to the release tag, plus a `skills/` directory of vendored skill copies for `npx skills add`.
+Released plugins and skills are published through [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace). Its sync script copies the tagged Claude plugin folders, generates platform catalogs, and vendors standalone skills for `npx skills add`. The release workflow opens a marketplace sync PR for review.
 
 ### Platform Support
 
