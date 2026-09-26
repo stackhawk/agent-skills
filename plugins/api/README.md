@@ -24,10 +24,10 @@ The skill uses the combined `hawk` CLI (`hawk op …`) — most operations colla
 
 ```bash
 # Add the StackHawk marketplace
-/plugin marketplace add stackhawk/claude-skills
+/plugin marketplace add stackhawk/agent-skills
 
 # Install the StackHawk API skill
-/plugin install api@stackhawk
+/plugin install stackhawk-api@stackhawk
 ```
 
 ## Usage
