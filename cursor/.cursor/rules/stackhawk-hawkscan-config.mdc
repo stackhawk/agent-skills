@@ -113,7 +113,7 @@ hawk config show <field-path> --text
 
 - **Mid-string interpolation does NOT work.** `host: "https://${HOST}/api"` is a literal string. Always make the entire YAML value the variable: `host: ${FULL_HOST_URL}`.
 
-- **Don't hardcode credentials in `stackhawk.yml`.** Use env vars and reference them. `${HAWK_API_KEY}` for the platform key, app credentials via the `authentication` block (see Phase 1c in `SKILL.md`).
+- **Don't put the StackHawk platform key in `stackhawk.yml`.** The `hawk` CLI reads `HAWK_API_KEY` or its local credential file. Use separate environment variables for target-app credentials in the `authentication` block (see Phase 1c in `SKILL.md`).
 
 - **Tags live at the top level**, not under `app:`:
   ```yaml

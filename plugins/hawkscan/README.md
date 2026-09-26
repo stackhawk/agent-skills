@@ -62,6 +62,8 @@ You can also trigger it explicitly:
 
 Never hardcode credentials in `stackhawk.yml`. For interactive local use, `hawk init` stores your API key in `~/.hawk/hawk.properties`. For any non-interactive session (CI, containers, headless agents), set `HAWK_API_KEY` as a secret — never inline key values in config files or scripts.
 
+StackHawk issues this key. The `hawk` CLI or official HawkScan image uses it to authenticate with the StackHawk platform and upload scan results. The key is not sent to the application being scanned or to the CLI download and documentation sites.
+
 ## Resources
 
 - [HawkScan Docs](https://docs.stackhawk.com/hawkscan/)

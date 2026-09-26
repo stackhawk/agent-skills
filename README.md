@@ -394,11 +394,9 @@ Skill eval pass rates at the latest release, broken down by skill. Each badge is
 
 <!-- eval-badges:end -->
 
-## Claude directory submissions
+## Claude directory validation
 
-Submit each plugin folder from this repository separately. Use `stackhawk/agent-skills` as the repository and one of these plugin paths: `plugins/hawkscan`, `plugins/api`, `plugins/hawkscan-ci`, `plugins/stackhawk-data-seed`, `plugins/optimize`, or `plugins/wingman`. Each path contains its own `.claude-plugin/plugin.json`. The `agent-skills-marketplace` repository is a separate install catalog, not the source folder for these directory submissions.
-
-Before submitting a plugin, run `claude plugin validate --strict plugins/<folder>` from this repository. The directory portal also checks requirements that this local command does not, including a plugin README of at least 40 words and a license. See [Anthropic's plugin pre-submission checklist](https://claude.com/docs/plugins/pre-submission-checklist) and validate the selected folder in the portal before submission.
+This repository is the source for the plugins submitted through the versioned `stackhawk/agent-skills-marketplace` repository. Validate each source plugin folder with `claude plugin validate --strict plugins/<folder>` before releasing it to the marketplace. The directory portal also checks requirements that this local command does not, including a plugin README of at least 40 words and a license. See [Anthropic's plugin pre-submission checklist](https://claude.com/docs/plugins/pre-submission-checklist) and validate the released marketplace copy in the portal before submission.
 
 ## Contributing
 
