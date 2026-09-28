@@ -24,10 +24,10 @@ The skill uses the combined `hawk` CLI (`hawk op …`) — most operations colla
 
 ```bash
 # Add the StackHawk marketplace
-/plugin marketplace add stackhawk/claude-skills
+/plugin marketplace add stackhawk/agent-skills
 
 # Install the StackHawk API skill
-/plugin install api@stackhawk
+/plugin install stackhawk-api@stackhawk
 ```
 
 ## Usage
@@ -53,6 +53,8 @@ Once installed, Claude will use the StackHawk API skill when you ask questions l
 ## Security Note
 
 Never hardcode your API key. For interactive local use, `hawk init` stores credentials locally. For any non-interactive session (CI, containers, headless agents), set `HAWK_API_KEY` as a secret — never inline key values in scripts or configs.
+
+StackHawk issues this key. The `hawk op` CLI uses it to authenticate with the StackHawk platform API. The plugin does not send the key to documentation or CLI download URLs.
 
 ## Resources
 

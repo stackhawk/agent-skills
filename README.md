@@ -290,11 +290,11 @@ skills/                          Symlinks for Gemini/Copilot discovery
 cursor/                          Generated Cursor .mdc rules
 scripts/install.sh               Installer for Cursor and Copilot (macOS/Linux)
 scripts/install.ps1              Installer for Cursor and Copilot (Windows)
-scripts/generate-marketplace-catalogs.py   Emits the pinned marketplace catalogs at release time
-scripts/generate-marketplace-skills.py     Vendors released skills into the marketplace repo for the skills CLI
+scripts/generate-marketplace-catalogs.py   Builds local install verification catalogs
+scripts/generate-marketplace-skills.py     Builds local skills CLI verification copies
 ```
 
-Released skills are published to [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace): plugin catalogs pinned to the release tag, plus a `skills/` directory of vendored skill copies for `npx skills add`.
+Released plugins and skills are published through [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace). Its sync script copies the tagged Claude plugin folders, generates platform catalogs, and vendors standalone skills for `npx skills add`. The release workflow opens a marketplace sync PR for review.
 
 ### Platform Support
 
@@ -393,6 +393,10 @@ Skill eval pass rates at the latest release, broken down by skill. Each badge is
 [![hawkscan-ci · cursor · default](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fstackhawk%2Fagent-skills%2Fbadges%2Fhawkscan-ci%2Fcursor%2Fdefault.json)](https://github.com/stackhawk/agent-skills/actions/workflows/capture-baseline.yml)  
 
 <!-- eval-badges:end -->
+
+## Claude directory validation
+
+This repository is the source for the plugins submitted through the versioned `stackhawk/agent-skills-marketplace` repository. Validate each source plugin folder with `claude plugin validate --strict plugins/<folder>` before releasing it to the marketplace. The directory portal also checks requirements that this local command does not, including a plugin README of at least 40 words and a license. See [Anthropic's plugin pre-submission checklist](https://claude.com/docs/plugins/pre-submission-checklist) and validate the released marketplace copy in the portal before submission.
 
 ## Contributing
 
