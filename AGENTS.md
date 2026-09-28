@@ -54,7 +54,7 @@ bash scripts/generate-wingman-skills.sh
 bash scripts/test-wingman-skills.sh
 
 # Preview the released marketplace layout in a disposable marketplace checkout:
-# see agent-skills-marketplace/README.md for the sync command and validation steps.
+# see the "Updating the pinned version" section of agent-skills-marketplace/README.md.
 ```
 
 ```powershell

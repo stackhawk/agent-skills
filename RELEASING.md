@@ -210,7 +210,7 @@ bash scripts/release.sh
 
 ## Updating the Marketplace Catalog
 
-The `update-marketplace` job in `.github/workflows/release.yml` runs after the GitHub Release is created. It clones [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace), runs that repository's `scripts/sync-agent-skills.py` against the release tag, validates its generated layout, and opens a sync PR for review. It does not push to the marketplace's `main` branch. Merge the marketplace repository's sync-script change before the next agent-skills release.
+The `update-marketplace` job in `.github/workflows/release.yml` runs after the GitHub Release is created. It clones [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace), runs that repository's `scripts/sync-agent-skills.py` against the release tag, validates its generated layout, and opens a sync PR for review. It does not push to the marketplace's `main` branch. The marketplace PR that adds `scripts/sync-agent-skills.py` and its tests must merge before you dispatch the next release workflow. Until it merges, the `update-marketplace` job fails.
 
 The sync script owns all marketplace release outputs:
 
@@ -220,4 +220,4 @@ The sync script owns all marketplace release outputs:
 
 Review the generated diff in the sync PR before merging. In its checkout, run `claude plugin validate --strict .`, validate each `plugins/<name>` folder, and run `python3 -m unittest discover -s tests`. The release job runs the marketplace tests before opening the PR. The separate `Marketplace Install Verify` workflow in this repository tests pinned remote-source compatibility and standalone skill discovery from local fixtures.
 
-If the workflow fails, follow the marketplace repository's README section on updating the pinned version from a tagged agent-skills checkout, then open a sync PR. Do not hand-edit generated catalogs, plugin snapshots, or standalone skills.
+If the workflow fails, follow the [Updating the pinned version](https://github.com/stackhawk/agent-skills-marketplace#updating-the-pinned-version) section of the marketplace README from a tagged agent-skills checkout, then open a sync PR. Do not hand-edit generated catalogs, plugin snapshots, or standalone skills.
