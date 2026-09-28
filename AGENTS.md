@@ -97,7 +97,7 @@ CI (`generate-and-validate.yml`) validates version consistency on every PR. Manu
 ## Adding a New Plugin
 
 1. Create `plugins/<name>/skills/<name>/SKILL.md` with `name:`, `version:`, `description:` frontmatter
-2. Create `plugins/<name>/.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`
+2. Create `plugins/<name>/.claude-plugin/plugin.json` (with `icon.svg`) and `.codex-plugin/plugin.json`, plus `plugins/<name>/README.md`; see README "Claude directory validation"
 3. Add symlinks in `skills/`, `.opencode/skills/`, and `.cursor/skills/` (pointing into the new plugin)
 4. Add entries to `scripts/generate-cursor-rules.sh` `MAPPINGS` array (controls Cursor .mdc generation)
 5. Add all new manifests and SKILL.md to `.version-bump.json`
