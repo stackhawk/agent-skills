@@ -212,7 +212,7 @@ jobs:
         run: |
           python3 /tmp/marketplace/scripts/sync-agent-skills.py \
             --source-repo "$GITHUB_WORKSPACE" --tag "$TAG"
-          python3 -m unittest discover -s /tmp/marketplace/tests
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s /tmp/marketplace/tests
 
       - name: Open marketplace sync PR
         env:
@@ -223,7 +223,10 @@ jobs:
           cd /tmp/marketplace
           git config user.name "hawkdeploy"
           git config user.email "hawkdeploy@stackhawk.com"
-          git add -A
+          # Keep these paths in sync with install() in marketplace's sync-agent-skills.py.
+          git add -A -- plugins skills sources.json \
+            .claude-plugin/marketplace.json .github/plugin/marketplace.json \
+            .agents/plugins/marketplace.json .codex-plugin/marketplace.json
           if ! git diff --cached --quiet; then
             git commit -m "chore: sync agent-skills ${TAG}"
           fi
@@ -236,17 +239,40 @@ jobs:
           export GH_TOKEN="$GH_PAT"
           git remote set-url origin "https://x-access-token:${GH_PAT}@github.com/stackhawk/agent-skills-marketplace.git"
           git push --set-upstream origin "HEAD:${SYNC_BRANCH}"
-          existing_pr=$(gh pr list --repo stackhawk/agent-skills-marketplace --state open \
-            --head "$SYNC_BRANCH" --json url --jq '.[0].url // empty')
-          if [ -n "$existing_pr" ]; then
-            echo "Marketplace sync PR already open: $existing_pr"
-            exit 0
-          fi
-          printf 'Sync the marketplace snapshots from agent-skills %s (%s).\n\n' "$TAG" "$SHA" > /tmp/marketplace-sync-pr-body.md
-          cat >> /tmp/marketplace-sync-pr-body.md <<'EOF'
-          The marketplace sync script regenerates local Claude plugin sources, pinned Codex and Copilot catalogs, and standalone skills. Review the generated diff before merging. Directory submission remains a separate manual step.
-          EOF
-          gh pr create --repo stackhawk/agent-skills-marketplace \
-            --base main --head "$SYNC_BRANCH" \
-            --title "chore: sync agent-skills ${TAG}" \
-            --body-file /tmp/marketplace-sync-pr-body.md
+          python3 - <<'PY'
+          import json
+          import os
+          from urllib.parse import urlencode
+          from urllib.request import Request, urlopen
+
+          repo = "stackhawk/agent-skills-marketplace"
+          endpoint = f"https://api.github.com/repos/{repo}/pulls"
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+              "Content-Type": "application/json",
+              "X-GitHub-Api-Version": "2022-11-28",
+          }
+          branch = os.environ["SYNC_BRANCH"]
+          query = urlencode({"state": "open", "head": f"stackhawk:{branch}"})
+          with urlopen(Request(f"{endpoint}?{query}", headers=headers), timeout=30) as response:
+              existing_prs = json.load(response)
+          if existing_prs:
+              print(f"Marketplace sync PR already open: {existing_prs[0]['html_url']}")
+          else:
+              tag = os.environ["TAG"]
+              sha = os.environ["SHA"]
+              body = (
+                  f"Sync the marketplace snapshots from agent-skills {tag} ({sha}).\n\n"
+                  "The marketplace sync script regenerates local Claude plugin sources, "
+                  "pinned Codex and Copilot catalogs, and standalone skills. Review the "
+                  "generated diff before merging. Directory submission remains a separate "
+                  "manual step.\n"
+              )
+              payload = {"base": "main", "head": branch,
+                         "title": f"chore: sync agent-skills {tag}", "body": body}
+              request = Request(endpoint, data=json.dumps(payload).encode(),
+                                headers=headers, method="POST")
+              with urlopen(request, timeout=30) as response:
+                  print(json.load(response)["html_url"])
+          PY
