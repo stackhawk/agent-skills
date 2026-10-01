@@ -31,21 +31,24 @@ export BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
 # Skip detection if HAWK_AGENT or _STACKHAWK_AGENT is already set (allows CI/CD override).
 if [ -z "${HAWK_AGENT}" ] && [ -z "${_STACKHAWK_AGENT}" ]; then
   # Step 1: detect agent platform (the IDE / agentic tool). The env markers mirror
-  # hawk's own agent registry (CLAUDECODE=1, CODEX_THREAD_ID, GEMINI_CLI=1, OPENCODE,
-  # CURSOR_TRACE_ID). A nested launch — e.g. Codex started from inside a Claude Code
-  # session — inherits the outer host's markers too, so when more than one fires the
-  # platform is left as the `none` sentinel and hawk's process-ancestry detection
-  # picks the innermost host. Directory markers are the fallback when no env fires.
-  _HAWK_HOSTS=0
-  if [ "${CLAUDECODE:-}" = "1" ]; then _HAWK_PLATFORM=claude-code; _HAWK_HOSTS=$((_HAWK_HOSTS + 1)); fi
-  if [ -n "${CODEX_THREAD_ID:-}" ]; then _HAWK_PLATFORM=codex; _HAWK_HOSTS=$((_HAWK_HOSTS + 1)); fi
-  if [ "${GEMINI_CLI:-}" = "1" ]; then _HAWK_PLATFORM=gemini; _HAWK_HOSTS=$((_HAWK_HOSTS + 1)); fi
-  if [ -n "${OPENCODE:-}" ]; then _HAWK_PLATFORM=opencode; _HAWK_HOSTS=$((_HAWK_HOSTS + 1)); fi
-  if [ -n "${CURSOR_TRACE_ID:-}" ]; then _HAWK_PLATFORM=cursor; _HAWK_HOSTS=$((_HAWK_HOSTS + 1)); fi
-  if [ "${_HAWK_HOSTS}" -gt 1 ]; then
+  # hawk's own agent registry. Only TUI hosts (CLAUDECODE=1, CODEX_THREAD_ID, GEMINI_CLI=1,
+  # OPENCODE) count toward ambiguity: a nested launch — e.g. Codex started from inside a
+  # Claude Code session — inherits the outer host's markers too, so when more than one TUI
+  # marker fires the platform is left as the `none` sentinel and hawk's process-ancestry
+  # detection picks the innermost host. An IDE marker (CURSOR_TRACE_ID) is the ordinary
+  # host of a TUI, so it applies only when no TUI marker fired; directory markers are the
+  # fallback when no env marker fires at all.
+  _HAWK_TUIS=0
+  if [ "${CLAUDECODE:-}" = "1" ]; then _HAWK_PLATFORM=claude-code; _HAWK_TUIS=$((_HAWK_TUIS + 1)); fi
+  if [ -n "${CODEX_THREAD_ID:-}" ]; then _HAWK_PLATFORM=codex; _HAWK_TUIS=$((_HAWK_TUIS + 1)); fi
+  if [ "${GEMINI_CLI:-}" = "1" ]; then _HAWK_PLATFORM=gemini; _HAWK_TUIS=$((_HAWK_TUIS + 1)); fi
+  if [ -n "${OPENCODE:-}" ]; then _HAWK_PLATFORM=opencode; _HAWK_TUIS=$((_HAWK_TUIS + 1)); fi
+  if [ "${_HAWK_TUIS}" -gt 1 ]; then
     _HAWK_PLATFORM=none
-  elif [ "${_HAWK_HOSTS}" -eq 0 ]; then
-    if [ -d ".claude" ]; then
+  elif [ "${_HAWK_TUIS}" -eq 0 ]; then
+    if [ -n "${CURSOR_TRACE_ID:-}" ]; then
+      _HAWK_PLATFORM=cursor
+    elif [ -d ".claude" ]; then
       _HAWK_PLATFORM=claude-code
     elif [ -d ".cursor" ]; then
       _HAWK_PLATFORM=cursor
@@ -59,7 +62,7 @@ if [ -z "${HAWK_AGENT}" ] && [ -z "${_STACKHAWK_AGENT}" ]; then
       _HAWK_PLATFORM=none
     fi
   fi
-  unset _HAWK_HOSTS
+  unset _HAWK_TUIS
 
   # Step 2: detect model from provider env vars (independent of platform)
   if [ -n "${ANTHROPIC_MODEL:-}" ]; then
@@ -109,9 +112,11 @@ export _STACKHAWK_SKILL=hawkscan
 - `claude-code:claude-sonnet-4-6` — Claude Code running Anthropic Sonnet
 - `cursor:gpt-4o` — Cursor running OpenAI GPT-4o
 - `copilot` — GitHub Copilot (model not detected)
-- `none` — platform not detected, or more than one host marker fired (a nested launch such
-  as Codex started from inside Claude Code). hawk fills the platform from its own
+- `none` — platform not detected, or more than one TUI host marker fired (a nested launch
+  such as Codex started from inside Claude Code). hawk fills the platform from its own
   process-ancestry detection; it never records a literal `none` when an agent is found.
+  An IDE marker next to one TUI marker (Claude Code in a Cursor terminal) is not ambiguous:
+  the TUI wins and the model is kept.
 
 If `HAWK_AGENT` (or `_STACKHAWK_AGENT`) is already set (e.g. from CI/CD), the detection block
 skips — the pre-set value wins: a pre-set `HAWK_AGENT` is copied into `_STACKHAWK_AGENT`, and a
