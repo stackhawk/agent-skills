@@ -143,12 +143,10 @@ extract_number_field() {
 # backfilled first-session record from a normal SessionStart-created one.
 # Best-effort: every command guarded, atomic tmp+rename, never fails the hook.
 create_missing_record() {
-  local record="$1" dir="$2" pid="$3" skill="$4"
+  local record="$1" dir="$2" pid="$3" skill="$4" sid="${5:-}"
   mkdir -p "$dir" 2>/dev/null || return 0
   local now_secs
   now_secs="$(date +%s)" || now_secs=0
-  local sid=""
-  [ -n "${CLAUDE_SESSION_ID:-}" ] && sid="${CLAUDE_SESSION_ID}"
   local new_json=""
   new_json=$(cat <<EOF
 {
@@ -176,10 +174,10 @@ EOF
 # the lock afterward. That is how the lock stays correct across every exit
 # path without a per-return rmdir here.
 update_record_locked() {
-  local record="$1" dir="$2" pid="$3" skill_name="$4"
+  local record="$1" dir="$2" pid="$3" skill_name="$4" sid="${5:-}"
 
   if [ ! -f "$record" ]; then
-    create_missing_record "$record" "$dir" "$pid" "$skill_name"
+    create_missing_record "$record" "$dir" "$pid" "$skill_name" "$sid"
     return 0
   fi
 
@@ -285,6 +283,18 @@ record_skill_activation() {
   fi
   [ -n "$skill_name" ] || return 0
 
+  # Session id for a backfilled record: the hook payload's top-level
+  # `session_id` (present on every Claude Code hook event), else the
+  # `CLAUDE_CODE_SESSION_ID` env var hawk's agent registry reads.
+  local sid=""
+  if command -v jq >/dev/null 2>&1; then
+    sid=$(printf '%s' "$tool_input" | jq -r '.session_id // empty' 2>/dev/null) || sid=""
+  fi
+  if [ -z "$sid" ]; then
+    sid=$(extract_string_field "$tool_input" "session_id") || sid=""
+  fi
+  [ -n "$sid" ] || sid="${CLAUDE_CODE_SESSION_ID:-}"
+
   local dir="${HOME}/.stackhawk/agent/sessions"
   local pid="${PPID:-0}"
   local record="${dir}/${pid}.json"
@@ -301,10 +311,10 @@ record_skill_activation() {
   # lost-update race this whole mechanism exists to prevent).
   mkdir -p "$dir" 2>/dev/null || true
   if acquire_lock "$lock"; then
-    update_record_locked "$record" "$dir" "$pid" "$skill_name" || true
+    update_record_locked "$record" "$dir" "$pid" "$skill_name" "$sid" || true
     release_lock "$lock"
   else
-    update_record_locked "$record" "$dir" "$pid" "$skill_name" || true
+    update_record_locked "$record" "$dir" "$pid" "$skill_name" "$sid" || true
   fi
   return 0
 }

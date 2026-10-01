@@ -30,20 +30,36 @@ export BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
 # (e.g. Copilot IDE running an Anthropic model produces "copilot:claude-sonnet-4-6").
 # Skip detection if HAWK_AGENT or _STACKHAWK_AGENT is already set (allows CI/CD override).
 if [ -z "${HAWK_AGENT}" ] && [ -z "${_STACKHAWK_AGENT}" ]; then
-  # Step 1: detect agent platform (the IDE / agentic tool)
-  if [ -n "${CLAUDE_CODE}" ] || [ -d ".claude" ]; then
-    _HAWK_PLATFORM=claude-code
-  elif [ -n "${CURSOR_TRACE_ID}" ] || [ -d ".cursor" ]; then
-    _HAWK_PLATFORM=cursor
-  elif [ -f "GEMINI.md" ] || [ -n "${GEMINI_API_KEY}" ]; then
-    _HAWK_PLATFORM=gemini
-  elif [ -d ".codex" ]; then
-    _HAWK_PLATFORM=codex
-  elif [ -f ".github/copilot-instructions.md" ]; then
-    _HAWK_PLATFORM=copilot
-  else
-    _HAWK_PLATFORM=unknown
+  # Step 1: detect agent platform (the IDE / agentic tool). The env markers mirror
+  # hawk's own agent registry (CLAUDECODE=1, CODEX_THREAD_ID, GEMINI_CLI=1, OPENCODE,
+  # CURSOR_TRACE_ID). A nested launch — e.g. Codex started from inside a Claude Code
+  # session — inherits the outer host's markers too, so when more than one fires the
+  # platform is left as the `none` sentinel and hawk's process-ancestry detection
+  # picks the innermost host. Directory markers are the fallback when no env fires.
+  _HAWK_HOSTS=0
+  if [ "${CLAUDECODE:-}" = "1" ]; then _HAWK_PLATFORM=claude-code; _HAWK_HOSTS=$((_HAWK_HOSTS + 1)); fi
+  if [ -n "${CODEX_THREAD_ID:-}" ]; then _HAWK_PLATFORM=codex; _HAWK_HOSTS=$((_HAWK_HOSTS + 1)); fi
+  if [ "${GEMINI_CLI:-}" = "1" ]; then _HAWK_PLATFORM=gemini; _HAWK_HOSTS=$((_HAWK_HOSTS + 1)); fi
+  if [ -n "${OPENCODE:-}" ]; then _HAWK_PLATFORM=opencode; _HAWK_HOSTS=$((_HAWK_HOSTS + 1)); fi
+  if [ -n "${CURSOR_TRACE_ID:-}" ]; then _HAWK_PLATFORM=cursor; _HAWK_HOSTS=$((_HAWK_HOSTS + 1)); fi
+  if [ "${_HAWK_HOSTS}" -gt 1 ]; then
+    _HAWK_PLATFORM=none
+  elif [ "${_HAWK_HOSTS}" -eq 0 ]; then
+    if [ -d ".claude" ]; then
+      _HAWK_PLATFORM=claude-code
+    elif [ -d ".cursor" ]; then
+      _HAWK_PLATFORM=cursor
+    elif [ -f "GEMINI.md" ] || [ -n "${GEMINI_API_KEY:-}" ]; then
+      _HAWK_PLATFORM=gemini
+    elif [ -d ".codex" ]; then
+      _HAWK_PLATFORM=codex
+    elif [ -f ".github/copilot-instructions.md" ]; then
+      _HAWK_PLATFORM=copilot
+    else
+      _HAWK_PLATFORM=none
+    fi
   fi
+  unset _HAWK_HOSTS
 
   # Step 2: detect model from provider env vars (independent of platform)
   if [ -n "${ANTHROPIC_MODEL:-}" ]; then
@@ -58,7 +74,13 @@ if [ -z "${HAWK_AGENT}" ] && [ -z "${_STACKHAWK_AGENT}" ]; then
     _HAWK_MODEL=
   fi
 
-  export HAWK_AGENT="${_HAWK_PLATFORM}${_HAWK_MODEL:+:${_HAWK_MODEL}}"
+  # `none` is a sentinel on both sides of the contract: hawk treats it as "no answer"
+  # and fills the platform from its own detection, so never attach a model to it.
+  if [ "${_HAWK_PLATFORM}" = "none" ]; then
+    export HAWK_AGENT=none
+  else
+    export HAWK_AGENT="${_HAWK_PLATFORM}${_HAWK_MODEL:+:${_HAWK_MODEL}}"
+  fi
   unset _HAWK_PLATFORM _HAWK_MODEL
 fi
 
@@ -87,7 +109,9 @@ export _STACKHAWK_SKILL=hawkscan
 - `claude-code:claude-sonnet-4-6` — Claude Code running Anthropic Sonnet
 - `cursor:gpt-4o` — Cursor running OpenAI GPT-4o
 - `copilot` — GitHub Copilot (model not detected)
-- `unknown` — platform not detected
+- `none` — platform not detected, or more than one host marker fired (a nested launch such
+  as Codex started from inside Claude Code). hawk fills the platform from its own
+  process-ancestry detection; it never records a literal `none` when an agent is found.
 
 If `HAWK_AGENT` (or `_STACKHAWK_AGENT`) is already set (e.g. from CI/CD), the detection block
 skips — the pre-set value wins: a pre-set `HAWK_AGENT` is copied into `_STACKHAWK_AGENT`, and a
