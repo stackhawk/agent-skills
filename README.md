@@ -100,7 +100,7 @@ Advanced — install individually instead:
 /plugin install stackhawk-optimize@stackhawk
 ```
 
-If your Codex version supports umbrella dependency auto-install, you may use `/plugin install wingman@stackhawk` instead.
+Or use `/plugin install wingman@stackhawk` to get hawkscan, stackhawk-api, stackhawk-data-seed, and stackhawk-optimize in one install.
 
 #### Gemini CLI
 

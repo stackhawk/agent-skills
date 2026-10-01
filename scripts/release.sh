@@ -74,8 +74,8 @@ if ! bash "${REPO_ROOT}/scripts/generate-wingman-skills.sh" > /dev/null; then
   errors=$((errors + 1))
 fi
 git add -N plugins/wingman/copilot-skills/
-if ! git diff --quiet plugins/wingman/copilot-skills/; then
-  echo "ERROR: wingman copilot-skills/ is out of date. Run 'bash scripts/generate-wingman-skills.sh' and commit." >&2
+if ! git diff --quiet plugins/wingman/copilot-skills/ plugins/wingman/.codex-plugin/plugin.json; then
+  echo "ERROR: wingman copilot-skills/ or its Codex manifest is out of date. Run 'bash scripts/generate-wingman-skills.sh' and commit." >&2
   errors=$((errors + 1))
   git reset -- plugins/wingman/copilot-skills/
 fi

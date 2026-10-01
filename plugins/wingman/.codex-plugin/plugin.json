@@ -23,5 +23,6 @@
     "stackhawk-api",
     "stackhawk-data-seed",
     "stackhawk-optimize"
-  ]
+  ],
+  "skills": "./copilot-skills/"
 }

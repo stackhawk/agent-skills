@@ -120,6 +120,20 @@ else
   fi
 fi
 
+# 7. Codex manifest points at copilot-skills/. Codex ignores "dependencies", so
+# without this field `codex plugin add wingman@stackhawk` loads zero skills.
+CODEX_MANIFEST="plugins/wingman/.codex-plugin/plugin.json"
+if [ ! -f "$CODEX_MANIFEST" ]; then
+  echo "ERROR: missing $CODEX_MANIFEST"
+  errors=$((errors + 1))
+else
+  codex_skills="$(python3 -c "import json; print(json.load(open('$CODEX_MANIFEST')).get('skills',''))")"
+  if [ "$codex_skills" != "./copilot-skills/" ]; then
+    echo "ERROR: $CODEX_MANIFEST skills field is '$codex_skills', expected './copilot-skills/' (run generate-wingman-skills.sh)"
+    errors=$((errors + 1))
+  fi
+fi
+
 if [ $errors -gt 0 ]; then
   echo "FAILED: $errors error(s)"
   exit 1
