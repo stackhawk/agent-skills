@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Generates plugins/wingman/copilot-skills/ — bundled copies of wingman's four
-# dependency skills, so GitHub Copilot (which has no plugin dependency mechanism)
-# gets the full skill set from a single `copilot plugin install wingman@stackhawk`.
+# Generates plugins/wingman/copilot-skills/ - bundled copies of wingman's four
+# dependency skills, so GitHub Copilot and Codex (neither installs plugin
+# dependencies) get the full skill set from one wingman install. It also points
+# the Codex manifest's "skills" field at that directory.
 #
-# Claude Code and Codex resolve wingman's "dependencies" field instead and never
-# read this directory. It is deliberately NOT named skills/ — Claude Code always
+# Claude Code resolves wingman's "dependencies" field instead and never reads
+# this directory. It is deliberately NOT named skills/ - Claude Code always
 # scans skills/, which would load every skill twice.
 #
 # Run AFTER scripts/bump-version.sh so copied frontmatter carries the new version.
@@ -76,12 +77,30 @@ Produced by `scripts/generate-wingman-skills.sh`. Edit the source skills under
 `plugins/*/skills/*/` and regenerate.
 
 These are bundled copies of wingman's four dependency skills, present so GitHub
-Copilot gets the full set from one `copilot plugin install wingman@stackhawk`.
-Copilot has no plugin-dependency mechanism; Claude Code and Codex resolve
-wingman's `dependencies` field and ignore this directory.
+Copilot and Codex get the full set from one wingman install. Neither installs
+plugin dependencies, so both manifests point their `skills` field here. Claude
+Code resolves wingman's `dependencies` field and ignores this directory.
 
 This directory is intentionally NOT named `skills/`: Claude Code always scans a
 plugin's `skills/` directory, which would load every skill twice.
 EOF
+
+# Codex ignores the "dependencies" field, so without this key wingman loads no
+# skills in Codex. Write JSON the same way bump-version.sh does, so the two
+# scripts never fight over formatting.
+CODEX_MANIFEST="plugins/wingman/.codex-plugin/plugin.json"
+python3 - "$CODEX_MANIFEST" << 'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path) as f:
+    data = json.load(f)
+data["skills"] = "./copilot-skills/"
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
+echo "Updated: ${CODEX_MANIFEST} (skills: ./copilot-skills/)"
 
 echo "Done. Generated ${#MAPPINGS[@]} skill(s) into ${DEST}"
