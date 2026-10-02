@@ -94,9 +94,9 @@ This script:
 7. Pushes the tag to origin
 8. Creates a GitHub Release with the changelog section as the release notes
 
-### Step 5: Propose the Marketplace Sync
+### Step 5: Sync the Marketplace
 
-Run the release workflow from the new tag. It is manually dispatched, so pushing the tag alone does not start it. The workflow accepts the GitHub Release created in Step 4, re-validates the tag, and opens a marketplace sync PR for review.
+Run the release workflow from the new tag. It is manually dispatched, so pushing the tag alone does not start it. The workflow accepts the GitHub Release created in Step 4, re-validates the tag, and pushes the validated marketplace sync directly to its `main` branch.
 
 ```bash
 gh workflow run release.yml --ref "v$(cat VERSION)"
@@ -176,7 +176,7 @@ When dispatched from a tag, the workflow:
 If all validation passes, the workflow:
 
 - **Creates a GitHub Release** with the tag as title and changelog section as body if the standalone release script has not already created it
-- **Makes the tag and release available** for the marketplace sync; marketplace consumers receive the new version after its sync PR is merged
+- **Makes the tag and release available** for the marketplace sync; marketplace consumers receive the new version when the sync job pushes to marketplace `main`
 
 If validation fails, the workflow exits before the marketplace sync. Resolve the tag or version mismatch before rerunning it.
 
@@ -210,14 +210,14 @@ bash scripts/release.sh
 
 ## Updating the Marketplace Catalog
 
-The `update-marketplace` job in `.github/workflows/release.yml` runs after the GitHub Release is created. It clones [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace), runs that repository's `scripts/sync-agent-skills.py` against the release tag, validates its generated layout, and opens a sync PR for review. It does not push to the marketplace's `main` branch. The marketplace PR that adds `scripts/sync-agent-skills.py` and its tests must merge before you dispatch the next release workflow. Until it merges, the `update-marketplace` job fails.
+The `update-marketplace` job in `.github/workflows/release.yml` runs after the GitHub Release is created. It clones [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace), runs that repository's `scripts/sync-agent-skills.py` against the release tag, validates its generated layout, and commits only the sync outputs to marketplace `main`. A rerun for an already synced tag makes no commit. If `main` advances before the push, the job fetches and rebases once, reruns the marketplace tests, then retries the push without force.
 
 The sync script owns all marketplace release outputs:
 
 1. **Claude plugin snapshots and catalog:** It copies the released plugin folders into `plugins/` and writes `.claude-plugin/marketplace.json` with local `./plugins/<name>` sources, so directory validation can inspect each plugin.
-2. **Codex and Copilot catalogs:** It pins remote plugin sources to the same release tag and commit SHA using each tool's source schema.
+2. **Codex and Copilot catalogs and wingman bundle:** It points catalog sources at marketplace paths and writes the Copilot and Codex wingman bundle under `bundles/wingman/`.
 3. **Standalone skills:** It rebuilds `skills/` for the [`skills` CLI](https://github.com/vercel-labs/skills), which discovers `SKILL.md` files and ignores marketplace catalogs.
 
-Review the generated diff in the sync PR before merging. In its checkout, run `claude plugin validate --strict .`, validate each `plugins/<name>` folder, and run `python3 -m unittest discover -s tests`. The release job runs the marketplace tests before opening the PR. The separate `Marketplace Install Verify` workflow in this repository tests pinned remote-source compatibility and standalone skill discovery from local fixtures.
+Review the resulting commit on marketplace `main` after the job succeeds. In its checkout, run `claude plugin validate --strict .`, validate each `plugins/<name>` folder, and run `python3 -m unittest discover -s tests`. The release job runs the marketplace tests before pushing. The separate `Marketplace Install Verify` workflow in this repository tests catalog compatibility and standalone skill discovery from local fixtures.
 
-If the workflow fails, follow the [Updating the pinned version](https://github.com/stackhawk/agent-skills-marketplace#updating-the-pinned-version) section of the marketplace README from a tagged agent-skills checkout, then open a sync PR. Do not hand-edit generated catalogs, plugin snapshots, or standalone skills.
+If the workflow fails, inspect the job logs, fix the cause, and rerun it from the same tag. Do not hand-edit generated catalogs, plugin snapshots, or standalone skills.
