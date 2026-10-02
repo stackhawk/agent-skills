@@ -1,6 +1,6 @@
 {
   "name": "stackhawk-optimize",
-  "version": "2.6.2",
+  "version": "2.6.3",
   "description": "Analyze a codebase and produce an optimal HawkScan setup (tech flags, scan-policy plugin selection, stackhawk.yml corrections), apply it as a non-destructive trial, run one trial scan, and promote or discard.",
   "author": {
     "name": "StackHawk",
