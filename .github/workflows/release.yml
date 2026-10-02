@@ -224,9 +224,14 @@ jobs:
           git config user.name "hawkdeploy"
           git config user.email "hawkdeploy@stackhawk.com"
           # Keep these paths in sync with install() in marketplace's sync-agent-skills.py.
-          git add -A -- plugins skills sources.json \
+          git add -A -- plugins bundles skills sources.json \
             .claude-plugin/marketplace.json .github/plugin/marketplace.json \
             .agents/plugins/marketplace.json .codex-plugin/marketplace.json
+          if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+            echo "ERROR: Marketplace sync left changes outside the staged paths. Update this list to match install()."
+            git status --short
+            exit 1
+          fi
           if ! git diff --cached --quiet; then
             git commit -m "chore: sync agent-skills ${TAG}"
           fi
