@@ -269,17 +269,20 @@ record_skill_activation() {
   # No stdin (interactive terminal) -- not a tool-use context.
   [ -t 0 ] && return 0
 
-  local tool_input=""
-  tool_input=$(cat 2>/dev/null) || return 0
-  [ -n "$tool_input" ] || return 0
+  # The full PostToolUse payload (see the header comment): top-level
+  # session_id/tool_name/..., with the Skill tool's own args nested under
+  # `tool_input`.
+  local hook_payload=""
+  hook_payload=$(cat 2>/dev/null) || return 0
+  [ -n "$hook_payload" ] || return 0
 
   # Extract the skill name from tool_input.skill.
   local skill_name=""
   if command -v jq >/dev/null 2>&1; then
-    skill_name=$(printf '%s' "$tool_input" | jq -r '.tool_input.skill // empty' 2>/dev/null) || skill_name=""
+    skill_name=$(printf '%s' "$hook_payload" | jq -r '.tool_input.skill // empty' 2>/dev/null) || skill_name=""
   fi
   if [ -z "$skill_name" ]; then
-    skill_name=$(extract_string_field "$tool_input" "skill") || skill_name=""
+    skill_name=$(extract_string_field "$hook_payload" "skill") || skill_name=""
   fi
   [ -n "$skill_name" ] || return 0
 
@@ -288,10 +291,10 @@ record_skill_activation() {
   # `CLAUDE_CODE_SESSION_ID` env var hawk's agent registry reads.
   local sid=""
   if command -v jq >/dev/null 2>&1; then
-    sid=$(printf '%s' "$tool_input" | jq -r '.session_id // empty' 2>/dev/null) || sid=""
+    sid=$(printf '%s' "$hook_payload" | jq -r '.session_id // empty' 2>/dev/null) || sid=""
   fi
   if [ -z "$sid" ]; then
-    sid=$(extract_string_field "$tool_input" "session_id") || sid=""
+    sid=$(extract_string_field "$hook_payload" "session_id") || sid=""
   fi
   [ -n "$sid" ] || sid="${CLAUDE_CODE_SESSION_ID:-}"
 
