@@ -164,7 +164,7 @@ jobs:
         run: gh workflow run capture-baseline.yml -f tag="$RELEASE_TAG"
 
   update-marketplace:
-    name: Propose marketplace sync
+    name: Sync marketplace
     needs: release
     if: inputs.dry_run != true
     runs-on: agent-skills-amd-4cpu
@@ -185,26 +185,8 @@ jobs:
           ref: ${{ needs.release.outputs.tag }}
           fetch-depth: 0
 
-      - name: Resolve commit SHA
-        id: sha
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
       - name: Clone agent-skills-marketplace
-        run: git clone https://github.com/stackhawk/agent-skills-marketplace.git /tmp/marketplace
-
-      - name: Reuse or create sync branch
-        id: sync-branch
-        env:
-          TAG: ${{ needs.release.outputs.tag }}
-        run: |
-          branch="automation/sync-agent-skills-${TAG}"
-          if [ -n "$(git -C /tmp/marketplace ls-remote --heads origin "$branch")" ]; then
-            git -C /tmp/marketplace fetch origin "refs/heads/${branch}:refs/remotes/origin/${branch}"
-            git -C /tmp/marketplace switch -c "$branch" --track "origin/$branch"
-          else
-            git -C /tmp/marketplace switch -c "$branch"
-          fi
-          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+        run: git clone --branch main https://github.com/stackhawk/agent-skills-marketplace.git /tmp/marketplace
 
       - name: Sync marketplace from release tag
         env:
@@ -214,65 +196,36 @@ jobs:
             --source-repo "$GITHUB_WORKSPACE" --tag "$TAG"
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s /tmp/marketplace/tests
 
-      - name: Open marketplace sync PR
+      - name: Push marketplace sync to main
         env:
           TAG: ${{ needs.release.outputs.tag }}
-          SHA: ${{ steps.sha.outputs.sha }}
-          SYNC_BRANCH: ${{ steps.sync-branch.outputs.branch }}
         run: |
           cd /tmp/marketplace
           git config user.name "hawkdeploy"
           git config user.email "hawkdeploy@stackhawk.com"
           # Keep these paths in sync with install() in marketplace's sync-agent-skills.py.
-          git add -A -- plugins skills sources.json \
+          git add -A -- plugins bundles skills sources.json \
             .claude-plugin/marketplace.json .github/plugin/marketplace.json \
             .agents/plugins/marketplace.json .codex-plugin/marketplace.json
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: sync agent-skills ${TAG}"
+          if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+            echo "ERROR: Marketplace sync left changes outside the staged paths. Update this list to match install()."
+            git status --short
+            exit 1
           fi
-          if git diff --quiet origin/main HEAD; then
+          if git diff --cached --quiet; then
             echo "Marketplace already contains ${TAG}"
             exit 0
           fi
+          git commit -m "chore: sync agent-skills ${TAG}"
           GH_PAT=$(aws ssm get-parameter --name TF_GITHUB_TOKEN --query 'Parameter.Value' --output text --with-decryption)
           echo "::add-mask::${GH_PAT}"
-          export GH_TOKEN="$GH_PAT"
           git remote set-url origin "https://x-access-token:${GH_PAT}@github.com/stackhawk/agent-skills-marketplace.git"
-          git push --set-upstream origin "HEAD:${SYNC_BRANCH}"
-          python3 - <<'PY'
-          import json
-          import os
-          from urllib.parse import urlencode
-          from urllib.request import Request, urlopen
-
-          repo = "stackhawk/agent-skills-marketplace"
-          endpoint = f"https://api.github.com/repos/{repo}/pulls"
-          headers = {
-              "Accept": "application/vnd.github+json",
-              "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
-              "Content-Type": "application/json",
-              "X-GitHub-Api-Version": "2022-11-28",
-          }
-          branch = os.environ["SYNC_BRANCH"]
-          query = urlencode({"state": "open", "head": f"stackhawk:{branch}"})
-          with urlopen(Request(f"{endpoint}?{query}", headers=headers), timeout=30) as response:
-              existing_prs = json.load(response)
-          if existing_prs:
-              print(f"Marketplace sync PR already open: {existing_prs[0]['html_url']}")
-          else:
-              tag = os.environ["TAG"]
-              sha = os.environ["SHA"]
-              body = (
-                  f"Sync the marketplace snapshots from agent-skills {tag} ({sha}).\n\n"
-                  "The marketplace sync script regenerates local Claude plugin sources, "
-                  "pinned Codex and Copilot catalogs, and standalone skills. Review the "
-                  "generated diff before merging. Directory submission remains a separate "
-                  "manual step.\n"
-              )
-              payload = {"base": "main", "head": branch,
-                         "title": f"chore: sync agent-skills {tag}", "body": body}
-              request = Request(endpoint, data=json.dumps(payload).encode(),
-                                headers=headers, method="POST")
-              with urlopen(request, timeout=30) as response:
-                  print(json.load(response)["html_url"])
-          PY
+          if ! git push origin HEAD:main; then
+            git fetch origin main
+            git rebase origin/main
+            PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests
+            if ! git push origin HEAD:main; then
+              echo "ERROR: Marketplace main push failed after one fetch-rebase retry."
+              exit 1
+            fi
+          fi

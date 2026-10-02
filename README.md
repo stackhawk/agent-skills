@@ -294,7 +294,7 @@ scripts/generate-marketplace-catalogs.py   Builds local install verification cat
 scripts/generate-marketplace-skills.py     Builds local skills CLI verification copies
 ```
 
-Released plugins and skills are published through [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace). Its sync script copies the tagged Claude plugin folders, generates platform catalogs, and vendors standalone skills for `npx skills add`. The release workflow opens a marketplace sync PR for review.
+Released plugins and skills are published through [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace). Its sync script copies the tagged Claude plugin folders, generates platform catalogs, and vendors standalone skills for `npx skills add`. The release workflow validates the sync and pushes it to marketplace `main`.
 
 ### Platform Support
 

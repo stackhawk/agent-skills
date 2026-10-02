@@ -41,7 +41,7 @@ bash scripts/bump-version.sh --major   # breaking changes
 # creates annotated tag, creates GH Release)
 bash scripts/release.sh --dry-run  # validate without creating anything
 bash scripts/release.sh            # create tag + GH Release (must be on main, clean tree)
-gh workflow run release.yml --ref "v$(cat VERSION)"  # run release checks and propose marketplace sync
+gh workflow run release.yml --ref "v$(cat VERSION)"  # run release checks and sync marketplace main
 
 # macOS/Linux install
 bash scripts/install.sh --platform cursor  --target ~
@@ -92,7 +92,7 @@ Skills assume the combined `hawk` binary (`hawk op …`) is installed — no raw
 
 `.version-bump.json` lists every version-bearing file. `bump-version.sh` reads it to update all files atomically. When adding a new plugin, add its manifests and SKILL.md to `.version-bump.json`.
 
-CI (`generate-and-validate.yml`) validates version consistency on every PR. Manually dispatch `release.yml` from the release tag after running `scripts/release.sh`; it re-validates the tag and proposes the marketplace sync PR.
+CI (`generate-and-validate.yml`) validates version consistency on every PR. Manually dispatch `release.yml` from the release tag after running `scripts/release.sh`; it re-validates the tag and pushes the marketplace sync to `main`.
 
 ## Adding a New Plugin
 
@@ -135,7 +135,7 @@ The `stop` hook's `followup_message` causes Cursor to automatically continue wit
 - `plugins/wingman/copilot-skills/` is generated output — edit the source skills and run `bash scripts/generate-wingman-skills.sh`
 - `plugins/wingman/` must NEVER contain a `skills/` directory. Claude Code always scans `skills/`, so one would load every skill twice (`wingman:hawkscan` and `hawkscan:hawkscan`). The Copilot bundle is deliberately named `copilot-skills/`.
 - Run `bump-version.sh` BEFORE the generators: generated copies carry version frontmatter copied from source
-- The separate `agent-skills-marketplace` repo owns its generated catalogs, plugin snapshots, and `skills/` copies. `release.yml` runs that repo's sync script on a new tag and opens a review PR; never hand-edit its generated outputs. The standalone `skills/` copies serve the `skills` CLI, which ignores marketplace catalogs.
+- The separate `agent-skills-marketplace` repo owns its generated catalogs, plugin snapshots, and `skills/` copies. `release.yml` runs that repo's sync script on a new tag and pushes validated outputs to marketplace `main`; never hand-edit its generated outputs. The standalone `skills/` copies serve the `skills` CLI, which ignores marketplace catalogs.
 
 ## Maintaining this file
 
