@@ -55,8 +55,7 @@ write_session_record() {
   local pid="${PPID:-0}"
   local now_secs
   now_secs="$(date +%s)" || now_secs=0
-  local sid=""
-  [ -n "${CLAUDE_SESSION_ID:-}" ] && sid="${CLAUDE_SESSION_ID}"
+  local sid="${HOOK_SESSION_ID}"
   # Atomic write: build in a tmp file then rename (matches skill-activated's
   # pattern) so a reader (hawkop-lib) never observes a partial record if the
   # hook is killed mid-write. Best-effort: never fail the hook.
@@ -75,6 +74,26 @@ write_session_record() {
 EOF
   mv -f "${tmp}" "${record}" 2>/dev/null || { rm -f "${tmp}" 2>/dev/null || true; return 0; }
 }
+# Claude Code's hook stdin payload carries the session id as top-level
+# `session_id` for every hook event; `CLAUDE_CODE_SESSION_ID` (the name hawk's
+# agent registry reads) is the env fallback. Guarded on `-t 0` so a manual
+# terminal run never blocks on stdin. Best-effort: empty on any failure.
+HOOK_SESSION_ID=""
+if [ ! -t 0 ]; then
+  hook_payload="$(cat 2>/dev/null)" || hook_payload=""
+  if [ -n "${hook_payload}" ]; then
+    if command -v jq >/dev/null 2>&1; then
+      HOOK_SESSION_ID="$(printf '%s' "${hook_payload}" | jq -r '.session_id // empty' 2>/dev/null)" || HOOK_SESSION_ID=""
+    fi
+    if [ -z "${HOOK_SESSION_ID}" ]; then
+      HOOK_SESSION_ID="$(printf '%s' "${hook_payload}" \
+        | grep -oE '"session_id"[[:space:]]*:[[:space:]]*"[^"]*"' \
+        | head -1 \
+        | sed -E 's/^"session_id"[[:space:]]*:[[:space:]]*"//; s/"$//')" || HOOK_SESSION_ID=""
+    fi
+  fi
+fi
+[ -n "${HOOK_SESSION_ID}" ] || HOOK_SESSION_ID="${CLAUDE_CODE_SESSION_ID:-}"
 write_session_record
 
 session_context=$(escape_for_json "$context_text")
