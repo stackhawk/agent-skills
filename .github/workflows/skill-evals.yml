@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
       - name: Validate prompts.yaml + process-checks.json
         run: uv run validate
 
@@ -64,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
       - name: Run lib tests
         run: uv run pytest -q
 
@@ -84,7 +84,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
 
       - name: Install Claude Code CLI (native)
         run: |
@@ -181,7 +181,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
       - uses: actions/setup-node@v6
         with:
           node-version: "20"
@@ -275,7 +275,7 @@ jobs:
 # 
 #     steps:
 #       - uses: actions/checkout@v7
-#       - uses: astral-sh/setup-uv@v5
+#       - uses: astral-sh/setup-uv@v7
 #       - name: Install Claude Code CLI (native, rubric grader)
 #         run: |
 #           curl -fsSL https://claude.ai/install.sh | bash
@@ -374,7 +374,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
 
       - name: Install Cursor CLI
         run: |
@@ -457,7 +457,7 @@ jobs:
           pattern: eval-*
           merge-multiple: false
           path: results/
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
       - name: Fetch released baseline (best-effort)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
