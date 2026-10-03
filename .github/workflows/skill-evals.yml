@@ -128,7 +128,7 @@ jobs:
       # rest of the hawkscan suite still runs.
       - name: Mint stackhawk-research read token
         id: research-token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.RESEARCH_APP_ID }}
           private-key: ${{ secrets.RESEARCH_APP_PRIVATE_KEY }}
