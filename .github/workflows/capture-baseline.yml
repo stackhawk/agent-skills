@@ -60,7 +60,7 @@ jobs:
         skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize]
         model: [claude-sonnet-4-6, claude-opus-4-7, claude-haiku-4-5-20251001]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ inputs.tag }}
       - uses: astral-sh/setup-uv@v5
@@ -126,7 +126,7 @@ jobs:
         skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize]
         model: [gpt-5.5, o3]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ inputs.tag }}
       - uses: astral-sh/setup-uv@v5
@@ -206,7 +206,7 @@ jobs:
         skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize]
         model: [default]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ inputs.tag }}
       - uses: astral-sh/setup-uv@v5
@@ -286,7 +286,7 @@ jobs:
         skill: [hawkscan, api, stackhawk-data-seed, hawkscan-ci, optimize]
         model: [default]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ inputs.tag }}
       - uses: astral-sh/setup-uv@v5
@@ -353,7 +353,7 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: astral-sh/setup-uv@v5
       # download-artifact@v4 does NOT fail when the pattern matches zero artifacts
       # (it has no error-on-no-artifacts input) — so a run where every capture job
