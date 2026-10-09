@@ -250,10 +250,14 @@ hawk config show app.authentication --text
 
 If no row matches → jump to **Phase 1c.5**. Do not force-fit a recipe or proceed without auth.
 
-**One user, or `profiles` + `--profile-scan-mode=primary-full`.** A `profiles` block **without** that mode runs
-only the hidden BUSINESS_LOGIC preset (BOLA/BFLA, 2 plugins, ~30 s, 0 general findings). Write profiles only when
-BOLA/BFLA coverage is the goal and the installed hawk has the flag; a build without it must not use profiles.
-Scan as a non-privileged user or pinned token; an admin scan can mutate its own login. → [`references/auth-config.md`](references/auth-config.md#profiles-and-scan-user)
+**Multi-profile BOLA/BFLA (autonomous).** Write `app.authentication.profiles` — no confirmation needed — when discovery
+found authorization signals (object-ID routes, ownership checks, role/admin guards, tenant scoping), `hawk scan --help |
+grep -q -- --profile-scan-mode` succeeds, and 2+ accounts can be found, created (local/dev only), or else **obtained by
+asking the user**. Run every scan and rescan with `--profile-scan-mode=primary-full --full-scan-profile=<privileged-profile>`;
+pause to confirm only when admin endpoints are destructive. **Never write `profiles` without that mode** — the default runs
+only BOLA/BFLA (~30 s, 0 general findings). → [`references/multi-profile.md`](references/multi-profile.md)
+Otherwise scan as **one** non-privileged user or pinned token; an admin single-user scan can mutate its own login.
+→ [`references/auth-config.md`](references/auth-config.md#profiles-and-scan-user)
 
 **Step 3 — Fetch each relevant section:** `hawk config show <section> --text`. Use the returned YAML example as template.
 
@@ -367,6 +371,7 @@ rules). False "target crashed" aborts on slow endpoints → `hawk.scan.crashDete
 ```bash
 hawk scan --json-output                            # structured output (requires Dev Release v5.3.41+)
 hawk rescan --scan-id <SCAN_ID> --json-output      # fast fix verification — re-runs only fired plugins
+# profiles present → append to BOTH: --profile-scan-mode=primary-full --full-scan-profile=<privileged-profile>
 ```
 
 **Always rescan against the original full-scan ID.** Rescan IDs are not valid parent scan references.
@@ -502,6 +507,7 @@ initialized; skill is active.
 - **Don't scan before the app is running.** HawkScan will exit 1 with a connection error.
 - **Try `https://` first — HawkScan accepts self-signed certificates.** Only fall back to `http://` if the scan actually fails to connect with a TLS error.
 - **Don't hardcode API keys or credentials in `stackhawk.yml`.** Use env vars.
+- **Don't scan a `profiles` config without `--profile-scan-mode=primary-full`.** 0 findings in ~30 s is that trap, not a clean app — see [`references/multi-profile.md`](references/multi-profile.md#quality-gate-and-failures).
 - **Never accept an exit-0 scan that fails the quality gate.** Untouched planned routes, auth-walls, or an unscanned surface mean config iteration, not done — see [`references/scan-quality.md`](references/scan-quality.md).
 - **Don't ignore exit code 42.** It's a deliberate signal that findings crossed the threshold — treat it as a build failure.
 - **String interpolation mid-value doesn't work.** `host: "https://${HOST}/api"` will NOT interpolate. Use `host: ${FULL_HOST_URL}`.

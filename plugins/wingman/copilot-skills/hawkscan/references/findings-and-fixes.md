@@ -141,6 +141,8 @@ Transform parsed findings into structured fix tasks for the coding agent:
 | XSS (Reflected) | Unescaped user input in response | Output encoding; CSP header |
 | Missing Security Headers | No middleware config | Add helmet.js / security header middleware |
 | IDOR | No ownership check on resource | Verify `user_id` matches authenticated principal |
+| BOLA (cross-profile) | Read handler returns another user's object by ID | Scope the lookup to the authenticated owner/tenant; 404/403 otherwise |
+| BFLA (cross-profile) | Mutating handler lacks a role/function check | Enforce the required role server-side, deny by default; hiding UI is not a fix |
 | Path Traversal | Unvalidated file path input | Allowlist paths; strip `../` sequences |
 | Broken Auth | Session/token misconfig | Review token validation, expiry, scope |
 | Information Disclosure | Verbose error messages | Sanitize error responses in production |
