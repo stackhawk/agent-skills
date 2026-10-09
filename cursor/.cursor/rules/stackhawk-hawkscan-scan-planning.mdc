@@ -110,7 +110,7 @@ access: object-ID routes (e.g. `/<resource>/{id}`), queries scoped to the curren
 tenant, role/admin guards, tenant/org columns or middleware. Also note every dev/test
 credential found and its role, any public signup endpoint, and any privileged endpoint that
 deletes or resets users, changes passwords or roles, or bulk-deletes data. Signals plus 2+
-obtainable accounts make the scan multi-profile — see Phase 1c in SKILL.md.
+obtainable accounts (and a hawk with `--profile-scan-mode`) make the scan multi-profile — see Phase 1c in SKILL.md.
 
 ## Recommend code changes for gaps
 

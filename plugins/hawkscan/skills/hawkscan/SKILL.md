@@ -261,14 +261,8 @@ hawk config show app.authentication --text
 
 If no row matches → jump to **Phase 1c.5**. Do not force-fit a recipe or proceed without auth.
 
-**Multi-profile BOLA/BFLA (autonomous).** Write `app.authentication.profiles` — no confirmation needed — when discovery
-found authorization signals (object-ID routes, ownership checks, role/admin guards, tenant scoping), `hawk scan --help |
-grep -q -- --profile-scan-mode` succeeds, and 2+ accounts can be found, created (local/dev only), or else **obtained by
-asking the user**. Run every scan and rescan with `--profile-scan-mode=primary-full --full-scan-profile=<privileged-profile>`;
-pause to confirm only when admin endpoints are destructive. **Never write `profiles` without that mode** — the default runs
-only BOLA/BFLA (~30 s, 0 general findings). → [`references/multi-profile.md`](references/multi-profile.md)
-Otherwise scan as **one** non-privileged user or pinned token; an admin single-user scan can mutate its own login.
-→ [`references/auth-config.md`](references/auth-config.md#profiles-and-scan-user)
+**Multi-profile BOLA/BFLA (autonomous — asks only for missing credentials or destructive admin endpoints).** Write `app.authentication.profiles` when discovery found authorization signals, `hawk scan --help | grep -q -- --profile-scan-mode` succeeds, and 2+ accounts can be found, created, or asked for. Every scan AND rescan uses `--profile-scan-mode=primary-full --full-scan-profile=<privileged-profile>`; **never write `profiles` without that mode** (the default runs only BOLA/BFLA, ~30 s, 0 general findings). → [`references/multi-profile.md`](references/multi-profile.md)
+Otherwise scan as **one** non-privileged user or pinned token (an admin single-user scan can mutate its own login) — [`references/auth-config.md`](references/auth-config.md#profiles-and-scan-user)
 
 **Step 3 — Fetch each relevant section:** `hawk config show <section> --text`. Use the returned YAML example as template.
 
@@ -382,7 +376,6 @@ rules). False "target crashed" aborts on slow endpoints → `hawk.scan.crashDete
 ```bash
 hawk scan --json-output                            # structured output (requires Dev Release v5.3.41+)
 hawk rescan --scan-id <SCAN_ID> --json-output      # fast fix verification — re-runs only fired plugins
-# profiles present → append to BOTH: --profile-scan-mode=primary-full --full-scan-profile=<privileged-profile>
 ```
 
 **Always rescan against the original full-scan ID.** Rescan IDs are not valid parent scan references.

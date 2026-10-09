@@ -51,18 +51,16 @@ No signals → scan as one user. Extra test accounts on their own are not a reas
 
 ## Get the accounts: find → make → ask
 
-Work down the ladder; stop as soon as the profile set below is satisfied.
+Work down the ladder aiming for the ideal 3-profile set below; settle for the 2-profile minimum only when find and make can't reach it.
 
 1. **Find.** `.data-seed-credentials.env`, `.env*` and `.env.example`, README and docs,
    seed SQL and fixtures, test fixtures. Note each account's role and which data it owns.
-2. **Make** — only when the target host is local or a dev environment; never a shared or
-   production host.
+2. **Make** — only against a host you started locally or a personal/ephemeral dev environment — never a shared, staging, or production host. Unsure → skip to Ask.
    - **Standard users:** call the app's own signup/registration endpoint, e.g.
-     `curl -s -X POST "$HOST<signup-path>" -H 'Content-Type: application/json' -d '<signup-body>'`.
+     `curl -s -X POST "<host><signup-path>" -H 'Content-Type: application/json' -d '<signup-body>'`.
      Have each new user create at least one object of their own so BOLA has something
      to cross-read.
-   - **Privileged users, or no signup endpoint:** seed them via Phase 1c.6 in SKILL.md
-     (`stackhawk-data-seed`).
+   - **Privileged users, or no signup endpoint:** go to Ask (seeding is user-invoked).
 3. **Ask.** Still under 2 usable accounts → ask the user. Say which roles are needed and
    why, and which env vars the skill will read, e.g.:
 
@@ -72,6 +70,9 @@ Work down the ladder; stop as soon as the profile set below is satisfied.
    > `HAWK_PROFILE_USER_B_USERNAME` / `HAWK_PROFILE_USER_B_PASSWORD` (or `_TOKEN` for
    > token auth), or tell me how to create them.
 
+   Also offer to seed the missing accounts with `stackhawk-data-seed` (Phase 1c.6 in SKILL.md)
+   as an alternative to supplying credentials.
+
    - One extra account supplied → use the 2-profile minimum.
    - User declines → scan as one user; the summary records
      "BOLA/BFLA skipped: no second account."
@@ -79,6 +80,17 @@ Work down the ladder; stop as soon as the profile set below is satisfied.
 Env var names are `HAWK_PROFILE_<NAME>_USERNAME`, `_PASSWORD`, `_TOKEN`, and `_ID` for a
 per-user identifier, with `<NAME>` the profile name upper-cased and `-` turned into `_`.
 Credential values never go into `stackhawk.yml`.
+
+Write every found, created, or supplied value to a gitignored `.hawk-profiles.env` in the target
+repo (add it to that repo's `.gitignore` if not already ignored; never commit it), mapping values
+from other sources (e.g. `.data-seed-credentials.env` variables) to the `HAWK_PROFILE_<NAME>_*`
+names. Load it before **every** `hawk scan` and `hawk rescan`, since each may run in a fresh shell:
+
+```bash
+set -a; . ./.hawk-profiles.env; set +a
+```
+
+A pre-flight auth failure on a fresh shell is usually an unloaded file, not bad credentials — check this first.
 
 ## Profile set
 
@@ -117,7 +129,7 @@ app:
       loginPath: <login-path>
       usernameField: <username-field>
       passwordField: <password-field>
-      scanUsername: ${HAWK_PROFILE_ADMIN_USERNAME}
+      scanUsername: ${HAWK_PROFILE_ADMIN_USERNAME}  # first profile's vars (e.g. USER_A when there is no admin)
       scanPassword: ${HAWK_PROFILE_ADMIN_PASSWORD}
     tokenExtraction:                        # from Phase 1c
       type: TOKEN_PATH
@@ -141,12 +153,14 @@ app:
         userNamePassword:
           username: ${HAWK_PROFILE_USER_A_USERNAME}
           password: ${HAWK_PROFILE_USER_A_PASSWORD}
+        # optional — only when a route needs this user's own ID
         globalParameters:
           userId: ${HAWK_PROFILE_USER_A_ID}
       - name: user-b
         userNamePassword:
           username: ${HAWK_PROFILE_USER_B_USERNAME}
           password: ${HAWK_PROFILE_USER_B_PASSWORD}
+        # optional — only when a route needs this user's own ID
         globalParameters:
           userId: ${HAWK_PROFILE_USER_B_ID}
 ```
@@ -233,7 +247,7 @@ hawk rescan --scan-id <SCAN_ID> --profile-scan-mode=primary-full --full-scan-pro
 
 | Symptom | Cause | Action |
 |---------|-------|--------|
-| Exit 1, `Pre-flight authentication check failed for N profile(s)` listing profiles | Those profiles could not log in; the whole scan aborts before it starts | Fix that profile's env vars or re-seed it (Phase 1c.6 in SKILL.md). If unfixable, remove that profile. Under 2 left → remove `profiles`, scan as one user, tell the user |
+| Exit 1, `Pre-flight authentication check failed for N profile(s)` listing profiles | Those profiles could not log in; the whole scan aborts before it starts | Check `.hawk-profiles.env` is loaded first; then fix that profile's env vars or re-seed it (Phase 1c.6 in SKILL.md). If unfixable, remove that profile. Under 2 left → remove `profiles`, scan as one user, tell the user |
 | Exit 1, `More than one profile needs to be configured` | Only one profile declared | Add a second account (ladder above) or remove `profiles` |
 | Error listing valid profile names | `--full-scan-profile` names a profile that doesn't exist | Use one of the listed names |
 | 0 findings in under ~60 s | `--profile-scan-mode` missing — the business-logic trap | Re-run with the mode; never report this as clean |
