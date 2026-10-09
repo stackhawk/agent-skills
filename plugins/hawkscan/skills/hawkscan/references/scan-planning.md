@@ -97,6 +97,15 @@ scenario breakdown (frontend-only, fullstack with API routes, frontend-only-thir
 backend) and config templates live in `spa-scanning.md`; use it once a surface is identified
 as a SPA rather than re-deriving that logic here.
 
+### Record authorization signals
+
+While reading route definitions, note whether each surface enforces per-user or per-role
+access: object-ID routes (e.g. `/<resource>/{id}`), queries scoped to the current user or
+tenant, role/admin guards, tenant/org columns or middleware. Also note every dev/test
+credential found and its role, any public signup endpoint, and any privileged endpoint that
+deletes or resets users, changes passwords or roles, or bulk-deletes data. Signals plus 2+
+obtainable accounts (and a hawk with `--profile-scan-mode`) make the scan multi-profile — see Phase 1c in SKILL.md.
+
 ## Recommend code changes for gaps
 
 Some gaps can't be closed by configuration alone. When a surface has no reachable spec, or

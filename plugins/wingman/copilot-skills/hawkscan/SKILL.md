@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 2.6.3
+version: 2.7.0
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Performs
@@ -261,10 +261,8 @@ hawk config show app.authentication --text
 
 If no row matches → jump to **Phase 1c.5**. Do not force-fit a recipe or proceed without auth.
 
-**One user, or `profiles` + `--profile-scan-mode=primary-full`.** A `profiles` block **without** that mode runs
-only the hidden BUSINESS_LOGIC preset (BOLA/BFLA, 2 plugins, ~30 s, 0 general findings). Write profiles only when
-BOLA/BFLA coverage is the goal and the installed hawk has the flag; a build without it must not use profiles.
-Scan as a non-privileged user or pinned token; an admin scan can mutate its own login. → [`references/auth-config.md`](references/auth-config.md#profiles-and-scan-user)
+**Multi-profile BOLA/BFLA (autonomous — asks only for missing credentials or destructive admin endpoints).** Write `app.authentication.profiles` when discovery found authorization signals, `hawk scan --help | grep -q -- --profile-scan-mode` succeeds, and 2+ accounts can be found, created, or asked for. Every scan AND rescan uses `--profile-scan-mode=primary-full --full-scan-profile=<privileged-profile>`; **never write `profiles` without that mode** (the default runs only BOLA/BFLA, ~30 s, 0 general findings). → [`references/multi-profile.md`](references/multi-profile.md)
+Otherwise scan as **one** non-privileged user or pinned token (an admin single-user scan can mutate its own login) — [`references/auth-config.md`](references/auth-config.md#profiles-and-scan-user)
 
 **Step 3 — Fetch each relevant section:** `hawk config show <section> --text`. Use the returned YAML example as template.
 
@@ -513,6 +511,7 @@ initialized; skill is active.
 - **Don't scan before the app is running.** HawkScan will exit 1 with a connection error.
 - **Try `https://` first — HawkScan accepts self-signed certificates.** Only fall back to `http://` if the scan actually fails to connect with a TLS error.
 - **Don't hardcode API keys or credentials in `stackhawk.yml`.** Use env vars.
+- **Don't scan a `profiles` config without `--profile-scan-mode=primary-full`.** 0 findings in ~30 s is that trap, not a clean app — see [`references/multi-profile.md`](references/multi-profile.md#quality-gate-and-failures).
 - **Never accept an exit-0 scan that fails the quality gate.** Untouched planned routes, auth-walls, or an unscanned surface mean config iteration, not done — see [`references/scan-quality.md`](references/scan-quality.md).
 - **Don't ignore exit code 42.** It's a deliberate signal that findings crossed the threshold — treat it as a build failure.
 - **String interpolation mid-value doesn't work.** `host: "https://${HOST}/api"` will NOT interpolate. Use `host: ${FULL_HOST_URL}`.
