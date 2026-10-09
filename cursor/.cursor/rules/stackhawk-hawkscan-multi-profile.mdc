@@ -82,7 +82,9 @@ per-user identifier, with `<NAME>` the profile name upper-cased and `-` turned i
 Credential values never go into `stackhawk.yml`.
 
 Write every found, created, or supplied value to a gitignored `.hawk-profiles.env` in the target
-repo (add it to that repo's `.gitignore` if not already ignored; never commit it), mapping values
+repo (add it to that repo's `.gitignore` if not already ignored; never commit it — if
+`git ls-files --error-unmatch .hawk-profiles.env` succeeds it is already tracked, so stop and tell
+the user to `git rm --cached` it and rotate those credentials), mapping values
 from other sources (e.g. `.data-seed-credentials.env` variables) to the `HAWK_PROFILE_<NAME>_*`
 names. Load it before **every** `hawk scan` and `hawk rescan`, since each may run in a fresh shell:
 
@@ -241,7 +243,8 @@ hawk rescan --scan-id <SCAN_ID> --profile-scan-mode=primary-full --full-scan-pro
   # hawkscan: full-scan-profile=<profile-name> (confirmed by user <YYYY-MM-DD>: destructive admin endpoints)
   ```
 
-  On later runs, read that comment and pass its profile name to `--full-scan-profile`.
+  On later runs, read that comment and pass its profile name to `--full-scan-profile`. If the
+  comment is gone (e.g. the config was rewritten), ask again and re-record it.
 
 ## Quality gate and failures
 
