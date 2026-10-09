@@ -96,12 +96,12 @@ After seeding, re-run `hawk validate auth stackhawk.yml` and continue.
 
 **The fix is one of two shapes:**
 
-- **One user** (the default). Configure a single user with the recipes above. Extra test accounts by themselves are not a reason to write `profiles`.
-- **Profiles plus the mode**, when BOLA/BFLA coverage is the goal and the installed hawk supports the flag: write 2+ profiles (`hawk config show app.authentication.profiles --text`, one named entry per role, each with its own credentials) and run every scan and rescan with `--profile-scan-mode=primary-full --full-scan-profile=<privileged-profile>` — full policy on the privileged profile, authorization testing on the rest. A build without `--profile-scan-mode` must not use profiles; scan as one user instead. A dedicated multi-role reference is arriving separately.
+- **One user** (the default when discovery finds no authorization signals). Configure a single user with the recipes above. Extra test accounts by themselves are not a reason to write `profiles`.
+- **Profiles plus the mode**, when discovery finds authorization signals (object-ID routes, ownership checks, role guards, tenant scoping) and the installed hawk supports the flag: 2+ profiles, every scan and rescan with `--profile-scan-mode=primary-full --full-scan-profile=<privileged-profile>`. The trigger, the find → make → ask account ladder, validated YAML templates, and pre-flight failure handling are covered from Phase 1c in SKILL.md (multi-profile reference). A build without `--profile-scan-mode` must not use profiles; scan as one user instead.
 
 A `profiles` scan that returns 0 findings in under a minute is this trap, not a clean app: either add the mode or remove the block and scan as one user.
 
-**Scan as a non-privileged user, or pin a token.** The scanner exercises write endpoints (PUT/PATCH/DELETE) with mutated payloads. Scanned as an admin, an unauthenticated or self-targeting write can change the scan's own login mid-scan — e.g. an unauthenticated `PATCH /api/users/<id>` that overwrites the admin's email, after which `hawk validate auth` and every later scan return 401. Prefer:
+**Single-user scans: scan as a non-privileged user, or pin a token.** (Multi-profile scans give the full policy to the privileged profile unless its endpoints are destructive — see Phase 1c in SKILL.md.) The scanner exercises write endpoints (PUT/PATCH/DELETE) with mutated payloads. Scanned as an admin, an unauthenticated or self-targeting write can change the scan's own login mid-scan — e.g. an unauthenticated `PATCH /api/users/<id>` that overwrites the admin's email, after which `hawk validate auth` and every later scan return 401. Prefer:
 
 - a dedicated **non-privileged test user** whose own record the scan cannot reach, or
 - `app.authentication.external` with a **pre-issued token** (login is never replayed, so a mutated password or email does not break the scan); and
