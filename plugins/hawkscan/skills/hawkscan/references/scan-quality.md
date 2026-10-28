@@ -120,10 +120,10 @@ When one or more config-class gaps are open, loop back to SKILL.md's Step 2b (tu
   fix — a monorepo slice with no visibility into the missing service, dynamic routing that
   needs a code change, a spec that genuinely doesn't exist yet — report it and move on.
   Don't burn an iteration re-scanning a config you didn't touch.
-- **Iteration cap: 2 interactive, 1 autonomous — per config, and counted in rescans, not
-  edits.** A batch of five config edits followed by one rescan is one iteration. This
-  matches the Autonomous Security Loop's existing guard rail of at most one fix-rescan cycle
-  when running unattended.
+- **Config-iteration cap: 2 interactive, 1 autonomous — per config, and counted in rescans,
+  not edits.** A batch of five config edits followed by one rescan is one iteration. This
+  budget is counted separately from the loop's one-pass fix-verify cap, and both end on a
+  verifying scan (which may be a full scan): the last config edit is never the last step.
 - **At the cap, stop.** Report the remaining structural gaps by reason identifier, the
   coverage route-diff evidence (the untouched-route list from check 1), and concrete next
   steps — including any code-change recommendations discovery would make for surfaces that
