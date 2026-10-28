@@ -273,3 +273,16 @@ jobs:
             git commit -m "chore: regenerate cursor rules"
             git push
           fi
+
+  ci-result:
+    if: always()
+    needs: [validate, generate-cursor-rules]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required job failed or was cancelled
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "One or more CI jobs failed or were cancelled."
+            exit 1
+          fi
+          echo "All CI jobs passed."
