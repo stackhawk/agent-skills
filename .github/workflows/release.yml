@@ -30,7 +30,7 @@ permissions:
 jobs:
 
   resolve:
-    runs-on: biodome-ci-arm-2cpu
+    runs-on: agent-skills-amd-4cpu
     timeout-minutes: 10
     permissions:
       contents: read
@@ -55,7 +55,7 @@ jobs:
   # tag: nothing here is committed or published.
   validate:
     needs: [ resolve ]
-    runs-on: biodome-ci-arm-4cpu
+    runs-on: agent-skills-amd-4cpu
     timeout-minutes: 20
     permissions:
       contents: read
@@ -90,7 +90,7 @@ jobs:
   claim:
     if: github.event_name == 'push' && github.ref_name == 'main' && !failure() && !cancelled()
     needs: [ resolve, validate ]
-    runs-on: biodome-ci-arm-2cpu
+    runs-on: agent-skills-amd-4cpu
     timeout-minutes: 10
     permissions:
       contents: read
@@ -121,7 +121,7 @@ jobs:
   draft-release:
     if: github.event_name == 'push' && github.ref_name == 'main'
     needs: [ resolve, claim ]
-    runs-on: biodome-ci-arm-2cpu
+    runs-on: agent-skills-amd-4cpu
     timeout-minutes: 10
     permissions:
       contents: write
@@ -144,7 +144,7 @@ jobs:
   tag:
     if: github.event_name == 'push' && github.ref_name == 'main'
     needs: [ resolve, claim, draft-release ]
-    runs-on: biodome-ci-arm-2cpu
+    runs-on: agent-skills-amd-4cpu
     timeout-minutes: 10
     permissions:
       contents: read
@@ -170,7 +170,7 @@ jobs:
   publish-release:
     if: github.event_name == 'push' && github.ref_name == 'main'
     needs: [ resolve, tag ]
-    runs-on: biodome-ci-arm-2cpu
+    runs-on: agent-skills-amd-4cpu
     timeout-minutes: 10
     permissions:
       contents: write
@@ -196,7 +196,7 @@ jobs:
     name: Sync marketplace
     if: github.event_name == 'push' && github.ref_name == 'main'
     needs: [ resolve, tag ]
-    runs-on: biodome-ci-arm-4cpu
+    runs-on: agent-skills-amd-4cpu
     timeout-minutes: 30
     permissions:
       contents: read
@@ -267,7 +267,7 @@ jobs:
     name: Trigger baseline capture
     if: github.event_name == 'push' && github.ref_name == 'main'
     needs: [ resolve, tag ]
-    runs-on: biodome-ci-arm-2cpu
+    runs-on: agent-skills-amd-4cpu
     timeout-minutes: 10
     permissions:
       contents: read
