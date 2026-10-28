@@ -4,17 +4,32 @@
     {
       "path": "plugins/hawkscan/.codex-plugin/plugin.json",
       "field": "version",
-      "type": "json"
+      "type": "json",
+      "stamp_only": true
     },
     {
       "path": "plugins/api/.codex-plugin/plugin.json",
       "field": "version",
-      "type": "json"
+      "type": "json",
+      "stamp_only": true
     },
     {
       "path": "plugins/stackhawk-data-seed/.codex-plugin/plugin.json",
       "field": "version",
-      "type": "json"
+      "type": "json",
+      "stamp_only": true
+    },
+    {
+      "path": ".codex-plugin/plugin.json",
+      "field": "version",
+      "type": "json",
+      "stamp_only": true
+    },
+    {
+      "path": "plugin.json",
+      "field": "version",
+      "type": "json",
+      "stamp_only": true
     },
     {
       "path": "gemini-extension.json",
@@ -34,7 +49,8 @@
     {
       "path": "plugins/hawkscan-ci/.codex-plugin/plugin.json",
       "field": "version",
-      "type": "json"
+      "type": "json",
+      "stamp_only": true
     },
     {
       "path": "plugins/hawkscan-ci/skills/hawkscan-ci/SKILL.md",
@@ -49,17 +65,20 @@
     {
       "path": "plugins/wingman/.codex-plugin/plugin.json",
       "field": "version",
-      "type": "json"
+      "type": "json",
+      "stamp_only": true
     },
     {
       "path": "plugins/wingman/.github/plugin/plugin.json",
       "field": "version",
-      "type": "json"
+      "type": "json",
+      "stamp_only": true
     },
     {
       "path": "plugins/optimize/.codex-plugin/plugin.json",
       "field": "version",
-      "type": "json"
+      "type": "json",
+      "stamp_only": true
     },
     {
       "path": "plugins/optimize/skills/optimize/SKILL.md",
@@ -74,9 +93,7 @@
     "plugins/optimize/.claude-plugin/plugin.json",
     "plugins/stackhawk-data-seed/.claude-plugin/plugin.json",
     "plugins/wingman/.claude-plugin/plugin.json",
-    ".claude-plugin/marketplace.json",
-    ".codex-plugin/plugin.json",
-    "plugin.json"
+    ".claude-plugin/marketplace.json"
   ],
   "audit": {
     "exclude": [

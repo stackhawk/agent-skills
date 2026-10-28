@@ -114,11 +114,6 @@ else
     echo "ERROR: $MANIFEST must not declare 'dependencies' (Copilot has no such mechanism)"
     errors=$((errors + 1))
   fi
-  mver="$(python3 -c "import json; print(json.load(open('$MANIFEST')).get('version','MISSING'))")"
-  if [ "$mver" != "$expected_version" ]; then
-    echo "ERROR: $MANIFEST has version '$mver', expected '$expected_version'"
-    errors=$((errors + 1))
-  fi
 fi
 
 # 7. Codex manifest points at copilot-skills/. Codex ignores "dependencies", so

@@ -63,7 +63,7 @@ See `RELEASING.md` for the release flow, recovery and the marketplace sync.
 
 ## Manifests and Versioning
 
-Release tags (`vX.Y.Z`) are the source of truth; there is no `VERSION` file. The tree carries the placeholder `0.0.0-dev` (set in `.version-bump.json`) in every version-bearing file, and the manifests whose format allows it (Claude manifests, root `plugin.json`, root `.codex-plugin/plugin.json`) carry no `version` at all so git-sourced installs track the commit; `gemini-extension.json` requires one and keeps the placeholder. The release job stamps the resolved version into a scratch copy to validate it, and the marketplace sync stamps it into the snapshot it publishes.
+Release tags (`vX.Y.Z`) are the source of truth; there is no `VERSION` file. The tree carries the placeholder `0.0.0-dev` (set in `.version-bump.json`) in every version-bearing file, and the manifests whose format allows it (Claude, Codex and Copilot manifests) carry no `version` at all so git-sourced installs track the commit; `gemini-extension.json` requires one and keeps the placeholder. The release job stamps the resolved version into a scratch copy to validate it, and the marketplace sync stamps it into the snapshot it publishes.
 
 Skills assume the combined `hawk` binary (`hawk op …`) is installed — no raw-REST fallback.
 
@@ -76,7 +76,7 @@ Skills assume the combined `hawk` binary (`hawk op …`) is installed — no raw
 | Cursor | Rules: generated into `cursor/.cursor/rules/`; Skills: symlinks in `.cursor/skills/`; Hooks: `plugins/hawkscan/hooks/cursor/` |
 | Claude (umbrella) | `plugins/wingman/.claude-plugin/plugin.json` — `/plugin install wingman@stackhawk` installs hawkscan + api + data-seed + optimize |
 
-`.version-bump.json` lists every version-bearing file (`files`) and every manifest that must stay unversioned (`unversioned`). `bump-version.sh` reads it to stamp all files atomically, and `check-version.sh` to verify them. When adding a new plugin, add its manifests and SKILL.md to `.version-bump.json`.
+`.version-bump.json` lists every version-bearing file (`files`; `stamp_only` ones carry no version in the tree and get one when stamped) and every manifest that must stay unversioned (`unversioned`). `bump-version.sh` reads it to stamp all files atomically, and `check-version.sh` to verify them. When adding a new plugin, add its manifests and SKILL.md to `.version-bump.json`.
 
 CI (`generate-and-validate.yml`) validates version consistency on every PR. `release.yml` runs on every push to `main` and ends in the marketplace sync. A failed run that already claimed its number is re-run, or freed with `abandon-release.yml`.
 

@@ -4,7 +4,8 @@ set -euo pipefail
 # ─── Version Consistency Check ───
 # Every version-bearing file listed in .version-bump.json (and every generated wingman
 # copy) must carry one version: the in-tree placeholder by default, or the version
-# the release job just stamped. Files under "unversioned" must carry none, so Claude
+# the release job just stamped. "stamp_only" files carry none in the tree and the
+# stamped version after a stamp. Files under "unversioned" must carry none, so Claude
 # Code keeps tracking the commit instead of a number that never changes.
 # Usage: ./scripts/check-version.sh [<expected-version>]
 
@@ -44,6 +45,12 @@ for entry in manifest["files"]:
     path = entry["path"]
     if entry["type"] == "yaml-frontmatter":
         check(path, frontmatter_version(path))
+    elif entry.get("stamp_only") and expected == manifest["placeholder"]:
+        if entry["field"] in json.load(open(path)):
+            print(f"ERROR: {path} must not carry a version in the tree (the release stamps it); remove the field")
+            errors += 1
+        else:
+            print(f"OK: {path} (unversioned until stamped)")
     else:
         check(path, json.load(open(path)).get(entry["field"]))
 

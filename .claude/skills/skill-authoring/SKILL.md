@@ -156,8 +156,8 @@ in-tree placeholder (`0.0.0-dev`, see `.version-bump.json`).
 **3. Create manifests** — copy an existing plugin's `plugin.json` as a template:
 ```bash
 # .claude-plugin/plugin.json and .codex-plugin/plugin.json
-# Set name, description, keywords. Codex manifests carry the placeholder version (0.0.0-dev);
-# the Claude plugin.json carries no version field
+# Set name, description, keywords. Neither manifest carries a version field: the release
+# stamps the Codex one (stamp_only in .version-bump.json); the Claude one stays unversioned
 ```
 
 **4. Create symlinks** for platform discovery (use relative paths):
@@ -172,10 +172,10 @@ cd .cursor/skills/ && ln -s ../../plugins/<name>/skills/<name> <name>
 "<name>/skills/<name>/SKILL.md|stackhawk-<name>|<cursor description>|<globs>|<alwaysApply>"
 ```
 
-**6. Add to `.version-bump.json`** — add the Codex manifest and the SKILL.md under `files`, and the
-Claude manifest under `unversioned`:
+**6. Add to `.version-bump.json`** — add the Codex manifest (`stamp_only`) and the SKILL.md under
+`files`, and the Claude manifest under `unversioned`:
 ```json
-{ "path": "plugins/<name>/.codex-plugin/plugin.json", "field": "version", "type": "json" },
+{ "path": "plugins/<name>/.codex-plugin/plugin.json", "field": "version", "type": "json", "stamp_only": true },
 { "path": "plugins/<name>/skills/<name>/SKILL.md", "field": "version", "type": "yaml-frontmatter" }
 ```
 
@@ -233,8 +233,9 @@ After any edit to `SKILL.md` or `references/*.md`:
 | Breaking change (removed step, changed trigger conditions) | a `Release: major` line |
 
 Release tags are the source of truth for the version. The tree carries a placeholder
-(`0.0.0-dev`) in every version-bearing file listed in `.version-bump.json`, and manifests
-whose format allows it (listed under `unversioned`) carry no version; the release job
+(`0.0.0-dev`) in every SKILL.md and in `gemini-extension.json`, which requires one; every
+other manifest carries no version (`stamp_only` files get one when stamped, `unversioned`
+files never do); the release job
 stamps the number with `bump-version.sh` to validate it and the marketplace sync stamps it
 into the snapshot. Never edit version numbers manually in individual files.
 

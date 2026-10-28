@@ -6,7 +6,8 @@ set -euo pipefail
 # the tree. The tree carries a placeholder; the release job stamps the resolved
 # version into every file listed in .version-bump.json to validate the tagged tree,
 # and the marketplace sync stamps it into the snapshot it publishes.
-# Handles two file types: json, yaml-frontmatter.
+# Handles two file types: json, yaml-frontmatter. A "stamp_only" json file carries no
+# version in the tree: a release stamp adds the field and --placeholder removes it.
 # Usage: ./scripts/bump-version.sh <X.Y.Z>|--placeholder
 # Examples:
 #   ./scripts/bump-version.sh 2.7.2          # stamp a release version
@@ -40,23 +41,28 @@ fi
 echo "Stamping version: ${new_version}"
 echo ""
 
-python3 - "$REPO_ROOT" "$MANIFEST" "$new_version" <<'PYEOF'
+python3 - "$REPO_ROOT" "$MANIFEST" "$new_version" "$placeholder" <<'PYEOF'
 import json
 import re
 import sys
 import os
 
-repo_root, manifest_path, new_ver = sys.argv[1], sys.argv[2], sys.argv[3]
+repo_root, manifest_path, new_ver, placeholder = sys.argv[1:5]
 
 with open(manifest_path) as f:
     manifest = json.load(f)
 
 updated = 0
 
-def update_json_file(path, field, new_ver):
+def update_json_file(path, field, new_ver, stamp_only):
     with open(path) as f:
         data = json.load(f)
-    if field in data:
+    if stamp_only:
+        data.pop(field, None)
+        if new_ver != placeholder:
+            items = list(data.items())
+            data = dict(items[:1] + [(field, new_ver)] + items[1:])
+    elif field in data:
         data[field] = new_ver
     with open(path, 'w') as f:
         json.dump(data, f, indent=2)
@@ -78,7 +84,7 @@ for entry in manifest.get("files", []):
     file_type = entry.get("type", "json")
     field = entry["field"]
     if file_type == "json":
-        update_json_file(abs_path, field, new_ver)
+        update_json_file(abs_path, field, new_ver, entry.get("stamp_only", False))
     elif file_type == "yaml-frontmatter":
         update_yaml_frontmatter(abs_path, field, new_ver)
     print(f"  Updated: {entry['path']}")
