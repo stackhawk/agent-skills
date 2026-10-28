@@ -335,7 +335,7 @@ hawk rescan --scan-id "${INITIAL_SCAN_ID}" --json-output > /tmp/rescan.json
 Rescan cannot discover new vulnerabilities. If a fix introduces a fresh
 vulnerability (e.g., swapping one broken auth scheme for another broken
 one on a *new* endpoint), rescan won't catch it — only a full scan will.
-The Autonomous Loop's one-cycle guard rail mitigates this: on the next
+The Autonomous Loop's fix-verify cap mitigates this: on the next
 full scan, anything rescan missed will surface.
 
 ---
