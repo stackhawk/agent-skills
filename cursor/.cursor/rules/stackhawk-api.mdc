@@ -79,37 +79,39 @@ every call. No further auth work for this skill.
 
 ### Approach
 
-Use `hawk op app list` and `hawk op scan list` to assemble an org-level view.
-`hawk op app list --format json` returns app metadata; `hawk op scan list --format json`
-returns per-scan severity counts. Join on `applicationId` to build a posture table.
+Use `hawk op scan list` to assemble an org-level view; it already names each
+scan's app and environment. Add `hawk op app list` only to find apps with no scans.
 
 ```bash
-# All apps with metadata (team, type, env count)
-hawk op app list --format json
+# Every scan in the org, newest first (without --limit it returns only 10)
+hawk op scan list --sort-by started --sort-dir desc --limit 10000 --format json
 
-# Recent scans across the org — has per-scan severity counts
-hawk op scan list --limit 500 --format json
+# All apps: emits id, name, and cloud only
+hawk op app list --format json
 ```
 
-Fields available per scan: `highAlertCount`, `mediumAlertCount`, `lowAlertCount`,
-`applicationId`, `environmentName`, `startedTimestamp`, `status`.
+Fields per scan row: `id`, `app` (name), `env`, `status` (`Complete`, `Failed`,
+`Running`), `findings` (per severity `{new}{H|M|L}{triaged}`, e.g. `4H0 47M2`),
+`duration`, `started` (`3w ago`, or `YYYY-MM-DD` once 4+ weeks old). There are no
+app UUIDs, exact timestamps, or raw API fields such as `highAlertCount` in this
+output — do not read fields it does not emit.
 
 ### Present as a table
 
-Format the response as:
+Take each app + environment's latest `Complete` scan and parse `findings`:
 
-| App | Environment | High | Medium | Low | Last Scan |
-|-----|-------------|------|--------|-----|-----------|
-| My API | Production | 3 | 7 | 12 | 2024-01-15 |
-| Auth Service | Staging | 0 | 2 | 4 | 2024-01-10 |
+| App | Environment | High | Medium | Low | Triaged | Last Scan |
+|-----|-------------|------|--------|-----|---------|-----------|
+| My API | Production | 3 | 7 | 12 | 2 | 1d ago |
+| Auth Service | Staging | 0 | 2 | 4 | 0 | 2025-11-10 |
 
-Resolve `applicationId` → app name via `hawk op app list --format json`.
+High/Medium/Low are new (untriaged) counts from that scan.
 
 ### Flag priority items
 
-- **Stale apps**: `startedTimestamp` older than 30 days — flag as "No recent scan"
-- **High severity hotspots**: environments with `highAlertCount > 0`, sorted descending
-- **Incomplete scans**: `status` not `COMPLETED` — may indicate config issues
+- **Stale apps**: `started` more than 30 days ago — flag as "No recent scan"
+- **High severity hotspots**: environments with new High findings, sorted descending
+- **Failed scans**: latest `status` is `Failed` — may indicate config issues
 
 ### After presenting the table
 
@@ -117,7 +119,8 @@ Offer to drill down on any flagged app:
 - "App X has 3 unaddressed High findings — shall I pull the full finding details?"
 - → Step 4 for any app the user selects
 
-Full recipe with jq transforms:
+Full recipe with jq transforms, the exact fields `hawk op` emits, and what it
+cannot report yet:
 → [`references/reporting-recipes.md`](references/reporting-recipes.md)
 
 ---
@@ -138,11 +141,13 @@ hawk op scan get --app "<APP_NAME>"
 hawk op scan get --app "<APP_NAME>" --detail full --format json
 ```
 
-`--detail full` returns every alert, every affected URI, HTTP messages (subject to
+`--detail full` returns the alerts, their affected URIs, HTTP messages (subject to
 `--max-body-size`), and remediation guidance in one JSON blob. It fetches per-plugin detail for
 at most **10 plugins per call** (the CLI prints "Fetching 10 plugin details"); for a
 scan with more alert types, drill the rest with `--plugin-id`, or read the scanner's own
-`hawk scan --json-output` file, which is the complete list.
+`hawk scan --json-output` file, which is the complete list. Each alert type also
+lists at most 10 paths; its true count is `.alert.uriCount` from
+`hawk op scan get <SCAN_ID> --plugin-id <PLUGIN_ID> --format json`.
 
 → Specific scan IDs, single-alert / single-URI drill-down, `--max-findings` tuning:
 [`references/hawk-op-shortcuts.md`](references/hawk-op-shortcuts.md#2--app-deep-dive-scan--alerts--findings) §2.
@@ -161,8 +166,10 @@ https://app.stackhawk.com/scans/{scanId}
 
 ### "What changed?" — diff recipe
 
-Compare two scans: use `hawk op scan list` to get the two most recent scan IDs for
-the app, pull alerts for each via `hawk op scan get`, diff the `pluginId` sets.
+Compare two scans: use `hawk op scan list --app <APP_UUID> --env <ENV>` to get the
+two most recent completed scan IDs (`.data[].id`), pull each scan's alert types via
+`hawk op scan get <ID> --detail full`, and diff the `plugin_id` sets. `hawk op`
+returns at most 10 alert types per scan, so a diff over a larger scan is partial.
 
 → Executable recipe (`hawk op` pipeline with `comm` diff):
 [`references/hawk-op-shortcuts.md`](references/hawk-op-shortcuts.md#2--app-deep-dive-scan--alerts--findings) §2.
