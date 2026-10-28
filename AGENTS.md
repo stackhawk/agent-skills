@@ -19,8 +19,8 @@ Multi-platform agent skills repo serving Claude, Codex, Gemini, Copilot, Cursor,
 - `plugins/hawkscan/hooks/cursor/` — Cursor hook scripts and hooks.json
 - `cursor/` — Generated Cursor .mdc rules (do NOT edit manually)
 - `scripts/generate-cursor-rules.sh` — Transforms SKILL.md → Cursor .mdc format
-- `scripts/bump-version.sh` — Updates all version-bearing files atomically (reads `.version-bump.json`)
-- `scripts/release.sh` — Pre-release checks, creates tag, creates GH Release
+- `scripts/bump-version.sh` — Stamps one version into every version-bearing file (reads `.version-bump.json`); the release job uses it, contributors never do
+- `scripts/check-version.sh` — Checks every version-bearing file carries one version (the placeholder by default)
 - `scripts/generate-marketplace-catalogs.py` and `scripts/generate-marketplace-skills.py`: Local install verification helpers; release publishing uses the marketplace repo's `scripts/sync-agent-skills.py`
 
 ## Commands
@@ -32,16 +32,8 @@ bash scripts/generate-cursor-rules.sh
 # Verify generation is idempotent (no diff = correct)
 bash scripts/generate-cursor-rules.sh && git diff cursor/
 
-# Bump version (updates VERSION + all manifests + SKILL.md frontmatter in one pass)
-bash scripts/bump-version.sh --patch   # bug fixes
-bash scripts/bump-version.sh --minor   # new skill or significant capability
-bash scripts/bump-version.sh --major   # breaking changes
-
-# Release (validates manifests, Cursor rules, and the wingman Copilot bundle;
-# creates annotated tag, creates GH Release)
-bash scripts/release.sh --dry-run  # validate without creating anything
-bash scripts/release.sh            # create tag + GH Release (must be on main, clean tree)
-gh workflow run release.yml --ref "v$(cat VERSION)"  # run release checks and sync marketplace main
+# Releases are numbered by tags: do not bump anything in a PR. After a stamp, put the placeholder back:
+bash scripts/bump-version.sh --placeholder && bash scripts/check-version.sh
 
 # macOS/Linux install
 bash scripts/install.sh --platform cursor  --target ~
@@ -65,19 +57,13 @@ bash scripts/test-wingman-skills.sh
 
 ## PR Workflow
 
-Before creating every PR, bump the patch version and include it in the commit:
+Do not bump versions in a PR. Every merge to `main` is a release: `release.yml` takes the next number from the latest release tag (`Release: minor` or `Release: major` on a line of the PR description raises it further), checks the tree stamped with it, claims it, tags the merged commit and publishes. `generate-and-validate.yml` checks the tree still carries the placeholder.
 
-```bash
-bash scripts/bump-version.sh --patch
-```
-
-Use `--minor` for new skills or significant capability additions, `--major` for breaking changes.
-
-See `RELEASING.md` for the full release process including how to update the marketplace catalog.
+See `RELEASING.md` for the release flow, recovery and the marketplace sync.
 
 ## Manifests and Versioning
 
-`VERSION` is the single source of truth. All platform manifests must match it.
+Release tags (`vX.Y.Z`) are the source of truth; there is no `VERSION` file. The tree carries the placeholder `0.0.0-dev` (set in `.version-bump.json`) in every version-bearing file, and the Claude manifests carry no `version` at all so Claude Code keeps updating git-sourced installs from the commit. The release job stamps the resolved version into a scratch copy to validate it, and the marketplace sync stamps it into the snapshot it publishes.
 
 Skills assume the combined `hawk` binary (`hawk op …`) is installed — no raw-REST fallback.
 
@@ -90,9 +76,9 @@ Skills assume the combined `hawk` binary (`hawk op …`) is installed — no raw
 | Cursor | Rules: generated into `cursor/.cursor/rules/`; Skills: symlinks in `.cursor/skills/`; Hooks: `plugins/hawkscan/hooks/cursor/` |
 | Claude (umbrella) | `plugins/wingman/.claude-plugin/plugin.json` — `/plugin install wingman@stackhawk` installs hawkscan + api + data-seed + optimize |
 
-`.version-bump.json` lists every version-bearing file. `bump-version.sh` reads it to update all files atomically. When adding a new plugin, add its manifests and SKILL.md to `.version-bump.json`.
+`.version-bump.json` lists every version-bearing file (`files`) and every manifest that must stay unversioned (`unversioned`). `bump-version.sh` reads it to stamp all files atomically, and `check-version.sh` to verify them. When adding a new plugin, add its manifests and SKILL.md to `.version-bump.json`.
 
-CI (`generate-and-validate.yml`) validates version consistency on every PR. Manually dispatch `release.yml` from the release tag after running `scripts/release.sh`; it re-validates the tag and pushes the marketplace sync to `main`.
+CI (`generate-and-validate.yml`) validates version consistency on every PR. `release.yml` runs on every push to `main` and ends in the marketplace sync. A failed run that already claimed its number is re-run, or freed with `abandon-release.yml`.
 
 ## Adding a New Plugin
 
@@ -101,7 +87,7 @@ CI (`generate-and-validate.yml`) validates version consistency on every PR. Manu
 3. Add symlinks in `skills/`, `.opencode/skills/`, and `.cursor/skills/` (pointing into the new plugin)
 4. Add entries to `scripts/generate-cursor-rules.sh` `MAPPINGS` array (controls Cursor .mdc generation)
 5. Add all new manifests and SKILL.md to `.version-bump.json`
-6. Run `bash scripts/bump-version.sh --minor` so version propagates
+6. Run `bash scripts/bump-version.sh --placeholder` so the new files carry the placeholder, then `bash scripts/check-version.sh`
 
 ## Cursor Rule Generation
 
@@ -131,10 +117,9 @@ The `stop` hook's `followup_message` causes Cursor to automatically continue wit
 - `docs/superpowers/` is gitignored (design specs/plans kept locally)
 - `.claude/` dir is gitignored (local settings only)
 - SKILL.md frontmatter requires `name:`, `version:`, and `description:` — CI validates all three
-- `scripts/release.sh` must be run from `main` with a clean working tree
 - `plugins/wingman/copilot-skills/` is generated output — edit the source skills and run `bash scripts/generate-wingman-skills.sh`
 - `plugins/wingman/` must NEVER contain a `skills/` directory. Claude Code always scans `skills/`, so one would load every skill twice (`wingman:hawkscan` and `hawkscan:hawkscan`). The Copilot bundle is deliberately named `copilot-skills/`.
-- Run `bump-version.sh` BEFORE the generators: generated copies carry version frontmatter copied from source
+- Generated copies carry the version frontmatter copied from source: regenerate after stamping (the release job does) and after `--placeholder`
 - The separate `agent-skills-marketplace` repo owns its generated catalogs, plugin snapshots, and `skills/` copies. `release.yml` runs that repo's sync script on a new tag and pushes validated outputs to marketplace `main`; never hand-edit its generated outputs. The standalone `skills/` copies serve the `skills` CLI, which ignores marketplace catalogs.
 
 ## Maintaining this file

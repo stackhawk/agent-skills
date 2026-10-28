@@ -1,204 +1,238 @@
 name: Release
-
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: false
+  queue: max
 on:
-  workflow_dispatch:
-    inputs:
-      dry_run:
-        description: 'Validate only — skip release creation. Run from a tag (e.g. v1.6.2) using the "Use workflow from" picker above.'
-        required: false
-        type: boolean
-        default: false
+  push:
+    branches:
+      - main
 
 permissions:
-  contents: write
+  contents: read
+  actions: read
 
+# Releases are numbered by tags (ENG-1160): there is no VERSION file and no version-bump commit.
+# resolve works out the number once per run (the latest release tag + 1, more for a `Release: minor`
+# or `Release: major` line in a merged pull request). validate stamps it into a scratch copy of the
+# tree and checks every manifest, skill and generated copy, so a release that cannot be stamped
+# never claims a number. claim marks the number, tag releases it on the merged commit, and the
+# GitHub Release, the marketplace sync and the eval baseline follow the tag. The tree itself keeps a
+# placeholder version (.version-bump.json): the marketplace sync stamps the tag's version into the
+# snapshot it publishes.
+#
+# A run that fails after the claim leaves it: re-run its failed jobs to finish the release, or run
+# Abandon release if the merged change itself breaks it. Every step after the tag is idempotent, so a
+# re-run of a tagged release picks up where it stopped.
+#
+# claim, tag and the marketplace and baseline steps run as the release App, whose key only
+# ci-deploy-preprod may read, so those jobs assume it with the job's OIDC token (main only).
 jobs:
-  release:
-    runs-on: ubuntu-latest
+
+  resolve:
+    runs-on: biodome-ci-arm-2cpu
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
     outputs:
-      tag: ${{ steps.version.outputs.tag }}
-      version: ${{ steps.version.outputs.version }}
+      version: ${{ steps.release.outputs.version }}
+      released: ${{ steps.release.outputs.released }}
     steps:
-      - name: Resolve tag from ref
-        id: version
-        run: |
-          ref="${GITHUB_REF}"
-          if [[ "$ref" != refs/tags/* ]]; then
-            echo "ERROR: This workflow must be run from a tag, not a branch."
-            echo "Use the 'Use workflow from' picker to select a tag (e.g. v1.6.2)."
-            exit 1
-          fi
-          tag="${ref#refs/tags/}"
-          version="${tag#v}"
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "Running release for tag: ${tag}"
-
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      ### Biodome setup: the whole history and every tag, which the resolver reads
+      - name: Biodome job setup
+        uses: ./../../../../../home/runner/.github/actions/biodome-setup-v2
         with:
-          ref: ${{ steps.version.outputs.tag }}
+          fetch-depth: 0
+          filter: tree:0
+      - name: Resolve the release version
+        id: release
+        run: biodome-rs ci version resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
 
-      - name: Validate VERSION file matches tag
+  # Stamps the resolved version into this runner's copy and runs the checks that used to run from the
+  # tag: nothing here is committed or published.
+  validate:
+    needs: [ resolve ]
+    runs-on: biodome-ci-arm-4cpu
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    env:
+      RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
+    steps:
+      ### Biodome setup
+      - name: Biodome job setup
+        uses: ./../../../../../home/runner/.github/actions/biodome-setup-v2
+      - name: Stamp the release version
+        run: bash scripts/bump-version.sh "$RELEASE_VERSION"
+      - name: Regenerate the wingman Copilot bundle
+        run: bash scripts/generate-wingman-skills.sh
+      - name: Validate the stamped tree
         run: |
-          expected="${{ steps.version.outputs.version }}"
-          actual=$(cat VERSION)
-          if [ "$actual" != "$expected" ]; then
-            echo "ERROR: VERSION file has '${actual}', expected '${expected}'"
+          bash scripts/check-version.sh "$RELEASE_VERSION"
+          bash scripts/test-wingman-skills.sh
+      - name: Verify Cursor rules are up to date
+        run: |
+          bash scripts/generate-cursor-rules.sh
+          git add -N cursor/
+          if ! git diff --quiet cursor/; then
+            echo "ERROR: Cursor rules are out of date. Run 'bash scripts/generate-cursor-rules.sh' and commit."
+            git diff --stat cursor/
             exit 1
           fi
-          echo "OK: VERSION = ${actual}"
 
-      - name: Validate all manifest versions match tag
+  # The number is claimed before anything else is written under it. The claim and the tag are made as
+  # the release App. Its status functions keep a skipped ancestor from skipping the release unnoticed,
+  # and a failed or cancelled validate from claiming a number.
+  claim:
+    if: github.event_name == 'push' && github.ref_name == 'main' && !failure() && !cancelled()
+    needs: [ resolve, validate ]
+    runs-on: biodome-ci-arm-2cpu
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      CI_ROLES: ${{ vars.CI_ROLES }}
+      STACKHAWK_VERSION: ${{ needs.resolve.outputs.version }}
+    steps:
+      ### Biodome setup
+      - name: Biodome job setup
+        uses: ./../../../../../home/runner/.github/actions/biodome-setup-v2
+      - name: CI identity (ci-deploy-preprod)
         run: |
-          expected="${{ steps.version.outputs.version }}"
-          errors=0
-          for manifest in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json plugins/*/.github/plugin/plugin.json gemini-extension.json .codex-plugin/plugin.json; do
-            if [ -f "$manifest" ]; then
-              actual=$(python3 -c "import json; print(json.load(open('$manifest')).get('version', 'MISSING'))")
-              if [ "$actual" != "$expected" ]; then
-                echo "ERROR: $manifest has '${actual}', expected '${expected}'"
-                errors=$((errors + 1))
-              else
-                echo "OK: $manifest (v${actual})"
-              fi
-            fi
-          done
-          if [ $errors -gt 0 ]; then exit 1; fi
-
-      - name: Validate marketplace plugin versions match tag
+          biodome-rs aws assume ci-deploy-preprod --profile deploy --source oidc
+          echo "AWS_PROFILE=deploy" >> "$GITHUB_ENV"
+      # The App's token bypasses the tag ruleset, so only the claim sees it: it is not put in
+      # GITHUB_ENV. A re-run of a release that is already tagged claims nothing.
+      - name: Claim the release number
+        if: needs.resolve.outputs.released != 'true'
         run: |
-          expected="${{ steps.version.outputs.version }}"
-          python3 - "$expected" << 'PYEOF'
-          import json, sys
-          expected = sys.argv[1]
-          with open('.claude-plugin/marketplace.json') as f:
-              data = json.load(f)
-          errors = 0
-          for p in data.get('plugins', []):
-              actual = p.get('version', 'MISSING')
-              name = p.get('name', 'unknown')
-              if actual != expected:
-                  print(f"ERROR: marketplace.json '{name}' has '{actual}', expected '{expected}'")
-                  errors += 1
-              else:
-                  print(f"OK: marketplace.json '{name}' (v{actual})")
-          sys.exit(errors)
-          PYEOF
+          token="$(biodome ci github-app-token --repository "${GITHUB_REPOSITORY#*/}" --permission contents=write)"
+          echo "::add-mask::$token"
+          GH_TOKEN="$token" biodome-rs ci version claim
 
-      - name: Validate SKILL.md versions match tag
+  # The GitHub Release is drafted before the tag, where nobody can see it, and published after it: the
+  # tag says the release is complete, and a failed run must not leave a public release without one.
+  draft-release:
+    if: github.event_name == 'push' && github.ref_name == 'main'
+    needs: [ resolve, claim ]
+    runs-on: biodome-ci-arm-2cpu
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    env:
+      RELEASE_TAG: v${{ needs.resolve.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Draft the GitHub Release
         run: |
-          expected="${{ steps.version.outputs.version }}"
-          errors=0
-          for skill_file in plugins/*/skills/*/SKILL.md; do
-            if [ -f "$skill_file" ]; then
-              actual=$(head -20 "$skill_file" | grep '^version:' | sed 's/version: //')
-              if [ -z "$actual" ]; then
-                echo "ERROR: Missing version in frontmatter: $skill_file"
-                errors=$((errors + 1))
-              elif [ "$actual" != "$expected" ]; then
-                echo "ERROR: $skill_file has '${actual}', expected '${expected}'"
-                errors=$((errors + 1))
-              else
-                echo "OK: $skill_file (v${actual})"
-              fi
-            fi
-          done
-          if [ $errors -gt 0 ]; then exit 1; fi
-
-      - name: Validate wingman Copilot bundle
-        run: bash scripts/test-wingman-skills.sh
-
-      - name: Verify wingman bundle is up to date
-        run: |
-          bash scripts/generate-wingman-skills.sh
-          git add -N plugins/wingman/copilot-skills/
-          if ! git diff --quiet plugins/wingman/copilot-skills/ plugins/wingman/.codex-plugin/plugin.json; then
-            echo "ERROR: wingman copilot-skills/ or its Codex manifest is out of date. Run 'bash scripts/generate-wingman-skills.sh' and commit the output."
-            git diff --stat plugins/wingman/copilot-skills/ plugins/wingman/.codex-plugin/plugin.json
-            exit 1
-          fi
-          echo "OK: wingman copilot-skills/ is up to date."
-
-      - name: Extract changelog section
-        id: changelog
-        run: |
-          version="${{ steps.version.outputs.version }}"
-          notes=$(awk "/^## \\[${version}\\]/{found=1; next} /^## \\[/{found=0} found{print}" CHANGELOG.md)
-          if [ -z "$notes" ]; then notes="Release ${{ steps.version.outputs.tag }}"; fi
-          printf '%s' "$notes" > /tmp/release-notes.txt
-          cat /tmp/release-notes.txt
-
-      - name: Create GitHub Release
-        if: inputs.dry_run != true
-        run: |
-          if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
-            echo "GitHub Release already exists for ${{ steps.version.outputs.tag }}"
+          # The API list includes drafts, which `gh release view <tag>` does not find.
+          existing="$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\") | .id")"
+          if [ -n "$existing" ]; then
+            echo "GitHub Release already exists for ${RELEASE_TAG}"
             exit 0
           fi
-          gh release create "${{ steps.version.outputs.tag }}" \
-            --title "${{ steps.version.outputs.tag }}" \
-            --notes-file /tmp/release-notes.txt
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          gh release create "$RELEASE_TAG" --draft --target "$GITHUB_SHA" --title "$RELEASE_TAG" --generate-notes
 
-      - name: Dry run summary
-        if: inputs.dry_run == true
-        run: echo "DRY RUN complete — all checks passed for ${{ steps.version.outputs.tag }}"
-
-  capture-baseline:
-    name: Trigger baseline capture
-    needs: release
-    if: inputs.dry_run != true
-    runs-on: ubuntu-latest
+  # Idempotent for a commit that is already tagged.
+  tag:
+    if: github.event_name == 'push' && github.ref_name == 'main'
+    needs: [ resolve, claim, draft-release ]
+    runs-on: biodome-ci-arm-2cpu
+    timeout-minutes: 10
     permissions:
-      actions: write
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      CI_ROLES: ${{ vars.CI_ROLES }}
+      STACKHAWK_VERSION: ${{ needs.resolve.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
-      - name: Dispatch capture-baseline
-        # GITHUB_TOKEN can dispatch workflows in the same repo for most orgs.
-        # If org policy blocks it, swap to the TF_GITHUB_TOKEN PAT that
-        # update-marketplace pulls from SSM (aws ssm get-parameter --name TF_GITHUB_TOKEN).
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ needs.release.outputs.tag }}
-        run: gh workflow run capture-baseline.yml -f tag="$RELEASE_TAG"
+      ### Biodome setup
+      - name: Biodome job setup
+        uses: ./../../../../../home/runner/.github/actions/biodome-setup-v2
+      - name: CI identity (ci-deploy-preprod)
+        run: |
+          biodome-rs aws assume ci-deploy-preprod --profile deploy --source oidc
+          echo "AWS_PROFILE=deploy" >> "$GITHUB_ENV"
+      - name: Tag the release
+        run: |
+          token="$(biodome ci github-app-token --repository "${GITHUB_REPOSITORY#*/}" --permission contents=write)"
+          echo "::add-mask::$token"
+          GH_TOKEN="$token" biodome-rs ci version tag
+
+  publish-release:
+    if: github.event_name == 'push' && github.ref_name == 'main'
+    needs: [ resolve, tag ]
+    runs-on: biodome-ci-arm-2cpu
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    env:
+      RELEASE_TAG: v${{ needs.resolve.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Publish the GitHub Release
+        run: |
+          release="$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\") | \"\\(.id) \\(.draft)\"")"
+          if [ -z "$release" ]; then
+            echo "ERROR: no GitHub Release for ${RELEASE_TAG}"
+            exit 1
+          fi
+          if [ "${release#* }" = "false" ]; then
+            echo "GitHub Release ${RELEASE_TAG} is already published"
+            exit 0
+          fi
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release% *}" -F draft=false
 
   update-marketplace:
     name: Sync marketplace
-    needs: release
-    if: inputs.dry_run != true
-    runs-on: agent-skills-amd-4cpu
+    if: github.event_name == 'push' && github.ref_name == 'main'
+    needs: [ resolve, tag ]
+    runs-on: biodome-ci-arm-4cpu
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      CI_ROLES: ${{ vars.CI_ROLES }}
+      RELEASE_TAG: v${{ needs.resolve.outputs.version }}
     steps:
+      ### Biodome setup: every tag, which the sync resolves the release commit from
       - name: Biodome job setup
         uses: ./../../../../../home/runner/.github/actions/biodome-setup-v2
-
-      - name: Resolve cache
-        run: |
-          biodome ci restore-cache
-          rm -rf ./*.tar.lz4
-
-      - name: Pull secrets
-        run: biodome ci save-secrets
-
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
-          ref: ${{ needs.release.outputs.tag }}
           fetch-depth: 0
-
+          filter: tree:0
+      - name: CI identity (ci-deploy-preprod)
+        run: |
+          biodome-rs aws assume ci-deploy-preprod --profile deploy --source oidc
+          echo "AWS_PROFILE=deploy" >> "$GITHUB_ENV"
+      # The App's token replaces the retired Terraform GitHub token. It writes the marketplace repo
+      # only, so a step that does not push never sees it.
+      - name: Marketplace App token
+        run: |
+          token="$(biodome ci github-app-token --repository agent-skills-marketplace --permission contents=write)"
+          echo "::add-mask::$token"
+          echo "MARKETPLACE_TOKEN=$token" >> "$GITHUB_ENV"
       - name: Clone agent-skills-marketplace
-        run: git clone --branch main https://github.com/stackhawk/agent-skills-marketplace.git /tmp/marketplace
-
+        run: git clone --branch main "https://x-access-token:${MARKETPLACE_TOKEN}@github.com/stackhawk/agent-skills-marketplace.git" /tmp/marketplace
+      # The sync takes the version from the tag and stamps it into the snapshot itself: the tagged
+      # tree carries the placeholder.
       - name: Sync marketplace from release tag
-        env:
-          TAG: ${{ needs.release.outputs.tag }}
         run: |
           python3 /tmp/marketplace/scripts/sync-agent-skills.py \
-            --source-repo "$GITHUB_WORKSPACE" --tag "$TAG"
+            --source-repo "$GITHUB_WORKSPACE" --tag "$RELEASE_TAG"
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s /tmp/marketplace/tests
-
       - name: Push marketplace sync to main
-        env:
-          TAG: ${{ needs.release.outputs.tag }}
         run: |
           cd /tmp/marketplace
           git config user.name "hawkdeploy"
@@ -213,13 +247,10 @@ jobs:
             exit 1
           fi
           if git diff --cached --quiet; then
-            echo "Marketplace already contains ${TAG}"
+            echo "Marketplace already contains ${RELEASE_TAG}"
             exit 0
           fi
-          git commit -m "chore: sync agent-skills ${TAG}"
-          GH_PAT=$(aws ssm get-parameter --name TF_GITHUB_TOKEN --query 'Parameter.Value' --output text --with-decryption)
-          echo "::add-mask::${GH_PAT}"
-          git remote set-url origin "https://x-access-token:${GH_PAT}@github.com/stackhawk/agent-skills-marketplace.git"
+          git commit -m "chore: sync agent-skills ${RELEASE_TAG}"
           if ! git push origin HEAD:main; then
             git fetch origin main
             git rebase origin/main
@@ -228,4 +259,35 @@ jobs:
               echo "ERROR: Marketplace main push failed after one fetch-rebase retry."
               exit 1
             fi
+          fi
+
+  # Best effort: the release is complete once it is tagged, so a baseline that cannot be dispatched
+  # warns instead of failing the run. Dispatch Capture Eval Baseline by hand with the tag.
+  capture-baseline:
+    name: Trigger baseline capture
+    if: github.event_name == 'push' && github.ref_name == 'main'
+    needs: [ resolve, tag ]
+    runs-on: biodome-ci-arm-2cpu
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      CI_ROLES: ${{ vars.CI_ROLES }}
+      RELEASE_TAG: v${{ needs.resolve.outputs.version }}
+    steps:
+      ### Biodome setup
+      - name: Biodome job setup
+        uses: ./../../../../../home/runner/.github/actions/biodome-setup-v2
+      - name: CI identity (ci-deploy-preprod)
+        run: |
+          biodome-rs aws assume ci-deploy-preprod --profile deploy --source oidc
+          echo "AWS_PROFILE=deploy" >> "$GITHUB_ENV"
+      - name: Dispatch capture-baseline
+        run: |
+          token="$(biodome ci github-app-token --repository "${GITHUB_REPOSITORY#*/}" --permission actions=write)"
+          echo "::add-mask::$token"
+          if ! GH_TOKEN="$token" gh workflow run capture-baseline.yml -f tag="$RELEASE_TAG"; then
+            echo "::warning::could not dispatch capture-baseline.yml for ${RELEASE_TAG}; run it by hand"
           fi

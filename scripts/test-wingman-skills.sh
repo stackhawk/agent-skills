@@ -52,8 +52,9 @@ if find "$DEST" -type l | grep -q .; then
   errors=$((errors + 1))
 fi
 
-# 5. Copied versions match VERSION (proves generation ran after bump-version.sh).
-expected_version="$(cat VERSION)"
+# 5. Copied versions match the source skills (proves generation ran after bump-version.sh).
+# All source skills carry one version (scripts/check-version.sh), so hawkscan's is the reference.
+expected_version="$(head -20 plugins/hawkscan/skills/hawkscan/SKILL.md | grep '^version:' | sed 's/version: //')"
 for name in "${EXPECTED[@]}"; do
   f="${DEST}/${name}/SKILL.md"
   [ -f "$f" ] || continue
