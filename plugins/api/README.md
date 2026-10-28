@@ -48,7 +48,7 @@ Once installed, Claude will use the StackHawk API skill when you ask questions l
 - **Per-app findings deep dives** — drill from application → scan → alerts → individual findings
 - **Stale app detection** — identify applications that haven't been scanned recently
 - **Scan comparison** — surface what changed (new, resolved, or modified findings) between scans
-- **Team and environment management** — view apps by team, environment, or environment type
+- **Environment views** — view scan results by app and environment
 
 ## Security Note
 
