@@ -6,7 +6,7 @@ set -euo pipefail
 # the tree. The tree carries a placeholder; the release job stamps the resolved
 # version into every file listed in .version-bump.json to validate the tagged tree,
 # and the marketplace sync stamps it into the snapshot it publishes.
-# Handles three file types: json, yaml-frontmatter, json-plugins-array.
+# Handles two file types: json, yaml-frontmatter.
 # Usage: ./scripts/bump-version.sh <X.Y.Z>|--placeholder
 # Examples:
 #   ./scripts/bump-version.sh 2.7.2          # stamp a release version
@@ -82,23 +82,6 @@ for entry in manifest.get("files", []):
     elif file_type == "yaml-frontmatter":
         update_yaml_frontmatter(abs_path, field, new_ver)
     print(f"  Updated: {entry['path']}")
-    updated += 1
-
-for entry in manifest.get("marketplace_manifests", []):
-    abs_path = os.path.join(repo_root, entry["path"])
-    if not os.path.exists(abs_path):
-        print(f"  SKIP (not found): {entry['path']}")
-        continue
-    with open(abs_path) as f:
-        data = json.load(f)
-    if "plugins" in data:
-        for plugin in data["plugins"]:
-            if entry["field"] in plugin:
-                plugin[entry["field"]] = new_ver
-    with open(abs_path, 'w') as f:
-        json.dump(data, f, indent=2)
-        f.write('\n')
-    print(f"  Updated: {entry['path']} (plugin entries)")
     updated += 1
 
 print(f"\nDone. Stamped {updated} file(s) with {new_ver}")

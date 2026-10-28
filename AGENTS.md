@@ -63,7 +63,7 @@ See `RELEASING.md` for the release flow, recovery and the marketplace sync.
 
 ## Manifests and Versioning
 
-Release tags (`vX.Y.Z`) are the source of truth; there is no `VERSION` file. The tree carries the placeholder `0.0.0-dev` (set in `.version-bump.json`) in every version-bearing file, and the Claude manifests carry no `version` at all so Claude Code keeps updating git-sourced installs from the commit. The release job stamps the resolved version into a scratch copy to validate it, and the marketplace sync stamps it into the snapshot it publishes.
+Release tags (`vX.Y.Z`) are the source of truth; there is no `VERSION` file. The tree carries the placeholder `0.0.0-dev` (set in `.version-bump.json`) in every version-bearing file, and the manifests whose format allows it (Claude manifests, root `plugin.json`, root `.codex-plugin/plugin.json`) carry no `version` at all so git-sourced installs track the commit; `gemini-extension.json` requires one and keeps the placeholder. The release job stamps the resolved version into a scratch copy to validate it, and the marketplace sync stamps it into the snapshot it publishes.
 
 Skills assume the combined `hawk` binary (`hawk op …`) is installed — no raw-REST fallback.
 

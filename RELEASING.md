@@ -9,8 +9,6 @@ Every merge to `main` is a release. Releases follow [Semantic Versioning](https:
 - `Release: minor` for new skills or significant capability
 - `Release: major` for breaking changes
 
-Pull request and merge queue runs only report what would be released; nothing is claimed or tagged.
-
 ## What a merge does
 
 `.github/workflows/release.yml` runs on every push to `main`, one run at a time, never cancelled:
@@ -21,7 +19,7 @@ Pull request and merge queue runs only report what would be released; nothing is
 4. **tag** the merged commit `vX.Y.Z` and delete the claim. The tagged tree carries the placeholder version.
 5. **publish** the GitHub Release, **sync the marketplace** and dispatch **Capture Eval Baseline** for the tag. The baseline dispatch only warns when it fails; run `Capture Eval Baseline` by hand with the tag.
 
-The tree keeps one placeholder (`0.0.0-dev`, set in `.version-bump.json`) in every version-bearing file, and the Claude plugin manifests and `.claude-plugin/marketplace.json` carry no `version`, so Claude Code keeps tracking the commit for git-sourced installs. `scripts/check-version.sh` (run by `generate-and-validate.yml` on every PR) keeps it that way.
+The tree keeps one placeholder (`0.0.0-dev`, set in `.version-bump.json`) in every version-bearing file, and the manifests whose format allows it carry no `version` (the Claude plugin manifests, `.claude-plugin/marketplace.json`, and the root `plugin.json` and `.codex-plugin/plugin.json` read by whole-repo Copilot and Codex installs), so clients that install from the repository track the commit. `gemini-extension.json` requires a version and keeps the placeholder. `scripts/check-version.sh` (run by `generate-and-validate.yml` on every PR) keeps it that way.
 
 ## When a release fails
 

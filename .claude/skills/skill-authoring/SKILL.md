@@ -233,7 +233,8 @@ After any edit to `SKILL.md` or `references/*.md`:
 | Breaking change (removed step, changed trigger conditions) | a `Release: major` line |
 
 Release tags are the source of truth for the version. The tree carries a placeholder
-(`0.0.0-dev`) in every version-bearing file listed in `.version-bump.json`; the release job
+(`0.0.0-dev`) in every version-bearing file listed in `.version-bump.json`, and manifests
+whose format allows it (listed under `unversioned`) carry no version; the release job
 stamps the number with `bump-version.sh` to validate it and the marketplace sync stamps it
 into the snapshot. Never edit version numbers manually in individual files.
 

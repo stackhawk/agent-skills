@@ -17,16 +17,6 @@
       "type": "json"
     },
     {
-      "path": ".codex-plugin/plugin.json",
-      "field": "version",
-      "type": "json"
-    },
-    {
-      "path": "plugin.json",
-      "field": "version",
-      "type": "json"
-    },
-    {
       "path": "gemini-extension.json",
       "field": "version",
       "type": "json"
@@ -84,7 +74,9 @@
     "plugins/optimize/.claude-plugin/plugin.json",
     "plugins/stackhawk-data-seed/.claude-plugin/plugin.json",
     "plugins/wingman/.claude-plugin/plugin.json",
-    ".claude-plugin/marketplace.json"
+    ".claude-plugin/marketplace.json",
+    ".codex-plugin/plugin.json",
+    "plugin.json"
   ],
   "audit": {
     "exclude": [
