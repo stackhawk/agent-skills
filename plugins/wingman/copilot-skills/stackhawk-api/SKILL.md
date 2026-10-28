@@ -176,7 +176,9 @@ https://app.stackhawk.com/scans/{scanId}
 Compare two scans: use `hawk op scan list --app <APP_UUID> --env <ENV>` to get the
 two most recent completed scan IDs (`.data[].id`), pull each scan's alert types via
 `hawk op scan get <ID> --detail full`, and diff the `plugin_id` sets. `hawk op`
-returns at most 10 alert types per scan, so a diff over a larger scan is partial.
+returns at most 10 alert types per scan, sorted by severity but not necessarily the
+most severe, so a High or Medium type can be missing and a diff over a larger scan
+is partial; `.severityStats` holds the true counts.
 
 → Executable recipe (`hawk op` pipeline with `comm` diff):
 [`references/hawk-op-shortcuts.md`](references/hawk-op-shortcuts.md#2--app-deep-dive-scan--alerts--findings) §2.

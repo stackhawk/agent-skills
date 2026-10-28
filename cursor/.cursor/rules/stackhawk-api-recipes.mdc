@@ -70,12 +70,13 @@ record — `.scan.id`, `.scan.applicationId`, `.scan.applicationName`, `.scan.en
 **`hawk op scan get <SCAN_ID> --plugin-id <PLUGIN_ID> --format json`**:
 `.alert.uriCount` is the true number of affected paths for that alert type.
 
-**10-row caps:** `hawk op` returns at most **10 alert types per scan** (highest
-severity first) and at most **10 paths per alert type** — in `--detail full` and
-in the default pretty output. So `total_paths` never exceeds 10; read the true
-count from `.alert.uriCount`. Compare `.findings | length` against
-`.severityStats | add` to detect a truncated alert list, and say so when it
-happens. The complete lists are in the scanner's `hawk scan --json-output` file or
+**10-row caps:** `hawk op` returns at most **10 alert types per scan** and at most
+**10 paths per alert type** — in `--detail full` and in the default pretty output.
+The 10 alert types are sorted by severity but are not necessarily the most severe
+ones, so a High or Medium type can be missing; `.severityStats` holds the true
+per-severity counts. `total_paths` never exceeds 10; read the true count from
+`.alert.uriCount`. Compare `.findings | length` against `.severityStats | add` to
+detect a truncated alert list, and say so when it happens. The complete lists are in the scanner's `hawk scan --json-output` file or
 on the platform scan page.
 
 **Not available from `hawk op` yet:** more than 10 alert types per scan or 10 paths
@@ -138,9 +139,10 @@ admin-portal   Development   0     0       0    0        2025-11-01
 
 **Question:** What did the last scan of a specific app find?
 
-**What it produces:** The alerts from the most recent scan, highest severity first
-(up to 10 alert types — see the cap above), with affected paths expanded for High
-and Medium findings.
+**What it produces:** The alerts from the most recent scan, sorted by severity
+(up to 10 alert types, not necessarily the most severe — see the cap above; the
+true counts are in `.severityStats`), with affected paths expanded for High and
+Medium findings.
 
 ### Step 1 — Get the latest scan for the app
 
@@ -432,7 +434,7 @@ printf '%s' "${diff_result}" | jq -r '
 echo ""
 printf '%s' "${diff_result}" | jq -r \
   '"Summary: \(.new_findings | length) new, \(.resolved_findings | length) resolved, \(.unchanged_count) unchanged",
-   (if .partial then "WARNING: a scan has more than 10 alert types; hawk op returns only the top 10, so this diff is partial" else empty end)'
+   (if .partial then "WARNING: a scan has more than 10 alert types; hawk op returns only 10 (not necessarily the most severe; see severityStats for true counts), so this diff is partial" else empty end)'
 
 echo ""
 echo "Platform links:"
