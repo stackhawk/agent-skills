@@ -147,5 +147,4 @@ jobs:
           EOF
           )"
           fi
-        # README.md is not version-bearing, so this PR intentionally skips the
-        # bump-version.sh convention; version-consistency CI is unaffected.
+        # README.md is not version-bearing; version-consistency CI is unaffected.

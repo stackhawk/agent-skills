@@ -72,6 +72,8 @@ export HAWK_API_KEY=hawk.xxxxxxxxxxxx.xxxxxxxxxxxx
 
 ### 2. Install for your platform
 
+Commands that install from this repository (`stackhawk/agent-skills`) track `main` and show the development version (`0.0.0-dev`, or no version at all). Released, versioned builds come from [`stackhawk/agent-skills-marketplace`](https://github.com/stackhawk/agent-skills-marketplace), which every release syncs with the version stamped in.
+
 #### Claude Code
 
 ```

@@ -1,6 +1,5 @@
 {
   "name": "stackhawk",
-  "version": "2.7.1",
   "description": "Dynamic application and API security testing (DAST) powered by HawkScan. Configure scans, interpret findings, and query the StackHawk platform API.",
   "author": {
     "name": "StackHawk",
