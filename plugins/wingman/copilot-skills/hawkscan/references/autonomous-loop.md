@@ -120,7 +120,8 @@ second config-fix iteration.
 
 - If clean **and no gate gaps remain open**: `StackHawk | Rescan clean - 0 new findings; all security issues resolved on the scanned surface`
 - If clean **but gate gaps remain open** (cap reached with config-class gaps still unresolved, or an environment-class gap that recurred): report the gaps by reason identifier, the coverage evidence, and the remaining next steps. Do not say "all security issues have been resolved" or otherwise imply the app is done and secure while a gap is open.
-- If findings remain: `StackHawk | Rescan: [N] issues remain and need manual review` — then list them.
+- If findings remain: `StackHawk | Fix-verify cap reached - [N] findings remain unfixed` — then list each with severity, name and path.
+- If the verifying scan could not complete: `StackHawk | Fix not verified - [error]; [N] edited findings are unverified` — then list them. A finding counts as fixed only if the last completed scan no longer reports it.
 - If findings were filtered by triage state: "Skipped [X] findings already triaged as RISK_ACCEPTED / FALSE_POSITIVE."
 - If findings were marked FALSE_POSITIVE in step 6: "Marked [N] findings as false positive — review at https://app.stackhawk.com/scans/\<scanId\>".
 
@@ -129,7 +130,7 @@ second config-fix iteration.
 ## Guard rails
 
 - **One scan at a time per app/env.** Never dispatch a second `hawk scan` or `hawk rescan` while one is still running. Run scan commands synchronously — never with `&` or `nohup`. Wait for the exit code.
-- **Max one fix-rescan cycle per task.** If the rescan still has findings after fixing, report the remaining issues rather than looping indefinitely. The user can ask for a follow-up.
+- **Fix-verify cap: one fix pass per task; the loop ends on a verifying scan, never on an edit.** A fix pass is one batch of edits for the latest scan's findings, then its verifying scan (step 7: `hawk rescan`, or a full `hawk scan` where step 7 requires one, e.g. the fix added endpoints) and gate (step 8). Any edit, code or stackhawk.yml, made after the last scan must be followed by a verifying scan before reporting; that scan only verifies and does not open another pass. After it, do not edit again: report what remains as unfixed (step 9). If the verifying scan cannot complete after the one free environment-class retry (see Don't block on scan failures), report the edited findings as unverified, neither fixed nor clean, and stop. The user can ask for another pass.
 - **Always announce what you're doing** with the `StackHawk | ` prefix at every phase (SKILL.md **Progress output**) — the developer should see scan start, gate result, findings, and rescan stream by, never a silent gap. ASCII only, no emoji.
 - **Interruptible.** If the user interrupts or says to stop, stop immediately.
 - **Don't block on scan failures.** If `hawk scan` exits with code 1 (config error, app unreachable), report the error rather than retrying in a loop — with one exception: an environment-class failure (connection refused, timeout, unreachable) gets exactly one free retry after verifying the app is up. If the same environment-class signal recurs on that retry, report it and stop; don't retry a second time.

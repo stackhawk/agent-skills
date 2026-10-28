@@ -15,10 +15,11 @@ verify command before rescanning, and escalate at the threshold instead of conti
 - **2 rescans** for complex policy/config findings: CSP, CORS, Auth
 - **1 rescan** for simple additive fixes: Missing Security Headers
 
-**Iteration-limit note:** Guard Rails says "max one fix-rescan cycle per task" — that
-applies to the autonomous loop as a whole. The escalation thresholds below apply within
-a single fix attempt for a specific finding. After escalating, report the finding rather
-than restarting the full loop.
+**Iteration-limit note:** Guard Rails sets a fix-verify cap of one fix pass per task — that
+applies to the loop as a whole. The escalation thresholds below apply within a single fix
+attempt for a specific finding and never extend the fix-verify cap: a finding still open
+after the pass's verifying scan is reported unfixed, and further rescans happen only in a
+pass the user requests.
 
 ---
 

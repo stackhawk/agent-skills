@@ -1,6 +1,6 @@
 ---
 name: hawkscan
-version: 2.7.0
+version: 2.7.1
 description: >
   Runs the HawkScan DAST security loop — configure, scan, fix all reported
   vulnerabilities (not just your changes), rescan to verify. Performs
@@ -473,7 +473,7 @@ After triage: "Marked [N] findings as false positive. Routing [M] remaining NEW 
 After generating fix tasks:
 
 - **Exit code 0, no findings above threshold**: Scan passed. If auth succeeded but endpoints returned empty bodies (list routes `[]`, detail routes 404), the backend data may be empty — suggest the `stackhawk-data-seed` skill (don't auto-run) and rescan. See Phase 1c.6.
-- **Exit code 42**: Hand fix tasks to the coding agent. After fixes, rescan to confirm remediation. Repeat until exit 0 or only accepted-risk findings remain.
+- **Exit code 42**: Hand fix tasks to the coding agent, then rescan to verify (full scan if the fix added endpoints). Fix-verify cap: one fix pass per task in every mode; the loop ends on a verifying scan, never on an edit. At the cap, report remaining findings as unfixed (unverified if the verifying scan failed) and offer another pass instead of editing more.
 - **Exit code 1**: Do NOT hand fix tasks. Diagnose first:
   ```bash
   hawk validate config stackhawk.yml
@@ -498,7 +498,7 @@ initialized; skill is active.
 
 **Guard rails summary:**
 - One scan at a time — never run `hawk scan` or `hawk rescan` with `&` or `nohup`
-- Max one fix-rescan cycle per task — if findings remain after fixing, report them
+- Fix-verify cap: one fix pass per task; any code or config edit after the last scan needs a verifying scan, so the loop ends on a scan, never on an edit; then report leftovers as unfixed (unverified if that scan failed)
 - Always narrate with the `StackHawk | ` prefix at every phase (see **Progress output**) — never let the loop run silent
 - Interruptible — stop immediately if the user says to
 - Report gate gaps — never silently accept exit 0 from a thin scan
