@@ -25,6 +25,10 @@ permissions:
 # Abandon release if the merged change itself breaks it. Every step after the tag is idempotent, so a
 # re-run of a tagged release picks up where it stopped.
 #
+# Every job runs on the agent-skills runner: this repo is public, and the biodome-ci-* runners live in a
+# runner group that does not serve public repositories. That image has no `gh`, so the jobs that call it
+# install a pinned, checksum-verified copy (scripts/ci/install-gh.sh).
+#
 # claim, tag and the marketplace and baseline steps run as the release App, whose key only
 # ci-deploy-preprod may read, so those jobs assume it with the job's OIDC token (main only).
 jobs:
@@ -130,6 +134,13 @@ jobs:
       RELEASE_TAG: v${{ needs.resolve.outputs.version }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Check out the CI scripts
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          sparse-checkout: scripts/ci
+          persist-credentials: false
+      - name: Install the GitHub CLI
+        run: bash scripts/ci/install-gh.sh
       - name: Draft the GitHub Release
         run: |
           # The API list includes drafts, which `gh release view <tag>` does not find.
@@ -179,6 +190,13 @@ jobs:
       RELEASE_TAG: v${{ needs.resolve.outputs.version }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Check out the CI scripts
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          sparse-checkout: scripts/ci
+          persist-credentials: false
+      - name: Install the GitHub CLI
+        run: bash scripts/ci/install-gh.sh
       - name: Publish the GitHub Release
         run: |
           release="$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\") | \"\\(.id) \\(.draft)\"")"
@@ -284,6 +302,8 @@ jobs:
         run: |
           biodome-rs aws assume ci-deploy-preprod --profile deploy --source oidc
           echo "AWS_PROFILE=deploy" >> "$GITHUB_ENV"
+      - name: Install the GitHub CLI
+        run: bash scripts/ci/install-gh.sh
       - name: Dispatch capture-baseline
         run: |
           token="$(biodome ci github-app-token --repository "${GITHUB_REPOSITORY#*/}" --permission actions=write)"
