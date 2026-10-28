@@ -24,7 +24,7 @@ permissions:
 jobs:
   abandon:
     if: github.ref_name == 'main'
-    runs-on: biodome-ci-arm-2cpu
+    runs-on: agent-skills-amd-4cpu
     timeout-minutes: 10
     permissions:
       contents: read
