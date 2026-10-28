@@ -5,6 +5,9 @@ cycle" (capped, with no rescan required after the last fix). An autonomous run c
 satisfy both by fixing the first rescan's findings and stopping, leaving the fixes
 unverified. These checks cover every shipped copy: the source skill, the generated
 wingman/Copilot bundle and the generated Cursor rules.
+
+This is a phrase lock on vocabulary, not a test of loop semantics. A deliberate
+rewording of the rule should update it. It is not run in PR CI.
 """
 import os
 import re
@@ -63,6 +66,21 @@ def test_loop_ends_on_a_rescan(rel):
 @pytest.mark.parametrize("rel", SKILL_MD + AUTONOMOUS_LOOP)
 def test_leftovers_at_cap_are_reported_unfixed(rel):
     assert re.search(r"\bunfixed\b", read(rel)), f"{rel} does not say findings left at the cap are reported as unfixed"
+
+
+@pytest.mark.parametrize("rel", SKILL_MD + AUTONOMOUS_LOOP)
+def test_failed_verifying_scan_is_reported_unverified(rel):
+    assert re.search(r"\bunverified\b", read(rel)), f"{rel} does not say edits whose verifying scan failed are unverified"
+
+
+@pytest.mark.parametrize("rel", SKILL_MD)
+def test_skill_md_rule_lines_agree_on_one_fix_pass(rel):
+    lines = read(rel).splitlines()
+    exit_42 = [l for l in lines if "**Exit code 42**" in l]
+    summary = [l for l in lines if l.startswith("- Fix-verify cap")]
+    assert len(exit_42) == 1 and len(summary) == 1, f"{rel}: expected one exit-42 line and one guard-rail summary line"
+    for line in exit_42 + summary:
+        assert "one fix pass" in line, f"{rel}: rule line does not say 'one fix pass': {line.strip()}"
 
 
 @pytest.mark.parametrize("rel", CROSS_REFS)
