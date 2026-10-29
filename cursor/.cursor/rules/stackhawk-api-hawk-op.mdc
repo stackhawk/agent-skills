@@ -60,8 +60,8 @@ Org ID and output format can be set via env vars:
 
 ```bash
 export HAWK_API_KEY=<your-api-key>   # from app.stackhawk.com → Settings → API Keys
-export HAWK_ORG_ID=<org-uuid>
-export HAWK_FORMAT=json
+export HAWKOP_ORG_ID=<org-uuid>
+export HAWKOP_FORMAT=json
 
 hawk op app list
 ```

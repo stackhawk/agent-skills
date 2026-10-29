@@ -22,13 +22,22 @@ new App / Env.
 
 ### Organization (`orgId`)
 
-The tenant. A UUID tied to your StackHawk account. Set implicitly by your
-`HAWK_API_KEY` (each key is scoped to one org); you rarely reason about it
-directly. `hawk op org get` shows the active org.
+The tenant. A UUID tied to your StackHawk account. `hawk op org get` shows
+the active org.
+
+**Identity and org.** An API key belongs to a user, not to an org. It
+carries that user's role and permissions in every org the user belongs to,
+so one key can see several orgs. What the key can do in an org (create
+apps, pick any team, move apps between teams) comes from the user's role
+there, not from the key.
 
 Most customers have a single org. Multi-org setups exist (consultancies,
-MSSPs) — when present, every `hawk op` command accepts `--org <ID>` or uses
-named profiles (`hawk op -P <profile> app list`).
+MSSPs, users invited to a second org). `hawk op` picks the org from
+`--org <ID>` (or `HAWKOP_ORG_ID`), then the org saved by `hawk init`, then
+the only org; named profiles (`hawk op -P <profile> app list`) also pin
+one. `hawk create app` does not share that choice: it takes `-o <ORG_ID>`
+(or `ORG_ID`) and, with several orgs and no `-o`, prompts or fails when
+non-interactive. Pass the same org to both.
 
 **Not in `stackhawk.yml`.** Implicit via auth.
 
@@ -358,10 +367,44 @@ Is there an existing App for this codebase?
 │   │                               ├── One survives  ──► REUSE
 │   │                               └── Still ambiguous ──► Ask the user
 │   │
-│   └── No name match          ──► CREATE (`hawk create app`)
-│                                   Announce the details-settings URL for
-│                                   tech flag setup.
+│   └── No name match          ──► CREATE on the user's team
+│                                   (`hawk create app ... -t <team-id>`,
+│                                   see Team assignment on create).
+│                                   Announce the team and the
+│                                   details-settings URL for tech flag setup.
 ```
+
+### Team assignment on create
+
+The platform never puts a new app on a team by itself: an app created
+without a team stays unassigned. An unassigned app is visible to everyone
+in the org, and a MEMBER can't move it onto a team later (that needs the
+`WRITE_TEAM` permission). Creation is the one point where a MEMBER can
+place an app on their own team, so choose the team before creating.
+
+1. **List teams:** `hawk op team list --format json`. Each team is a
+   `data[]` entry with `id` and `name`. For a MEMBER or TEAM_ADMIN the list
+   holds only their own teams. For an OWNER or ADMIN it holds every team in
+   the org, so it errs toward asking.
+2. **Decide:**
+
+   | Teams returned | Action |
+   |----------------|--------|
+   | Exactly one | Create on it without asking, and name the team when announcing the app |
+   | Several | Ask the user which team should own the app. Never pick one yourself |
+   | None | Tell the user the app will be visible to everyone in the org and that a member can't put it on a team later. Ask before creating; create without `-t` only if they agree |
+   | Refused (403, or an error naming `API_ACCESS`) | Ask the user which team should own the app, and for its team ID (shown for the team in the StackHawk web UI). If they name no team, treat it as "None" |
+
+3. **Create:** `hawk create app --name "<repo-name>" --env <env-name> -t <team-id>`.
+   If it answers `Invalid team ID provided` (its check sees only the first
+   10 teams, so an admin's valid choice can fail), create with
+   `hawk op app create --name "<repo-name>" --env <env-name> --team-id <team-id> --format json`
+   instead.
+4. **Retry guard:** if create fails with a server error (5xx), the app may
+   already exist without a team: the platform creates the app before it
+   checks the team. Run `hawk op app get --name "<repo-name>" --format json`
+   before retrying. If the app is there, reuse it and tell the user it has
+   no team (an admin can assign it in the UI); never create a second copy.
 
 ### Environment
 

@@ -38,7 +38,8 @@ hawk config --help >/dev/null 2>&1 || echo "MISSING: hawk config — upgrade haw
 hawk skills status
 ```
 
-If hawk is older than `6.0.0` or `hawk config --help` fails, stop and tell the user to upgrade first.
+If hawk is older than `6.0.0` or `hawk config --help` fails, stop and tell the user to upgrade first
+(see `references/installation.md`).
 Do not inline auth recipes from memory — they live in `hawk config show` and are stale by design when hardcoded.
 
 **`hawk skills status`** reports whether the installed StackHawk agent skills are current.
@@ -47,8 +48,6 @@ If it lists anything out of date, surface the exact upgrade command it prints (e
 update before continuing — a stale skill may be missing fixes for the very issues you'll hit.
 It's a recommendation, not a hard stop: proceed if the user prefers. (If the subcommand isn't
 recognized, the installed hawk predates it — skip this check.)
-
-See `references/installation.md` for upgrade and install instructions.
 
 ---
 
@@ -87,7 +86,7 @@ Hand off to it when authentication fails because the backend has no valid creden
 
 Before running a scan, understand these four layered objects:
 
-- **Organization** (`orgId`): the tenant. Implicit via `HAWK_API_KEY`.
+- **Organization** (`orgId`): the tenant. A key is a user's key and can see several orgs; `hawk op org get` shows the active one.
 - **Application** (`applicationId`, UUID): long-lived; holds tech flags and metadata. One App spans many Environments.
 - **Environment** (`env`, string name): scan context under an App. Findings compare scan-to-scan *within the same env*.
 - **Scan**: a single run. Tagged with commit SHA and branch for traceability.
@@ -193,12 +192,14 @@ strategy, frontend-vs-backend scenarios, and config templates:
    If both absent: see `references/installation.md`.
 5. **App exists?** Run `hawk op app list --format json`. Match by name (normalized: lowercased,
    `_` and `-` equivalent). Exactly one match → use its `applicationId`. Multiple matches →
-   pick by host if established, else surface to user. No match → create:
+   pick by host if established, else surface to user. No match → create it **on the user's
+   team**: run `hawk op team list --format json`. One team → use it without asking; several → ask which, never pick;
+   none → say the app will be visible to the whole org and a member can't move it to a team later, then ask before creating.
+   Refusals, the `--team-id` fallback and the retry guard: [`references/platform-model.md`](references/platform-model.md#team-assignment-on-create).
    ```bash
-   hawk create app --name "<repo-name>" --env <env-name>
+   hawk create app --name "<repo-name>" --env <env-name> -t <team-id>
    ```
-   Resolve `<env-name>` with the Env Name Algorithm above. Announce it (Progress output):
-   `StackHawk | Created app <name> (<appId>) - <url>`.
+   Resolve `<env-name>` with the Env Name Algorithm above; announce (Progress output) `StackHawk | Created app <name> (<appId>) on team <team> - <url>`.
 6. **Env exists?** Determine env name via Env Name Algorithm. Run
    `hawk op env list --app <APP_ID> --format json`. Reuse if exists; otherwise run
    `hawk op env create --app <APP_ID> --env <name> --host <url>`.

@@ -202,11 +202,16 @@ hawk download log                        # download the scan log from the last s
 hawk create app
 
 # Non-interactive (agent/script use - required for autonomous operation)
-hawk create app --name "My App" --env Development
+hawk create app --name "<app-name>" --env <env-name> -t <team-id>   # e.g. --name "My App" --env Development
 ```
 
 **Important for agents:** Always use the non-interactive form. The interactive prompt
 blocks execution and cannot be answered programmatically.
+
+`-t` puts the app on a team. Without it the app is created unassigned, which a
+MEMBER can't fix later. Choose the team first (Step 1c substep 5 in SKILL.md).
+With several orgs, also pass `-o <org-id>`; `hawk create app` does not read the
+org `hawk op` uses.
 
 ---
 
