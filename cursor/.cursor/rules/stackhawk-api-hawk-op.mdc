@@ -193,7 +193,7 @@ All of these are one `hawk op <noun> list` command with identical flag surface:
 | List users / members | `hawk op user list` | `GET /api/v2/org/{orgId}/members` |
 | List teams | `hawk op team list` | `GET /api/v1/team/{orgId}/list` |
 | List scan policies | `hawk op policy list` | `GET /api/v1/org/{orgId}/policy` |
-| List repositories | `hawk op repo list` | `GET /api/v1/org/{orgId}/repos` |
+| List repositories (inventory only; never to find one repo) | `hawk op repo list` | `GET /api/v1/org/{orgId}/repos` |
 | List OpenAPI specs | `hawk op oas list` | `GET /api/v1/org/{orgId}/oas` |
 | List scan configs | `hawk op config list` | `GET /api/v1/org/{orgId}/configs` |
 | List user secrets | `hawk op secret list` | `GET /api/v1/user/secrets` |
@@ -213,6 +213,13 @@ Common flags on every `list`:
 By default (no `--page`/`--page-token`) a `list` **auto-follows every page** and
 returns the full set — you don't paginate manually. Use `--limit` to cap the rows
 (it trims after collection, not a server-side early stop).
+
+**Never list repos (or apps) to search for one.** `repo list` pages through every
+repo in the org, which can take many minutes in large orgs, and its rows carry no
+repo ID or remote URL. To link an app to its repo, run
+`hawk op repo link --repo <BARE_NAME> --app-id <APP_ID>` once under a 60 s time box
+(bare repo name, not `owner/repo`; `--dry-run` previews), and skip and report on
+timeout or error.
 
 ---
 
