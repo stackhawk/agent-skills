@@ -1,14 +1,14 @@
 {
   "schema": 2,
-  "tag": "v1.13.1",
-  "run_url": "https://github.com/stackhawk/agent-skills/actions/runs/27438011784",
+  "tag": "v2.7.3",
+  "run_url": "https://github.com/stackhawk/agent-skills/actions/runs/40949911049",
   "combos": [
     {
       "skill": "hawkscan",
       "tool": "claude-code",
       "model": "claude-haiku-4-5-20251001",
-      "passed": 20,
-      "total": 20,
+      "passed": 22,
+      "total": 22,
       "rate": 1.0,
       "status": "ok"
     },
@@ -16,8 +16,8 @@
       "skill": "hawkscan",
       "tool": "claude-code",
       "model": "claude-opus-4-7",
-      "passed": 8,
-      "total": 8,
+      "passed": 9,
+      "total": 9,
       "rate": 1.0,
       "status": "ok"
     },
@@ -25,8 +25,8 @@
       "skill": "hawkscan",
       "tool": "claude-code",
       "model": "claude-sonnet-4-6",
-      "passed": 20,
-      "total": 20,
+      "passed": 22,
+      "total": 22,
       "rate": 1.0,
       "status": "ok"
     },
@@ -34,8 +34,8 @@
       "skill": "hawkscan",
       "tool": "codex",
       "model": "gpt-5.5",
-      "passed": 20,
-      "total": 20,
+      "passed": 22,
+      "total": 22,
       "rate": 1.0,
       "status": "ok"
     },
@@ -44,8 +44,8 @@
       "tool": "codex",
       "model": "o3",
       "passed": 17,
-      "total": 20,
-      "rate": 0.85,
+      "total": 22,
+      "rate": 0.7727272727272727,
       "status": "ok"
     },
     {
@@ -61,26 +61,26 @@
       "skill": "hawkscan",
       "tool": "cursor",
       "model": "default",
-      "passed": 18,
-      "total": 20,
-      "rate": 0.9,
+      "passed": 21,
+      "total": 22,
+      "rate": 0.9545454545454546,
       "status": "ok"
     },
     {
       "skill": "api",
       "tool": "claude-code",
       "model": "claude-haiku-4-5-20251001",
-      "passed": 14,
+      "passed": 15,
       "total": 16,
-      "rate": 0.875,
+      "rate": 0.9375,
       "status": "ok"
     },
     {
       "skill": "api",
       "tool": "claude-code",
       "model": "claude-opus-4-7",
-      "passed": 11,
-      "total": 11,
+      "passed": 7,
+      "total": 7,
       "rate": 1.0,
       "status": "ok"
     },
@@ -106,9 +106,9 @@
       "skill": "api",
       "tool": "codex",
       "model": "o3",
-      "passed": 15,
+      "passed": 13,
       "total": 16,
-      "rate": 0.9375,
+      "rate": 0.8125,
       "status": "ok"
     },
     {
@@ -124,42 +124,6 @@
       "skill": "api",
       "tool": "cursor",
       "model": "default",
-      "passed": 13,
-      "total": 16,
-      "rate": 0.8125,
-      "status": "ok"
-    },
-    {
-      "skill": "stackhawk-data-seed",
-      "tool": "claude-code",
-      "model": "claude-haiku-4-5-20251001",
-      "passed": 15,
-      "total": 16,
-      "rate": 0.9375,
-      "status": "ok"
-    },
-    {
-      "skill": "stackhawk-data-seed",
-      "tool": "claude-code",
-      "model": "claude-opus-4-7",
-      "passed": 13,
-      "total": 14,
-      "rate": 0.9285714285714286,
-      "status": "ok"
-    },
-    {
-      "skill": "stackhawk-data-seed",
-      "tool": "claude-code",
-      "model": "claude-sonnet-4-6",
-      "passed": 10,
-      "total": 15,
-      "rate": 0.6666666666666666,
-      "status": "ok"
-    },
-    {
-      "skill": "stackhawk-data-seed",
-      "tool": "codex",
-      "model": "gpt-5.5",
       "passed": 16,
       "total": 16,
       "rate": 1.0,
@@ -167,11 +131,47 @@
     },
     {
       "skill": "stackhawk-data-seed",
+      "tool": "claude-code",
+      "model": "claude-haiku-4-5-20251001",
+      "passed": 16,
+      "total": 17,
+      "rate": 0.9411764705882353,
+      "status": "ok"
+    },
+    {
+      "skill": "stackhawk-data-seed",
+      "tool": "claude-code",
+      "model": "claude-opus-4-7",
+      "passed": 8,
+      "total": 8,
+      "rate": 1.0,
+      "status": "ok"
+    },
+    {
+      "skill": "stackhawk-data-seed",
+      "tool": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "passed": 16,
+      "total": 17,
+      "rate": 0.9411764705882353,
+      "status": "ok"
+    },
+    {
+      "skill": "stackhawk-data-seed",
+      "tool": "codex",
+      "model": "gpt-5.5",
+      "passed": 17,
+      "total": 17,
+      "rate": 1.0,
+      "status": "ok"
+    },
+    {
+      "skill": "stackhawk-data-seed",
       "tool": "codex",
       "model": "o3",
-      "passed": 13,
-      "total": 16,
-      "rate": 0.8125,
+      "passed": 15,
+      "total": 17,
+      "rate": 0.8823529411764706,
       "status": "ok"
     },
     {
@@ -187,8 +187,8 @@
       "skill": "stackhawk-data-seed",
       "tool": "cursor",
       "model": "default",
-      "passed": 16,
-      "total": 16,
+      "passed": 17,
+      "total": 17,
       "rate": 1.0,
       "status": "ok"
     },
@@ -196,9 +196,9 @@
       "skill": "hawkscan-ci",
       "tool": "claude-code",
       "model": "claude-haiku-4-5-20251001",
-      "passed": 14,
+      "passed": 18,
       "total": 22,
-      "rate": 0.6363636363636364,
+      "rate": 0.8181818181818182,
       "status": "ok"
     },
     {
@@ -206,17 +206,17 @@
       "tool": "claude-code",
       "model": "claude-opus-4-7",
       "passed": 7,
-      "total": 9,
-      "rate": 0.7777777777777778,
+      "total": 7,
+      "rate": 1.0,
       "status": "ok"
     },
     {
       "skill": "hawkscan-ci",
       "tool": "claude-code",
       "model": "claude-sonnet-4-6",
-      "passed": 20,
+      "passed": 22,
       "total": 22,
-      "rate": 0.9090909090909091,
+      "rate": 1.0,
       "status": "ok"
     },
     {
@@ -250,9 +250,72 @@
       "skill": "hawkscan-ci",
       "tool": "cursor",
       "model": "default",
-      "passed": 18,
+      "passed": 19,
       "total": 22,
-      "rate": 0.8181818181818182,
+      "rate": 0.8636363636363636,
+      "status": "ok"
+    },
+    {
+      "skill": "optimize",
+      "tool": "claude-code",
+      "model": "claude-haiku-4-5-20251001",
+      "passed": 6,
+      "total": 6,
+      "rate": 1.0,
+      "status": "ok"
+    },
+    {
+      "skill": "optimize",
+      "tool": "claude-code",
+      "model": "claude-opus-4-7",
+      "passed": 4,
+      "total": 4,
+      "rate": 1.0,
+      "status": "ok"
+    },
+    {
+      "skill": "optimize",
+      "tool": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "passed": 6,
+      "total": 6,
+      "rate": 1.0,
+      "status": "ok"
+    },
+    {
+      "skill": "optimize",
+      "tool": "codex",
+      "model": "gpt-5.5",
+      "passed": 6,
+      "total": 6,
+      "rate": 1.0,
+      "status": "ok"
+    },
+    {
+      "skill": "optimize",
+      "tool": "codex",
+      "model": "o3",
+      "passed": 6,
+      "total": 6,
+      "rate": 1.0,
+      "status": "ok"
+    },
+    {
+      "skill": "optimize",
+      "tool": "agy",
+      "model": "default",
+      "passed": 0,
+      "total": 0,
+      "rate": null,
+      "status": "no-data"
+    },
+    {
+      "skill": "optimize",
+      "tool": "cursor",
+      "model": "default",
+      "passed": 6,
+      "total": 6,
+      "rate": 1.0,
       "status": "ok"
     }
   ]
