@@ -74,20 +74,22 @@ hawk op -P customer-a app list           # Use a profile per-command
 
 **User intent:** "What does my security posture look like?" / "Which apps need attention?"
 
-Use `hawk op app list` and `hawk op scan list` to assemble an org-level view:
+Use `hawk op scan list` to assemble an org-level view; each row already names its
+app and environment:
 
 ```bash
-# All apps with metadata (team, type, env count)
-hawk op app list --format json
+# Every scan in the org, newest first (without --limit it returns only 10)
+hawk op scan list --sort-by started --sort-dir desc --limit 10000 --format json
 
-# Recent scans across the org — has per-scan severity counts
-hawk op scan list --limit 500 --format json
+# All apps (emits id, name, cloud only) — to find apps with no scans
+hawk op app list --format json
 ```
 
-Join on `applicationId` with `jq` to get a posture table. You'll have
-`highAlertCount`, `mediumAlertCount`, `lowAlertCount` per scan — those are *scan*
-counts per scan run. Enrich with `hawk op app list --format json` for app names,
-team ownership, etc.
+Each scan row has `id`, `app` (name), `env`, `status` (`Complete`/`Failed`/`Running`),
+`findings` (per severity `{new}{H|M|L}{triaged}`, e.g. `4H0 47M2`), `duration`, and
+`started` (`3w ago`, or `YYYY-MM-DD` once 4+ weeks old). Parse `findings` with `jq`
+to get a posture table of each app + env's latest `Complete` scan. There are no app
+UUIDs, exact timestamps, or team ownership in this output.
 
 ---
 
@@ -148,26 +150,28 @@ Returns evidence and the raw HTTP exchange.
 ### Listing scans (for diff recipes, filters, etc.)
 
 ```bash
-hawk op scan list                                    # Recent across all apps
-hawk op scan list --app <APP_ID> --limit 10         # Last 10 for one app
+hawk op scan list                                    # 10 most recent across all apps
+hawk op scan list --app <APP_ID> --sort-by started --sort-dir desc --limit 10  # Last 10 for one app (--app takes a UUID)
 hawk op scan list --env production --status complete # Combined filters
-hawk op scan list --format json                      # For scripting
+hawk op scan list --sort-by started --sort-dir desc --limit 10000 --format json  # Whole org, newest first
 ```
 
-Fields in the JSON match the raw `/api/v1/scan/{orgId}` response — `scanId`,
-`applicationId`, `environmentName`, `highAlertCount`, etc.
+JSON rows are display fields, not the raw API response: `id`, `app`, `env`,
+`status`, `findings`, `duration`, `started` (see §1). Page order is not guaranteed
+across pages — add `--sort-by started --sort-dir desc` when order matters.
 
 ### Diff recipe — "what changed since last scan?"
 
 ```bash
-# Two most recent scans for one app as JSON
-hawk op scan list --app <APP_ID> --limit 2 --format json > /tmp/last2.json
-SCAN_A=$(jq -r '.data[0].scanId' /tmp/last2.json)
-SCAN_B=$(jq -r '.data[1].scanId' /tmp/last2.json)
+# Two most recent completed scans for one app + env as JSON
+hawk op scan list --app <APP_ID> --env <ENV> --status complete \
+  --sort-by started --sort-dir desc --limit 2 --format json > /tmp/last2.json
+SCAN_A=$(jq -r '.data[0].id' /tmp/last2.json)
+SCAN_B=$(jq -r '.data[1].id' /tmp/last2.json)
 
-# Pull alerts for each and diff the pluginId sets
-hawk op scan get "$SCAN_A" --format json | jq '.alerts[].pluginId' | sort -u > /tmp/a.ids
-hawk op scan get "$SCAN_B" --format json | jq '.alerts[].pluginId' | sort -u > /tmp/b.ids
+# Pull alert types for each (at most 10 per scan) and diff the plugin ID sets
+hawk op scan get "$SCAN_A" --detail full --format json | jq -r '.findings[].plugin_id' | sort -u > /tmp/a.ids
+hawk op scan get "$SCAN_B" --detail full --format json | jq -r '.findings[].plugin_id' | sort -u > /tmp/b.ids
 
 comm -23 /tmp/a.ids /tmp/b.ids    # New in A (not in B)
 comm -13 /tmp/a.ids /tmp/b.ids    # Resolved (in B, gone in A)
@@ -206,7 +210,8 @@ Common flags on every `list`:
 
 By default (no `--page`/`--page-token`) a `list` **auto-follows every page** and
 returns the full set — you don't paginate manually. Use `--limit` to cap the rows
-(it trims after collection, not a server-side early stop).
+(it trims after collection, not a server-side early stop). **Exception:**
+`hawk op scan list` returns only 10 scans unless you pass `--limit`.
 
 ---
 
@@ -276,8 +281,8 @@ When piping to `jq`:
 
 ```bash
 hawk op app list --format json | jq -r '.data[].name'
-hawk op scan list --format json | jq '.data[] | select(.highAlertCount > 0)'
-hawk op scan get <ID> --detail full --format json | jq '.findings[].uri'
+hawk op scan list --sort-by started --sort-dir desc --limit 100 --format json | jq '.data[] | select(.findings | test("(^| )[1-9][0-9]*H"))'
+hawk op scan get <ID> --detail full --format json | jq '.findings[].paths[].uri'
 ```
 
 Setting `HAWK_FORMAT=json` once in the shell avoids `--format json` on every
