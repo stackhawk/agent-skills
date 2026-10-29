@@ -33,7 +33,7 @@ hawk op repo link --repo-id <REPO_UUID> --app-name "my-api"
 ```
 
 > ⚠️ **Do not use `--app-name` to create applications.** Application creation must
-> go through SKILL.md Step 1 substep 5 (`hawk create app`), which puts the app on
+> go through SKILL.md Step 1 substep 5 (`hawk op app create`), which puts the app on
 > the user's team, announces the settings URL and records the `applicationId`.
 > Use `--app-id` with an
 > already-resolved UUID instead.

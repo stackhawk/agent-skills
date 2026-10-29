@@ -35,9 +35,8 @@ Most customers have a single org. Multi-org setups exist (consultancies,
 MSSPs, users invited to a second org). `hawk op` picks the org from
 `--org <ID>` (or `HAWKOP_ORG_ID`), then the org saved by `hawk init`, then
 the only org; named profiles (`hawk op -P <profile> app list`) also pin
-one. `hawk create app` does not share that choice: it takes `-o <ORG_ID>`
-(or `ORG_ID`) and, with several orgs and no `-o`, prompts or fails when
-non-interactive. Pass the same org to both.
+one. Agents create apps with `hawk op app create`, so the app lands in the
+same org that `hawk op team list` and `hawk op app list` read.
 
 **Not in `stackhawk.yml`.** Implicit via auth.
 
@@ -368,7 +367,7 @@ Is there an existing App for this codebase?
 │   │                               └── Still ambiguous ──► Ask the user
 │   │
 │   └── No name match          ──► CREATE on the user's team
-│                                   (`hawk create app ... -t <team-id>`,
+│                                   (`hawk op app create ... --team-id`,
 │                                   see Team assignment on create).
 │                                   Announce the team and the
 │                                   details-settings URL for tech flag setup.
@@ -392,14 +391,11 @@ place an app on their own team, so choose the team before creating.
    |----------------|--------|
    | Exactly one | Create on it without asking, and name the team when announcing the app |
    | Several | Ask the user which team should own the app. Never pick one yourself |
-   | None | Tell the user the app will be visible to everyone in the org and that a member can't put it on a team later. Ask before creating; create without `-t` only if they agree |
+   | None | Tell the user the app will be visible to everyone in the org and that a member can't put it on a team later. Ask before creating; create without `--team-id` only if they agree |
    | Refused (403, or an error naming `API_ACCESS`) | Ask the user which team should own the app, and for its team ID (shown for the team in the StackHawk web UI). If they name no team, treat it as "None" |
 
-3. **Create:** `hawk create app --name "<repo-name>" --env <env-name> -t <team-id>`.
-   If it answers `Invalid team ID provided` (its check sees only the first
-   10 teams, so an admin's valid choice can fail), create with
-   `hawk op app create --name "<repo-name>" --env <env-name> --team-id <team-id> --format json`
-   instead.
+3. **Create:** `hawk op app create --name "<repo-name>" --env <env-name> --team-id <team-id> --format json`.
+   The new app's ID is `.data.applicationId`.
 4. **Retry guard:** if create fails with a server error (5xx), the app may
    already exist without a team: the platform creates the app before it
    checks the team. Run `hawk op app get --name "<repo-name>" --format json`

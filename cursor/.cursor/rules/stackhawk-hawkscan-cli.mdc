@@ -198,20 +198,17 @@ This skill calls `hawk config show <section> --text` during Phase 1c to fetch au
 hawk version                             # print CLI version
 hawk list plugin                         # list available custom scan plugins
 hawk download log                        # download the scan log from the last scan
-# Interactive (human use - prompts for name)
-hawk create app
-
-# Non-interactive (agent/script use - required for autonomous operation)
-hawk create app --name "<app-name>" --env <env-name> -t <team-id>   # e.g. --name "My App" --env Development
+# Agent/script use - required for autonomous operation
+hawk op app create --name "<app-name>" --env <env-name> --team-id <team-id> --format json   # e.g. --name "My App" --env Development
 ```
 
-**Important for agents:** Always use the non-interactive form. The interactive prompt
-blocks execution and cannot be answered programmatically.
+**Important for agents:** Always create apps with `hawk op app create`. It uses the
+same org as `hawk op team list`, and its JSON output carries the new app's ID at
+`.data.applicationId`. Humans may still use the interactive `hawk create app`, whose
+prompt blocks execution and cannot be answered programmatically.
 
-`-t` puts the app on a team. Without it the app is created unassigned, which a
+`--team-id` puts the app on a team. Without it the app is created unassigned, which a
 MEMBER can't fix later. Choose the team first (Step 1c substep 5 in SKILL.md).
-With several orgs, also pass `-o <org-id>`; `hawk create app` does not read the
-org `hawk op` uses.
 
 ---
 

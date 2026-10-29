@@ -184,9 +184,9 @@ strategy, frontend-vs-backend scenarios, and config templates:
    pick by host if established, else surface to user. No match → create it **on the user's
    team**: run `hawk op team list --format json`. One team → use it without asking; several → ask which, never pick;
    none → say the app will be visible to the whole org and a member can't move it to a team later, then ask before creating.
-   Refusals, the `--team-id` fallback and the retry guard: [`references/platform-model.md`](references/platform-model.md#team-assignment-on-create).
+   Refusals and the retry guard: [`references/platform-model.md`](references/platform-model.md#team-assignment-on-create).
    ```bash
-   hawk create app --name "<repo-name>" --env <env-name> -t <team-id>
+   hawk op app create --name "<repo-name>" --env <env-name> --team-id <team-id> --format json   # applicationId: .data.applicationId
    ```
    Resolve `<env-name>` with the Env Name Algorithm above; announce (Progress output) `StackHawk | Created app <name> (<appId>) on team <team> - <url>`.
 6. **Env exists?** Determine env name via Env Name Algorithm. Run

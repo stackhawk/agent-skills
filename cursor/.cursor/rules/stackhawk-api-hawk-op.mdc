@@ -286,7 +286,7 @@ hawk op scan list --format json | jq '.data[] | select(.highAlertCount > 0)'
 hawk op scan get <ID> --detail full --format json | jq '.findings[].uri'
 ```
 
-Setting `HAWK_FORMAT=json` once in the shell avoids `--format json` on every
+Setting `HAWKOP_FORMAT=json` once in the shell avoids `--format json` on every
 call — useful when building a reporting pipeline.
 
 ---
