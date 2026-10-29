@@ -61,8 +61,7 @@ The `api` skill wraps read-only StackHawk platform lookups via the `hawk` CLI (`
 | Check if App exists           | `hawk op app list --format json`                                                  |
 | Check if Env exists           | `hawk op env list --app <NAME\|UUID> --format json`                               |
 | Get findings with triage      | `hawk op scan get --app <NAME\|UUID> --detail full --format json`                 |
-| List ASM repos                | `hawk op repo list --format json`                                                 |
-| Link app to ASM repo          | `hawk op repo link --repo-id <ID> --app-id <ID>`                                  |
+| Link app to ASM repo          | `hawk op repo link --repo <BARE_NAME> --app-id <ID>` (60 s time box)              |
 | Get tech flags                | `hawk op app tech-flags get --app <NAME\|UUID> --format json`                     |
 | Disable all tech flags        | `hawk op app tech-flags disable-all --app <NAME\|UUID> --yes`                     |
 | Set specific tech flags       | `hawk op app tech-flags set --app <NAME\|UUID> Key=true`                          |
@@ -118,12 +117,12 @@ completion after. Status output, **not** a prompt — never pause for input. E.g
 Run Phase 0 whenever a `stackhawk.yml` is being **created** — a new application, or a reused
 app with a fresh config. Do NOT run on every scan (0a/0b are idempotent; 0c is non-destructive).
 
-**Phase 0a — Repo Linking:** Associate the app with its source repo in Attack Surface
-Management. Get the git remote URL, normalize it (lowercase, strip `.git`, strip host prefix
-to `owner/repo`), match against `hawk op repo list --format json` output, and run
-`hawk op repo link --repo-id <UUID> --app-id <UUID>`. If no match, inject a `git_origin` tag
-into `stackhawk.yml`.
-→ Full normalization rules and SSH/HTTPS edge cases: [`references/repo-linking.md`](references/repo-linking.md)
+**Phase 0a — Repo Linking (never blocks the scan):** Run **one** `hawk op repo link --repo
+<BARE_NAME> --app-id <APP_ID>` (bare name = last segment of the git origin, `.git` stripped) under
+a 60 s time box. On timeout, error or "No repository found", skip linking, report why, continue.
+**Never list repos or apps here to search them** (`hawk op repo list` pages through the whole org);
+ignore the `→ hawkop repo list` hint. A `git_origin` tag is only a breadcrumb, never a link.
+→ Exact commands, time box, and result handling: [`references/repo-linking.md`](references/repo-linking.md)
 
 **Phase 0b — Agent Tagging:** Add the `_STACKHAWK_AGENT` tag to `stackhawk.yml` once if missing:
 ```yaml
