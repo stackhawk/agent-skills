@@ -1,9 +1,9 @@
 ---
 name: skill-authoring
-version: 1.0.0
+version: 1.1.0
 description: >
   Guides authoring and maintaining agent skills in this repository — enforcing
-  Anthropic best practices, bumping versions, regenerating Cursor rules, and
+  Anthropic best practices, release-version rules, regenerating Cursor rules, and
   keeping the plugin structure consistent. Use when editing SKILL.md files,
   reference files, or plugin manifests; creating a new plugin; or reviewing a
   skill for compliance with authoring standards. Do NOT trigger for general
@@ -41,7 +41,7 @@ Every SKILL.md must open with a YAML frontmatter block:
 ```yaml
 ---
 name: <skill-name>          # matches the plugin directory name and symlink folder name
-version: <semver>           # kept in sync by bump-version.sh
+version: <semver>           # the in-tree placeholder (0.0.0-dev); the release stamps the real number
 description: >              # third person; max 1024 characters; describes when to trigger
   ...
 ---
@@ -150,13 +150,14 @@ plugins/<name>/
     plugin.json
 ```
 
-**2. Write `SKILL.md`** following the rules above. Use current VERSION file for the
-version field (`cat VERSION`).
+**2. Write `SKILL.md`** following the rules above. Set the version field to the
+in-tree placeholder (`0.0.0-dev`, see `.version-bump.json`).
 
 **3. Create manifests** — copy an existing plugin's `plugin.json` as a template:
 ```bash
 # .claude-plugin/plugin.json and .codex-plugin/plugin.json
-# Set name, version (match VERSION file), description, keywords
+# Set name, description, keywords. Neither manifest carries a version field: the release
+# stamps the Codex one (stamp_only in .version-bump.json); the Claude one stays unversioned
 ```
 
 **4. Create symlinks** for platform discovery (use relative paths):
@@ -171,16 +172,17 @@ cd .cursor/skills/ && ln -s ../../plugins/<name>/skills/<name> <name>
 "<name>/skills/<name>/SKILL.md|stackhawk-<name>|<cursor description>|<globs>|<alwaysApply>"
 ```
 
-**6. Add to `.version-bump.json`** — add two entries (one per manifest):
+**6. Add to `.version-bump.json`** — add the Codex manifest (`stamp_only`) and the SKILL.md under
+`files`, and the Claude manifest under `unversioned`:
 ```json
-{ "path": "plugins/<name>/.claude-plugin/plugin.json", "field": "version", "type": "json" },
-{ "path": "plugins/<name>/.codex-plugin/plugin.json", "field": "version", "type": "json" },
+{ "path": "plugins/<name>/.codex-plugin/plugin.json", "field": "version", "type": "json", "stamp_only": true },
 { "path": "plugins/<name>/skills/<name>/SKILL.md", "field": "version", "type": "yaml-frontmatter" }
 ```
 
-**7. Bump version** (new skill = `--minor`):
+**7. Check the placeholder** (a new skill is a minor release: put a `Release: minor` line in the
+PR description; never bump a version in the PR):
 ```bash
-bash scripts/bump-version.sh --minor
+bash scripts/bump-version.sh --placeholder && bash scripts/check-version.sh
 ```
 
 **8. Regenerate Cursor rules:**
@@ -216,25 +218,26 @@ After any edit to `SKILL.md` or `references/*.md`:
    bash scripts/generate-cursor-rules.sh && git diff cursor/
    ```
 
-4. **Bump version** — include in the same commit as the content change:
-   ```bash
-   bash scripts/bump-version.sh --patch   # for fixes and content updates
-   bash scripts/bump-version.sh --minor   # for new capabilities
-   ```
+4. **Choose the release size** — do not bump anything. A merge releases the next patch
+   number from the latest release tag. For new capabilities put a `Release: minor` line in
+   the PR description (`Release: major` for breaking changes).
 
 ---
 
 ## Version Bump Rules
 
-| Change type | Flag |
-|-------------|------|
-| Bug fix, content correction, typo | `--patch` |
-| New skill, new reference file, new capability | `--minor` |
-| Breaking change (removed step, changed trigger conditions) | `--major` |
+| Change type | PR description |
+|-------------|----------------|
+| Bug fix, content correction, typo | nothing (patch is the default) |
+| New skill, new reference file, new capability | a `Release: minor` line |
+| Breaking change (removed step, changed trigger conditions) | a `Release: major` line |
 
-`VERSION` is the single source of truth. `bump-version.sh` reads `.version-bump.json`
-and updates all manifests and SKILL.md frontmatter atomically. Never edit version numbers
-manually in individual files.
+Release tags are the source of truth for the version. The tree carries a placeholder
+(`0.0.0-dev`) in every SKILL.md and in `gemini-extension.json`, which requires one; every
+other manifest carries no version (`stamp_only` files get one when stamped, `unversioned`
+files never do); the release job
+stamps the number with `bump-version.sh` to validate it and the marketplace sync stamps it
+into the snapshot. Never edit version numbers manually in individual files.
 
 ---
 
@@ -242,13 +245,13 @@ manually in individual files.
 
 `generate-and-validate.yml` runs on every PR and checks:
 
-- Version consistency across all manifests
+- Version placeholder consistency across all manifests (`scripts/check-version.sh`)
 - Cursor rules are up to date (no diff after running `generate-cursor-rules.sh`)
 - SKILL.md frontmatter has `name:`, `version:`, `description:`
 
 The PR will be blocked if any check fails. Fix by running:
 ```bash
-bash scripts/bump-version.sh --patch    # or --minor/--major
+bash scripts/bump-version.sh --placeholder
 bash scripts/generate-cursor-rules.sh
 git add plugins/ cursor/ scripts/ && git commit --amend --no-edit
 ```

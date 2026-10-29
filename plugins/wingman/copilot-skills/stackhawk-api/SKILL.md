@@ -1,6 +1,6 @@
 ---
 name: stackhawk-api
-version: 2.7.1
+version: 0.0.0-dev
 description: >
   Use this skill when a user or agent needs to query the StackHawk platform for
   security reporting, findings analysis, or app management. Triggers include:

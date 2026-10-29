@@ -52,8 +52,9 @@ if find "$DEST" -type l | grep -q .; then
   errors=$((errors + 1))
 fi
 
-# 5. Copied versions match VERSION (proves generation ran after bump-version.sh).
-expected_version="$(cat VERSION)"
+# 5. Copied versions match the source skills (proves generation ran after bump-version.sh).
+# All source skills carry one version (scripts/check-version.sh), so hawkscan's is the reference.
+expected_version="$(head -20 plugins/hawkscan/skills/hawkscan/SKILL.md | grep '^version:' | sed 's/version: //')"
 for name in "${EXPECTED[@]}"; do
   f="${DEST}/${name}/SKILL.md"
   [ -f "$f" ] || continue
@@ -111,11 +112,6 @@ else
   # Must NOT carry dependencies — Copilot ignores it and it misleads readers.
   if python3 -c "import json,sys; sys.exit(0 if 'dependencies' in json.load(open('$MANIFEST')) else 1)"; then
     echo "ERROR: $MANIFEST must not declare 'dependencies' (Copilot has no such mechanism)"
-    errors=$((errors + 1))
-  fi
-  mver="$(python3 -c "import json; print(json.load(open('$MANIFEST')).get('version','MISSING'))")"
-  if [ "$mver" != "$expected_version" ]; then
-    echo "ERROR: $MANIFEST has version '$mver', expected '$expected_version'"
     errors=$((errors + 1))
   fi
 fi

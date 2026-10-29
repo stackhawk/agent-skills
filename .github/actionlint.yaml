@@ -1,3 +1,11 @@
 self-hosted-runner:
   labels:
     - agent-skills-amd-4cpu
+    - biodome-ci-amd-2cpu
+    - biodome-ci-amd-4cpu
+    - biodome-ci-amd-8cpu
+    - biodome-ci-amd-16cpu
+    - biodome-ci-arm-2cpu
+    - biodome-ci-arm-4cpu
+    - biodome-ci-arm-8cpu
+    - biodome-ci-arm-16cpu

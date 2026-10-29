@@ -1,30 +1,99 @@
 {
+  "placeholder": "0.0.0-dev",
   "files": [
-    { "path": "VERSION", "field": "version", "type": "raw" },
-    { "path": "plugins/hawkscan/.claude-plugin/plugin.json", "field": "version", "type": "json" },
-    { "path": "plugins/hawkscan/.codex-plugin/plugin.json", "field": "version", "type": "json" },
-    { "path": "plugins/api/.claude-plugin/plugin.json", "field": "version", "type": "json" },
-    { "path": "plugins/api/.codex-plugin/plugin.json", "field": "version", "type": "json" },
-    { "path": "plugins/stackhawk-data-seed/.claude-plugin/plugin.json", "field": "version", "type": "json" },
-    { "path": "plugins/stackhawk-data-seed/.codex-plugin/plugin.json", "field": "version", "type": "json" },
-    { "path": ".codex-plugin/plugin.json", "field": "version", "type": "json" },
-    { "path": "plugin.json", "field": "version", "type": "json" },
-    { "path": "gemini-extension.json", "field": "version", "type": "json" },
-    { "path": "plugins/hawkscan/skills/hawkscan/SKILL.md", "field": "version", "type": "yaml-frontmatter" },
-    { "path": "plugins/api/skills/api/SKILL.md", "field": "version", "type": "yaml-frontmatter" },
-    { "path": "plugins/hawkscan-ci/.claude-plugin/plugin.json", "field": "version", "type": "json" },
-    { "path": "plugins/hawkscan-ci/.codex-plugin/plugin.json", "field": "version", "type": "json" },
-    { "path": "plugins/hawkscan-ci/skills/hawkscan-ci/SKILL.md", "field": "version", "type": "yaml-frontmatter" },
-    { "path": "plugins/stackhawk-data-seed/skills/stackhawk-data-seed/SKILL.md", "field": "version", "type": "yaml-frontmatter" },
-    { "path": "plugins/wingman/.claude-plugin/plugin.json", "field": "version", "type": "json" },
-    { "path": "plugins/wingman/.codex-plugin/plugin.json", "field": "version", "type": "json" },
-    { "path": "plugins/wingman/.github/plugin/plugin.json", "field": "version", "type": "json" },
-    { "path": "plugins/optimize/.claude-plugin/plugin.json", "field": "version", "type": "json" },
-    { "path": "plugins/optimize/.codex-plugin/plugin.json", "field": "version", "type": "json" },
-    { "path": "plugins/optimize/skills/optimize/SKILL.md", "field": "version", "type": "yaml-frontmatter" }
+    {
+      "path": "plugins/hawkscan/.codex-plugin/plugin.json",
+      "field": "version",
+      "type": "json",
+      "stamp_only": true
+    },
+    {
+      "path": "plugins/api/.codex-plugin/plugin.json",
+      "field": "version",
+      "type": "json",
+      "stamp_only": true
+    },
+    {
+      "path": "plugins/stackhawk-data-seed/.codex-plugin/plugin.json",
+      "field": "version",
+      "type": "json",
+      "stamp_only": true
+    },
+    {
+      "path": ".codex-plugin/plugin.json",
+      "field": "version",
+      "type": "json",
+      "stamp_only": true
+    },
+    {
+      "path": "plugin.json",
+      "field": "version",
+      "type": "json",
+      "stamp_only": true
+    },
+    {
+      "path": "gemini-extension.json",
+      "field": "version",
+      "type": "json"
+    },
+    {
+      "path": "plugins/hawkscan/skills/hawkscan/SKILL.md",
+      "field": "version",
+      "type": "yaml-frontmatter"
+    },
+    {
+      "path": "plugins/api/skills/api/SKILL.md",
+      "field": "version",
+      "type": "yaml-frontmatter"
+    },
+    {
+      "path": "plugins/hawkscan-ci/.codex-plugin/plugin.json",
+      "field": "version",
+      "type": "json",
+      "stamp_only": true
+    },
+    {
+      "path": "plugins/hawkscan-ci/skills/hawkscan-ci/SKILL.md",
+      "field": "version",
+      "type": "yaml-frontmatter"
+    },
+    {
+      "path": "plugins/stackhawk-data-seed/skills/stackhawk-data-seed/SKILL.md",
+      "field": "version",
+      "type": "yaml-frontmatter"
+    },
+    {
+      "path": "plugins/wingman/.codex-plugin/plugin.json",
+      "field": "version",
+      "type": "json",
+      "stamp_only": true
+    },
+    {
+      "path": "plugins/wingman/.github/plugin/plugin.json",
+      "field": "version",
+      "type": "json",
+      "stamp_only": true
+    },
+    {
+      "path": "plugins/optimize/.codex-plugin/plugin.json",
+      "field": "version",
+      "type": "json",
+      "stamp_only": true
+    },
+    {
+      "path": "plugins/optimize/skills/optimize/SKILL.md",
+      "field": "version",
+      "type": "yaml-frontmatter"
+    }
   ],
-  "marketplace_manifests": [
-    { "path": ".claude-plugin/marketplace.json", "field": "version", "type": "json-plugins-array" }
+  "unversioned": [
+    "plugins/api/.claude-plugin/plugin.json",
+    "plugins/hawkscan-ci/.claude-plugin/plugin.json",
+    "plugins/hawkscan/.claude-plugin/plugin.json",
+    "plugins/optimize/.claude-plugin/plugin.json",
+    "plugins/stackhawk-data-seed/.claude-plugin/plugin.json",
+    "plugins/wingman/.claude-plugin/plugin.json",
+    ".claude-plugin/marketplace.json"
   ],
   "audit": {
     "exclude": [
