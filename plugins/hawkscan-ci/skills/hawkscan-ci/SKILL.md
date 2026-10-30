@@ -163,19 +163,34 @@ first pipeline run, or the scan will fail with a 401.
 
 ## Step 4: Pick the Execution Shape
 
-Three tiers, prefer highest the provider supports:
+Three tiers, prefer highest the provider supports. If a higher tier isn't available or fails for this pipeline, fall back to the hawk CLI install script:
 
 | Tier | Mechanism | When to use |
 |---|---|---|
-| 1. Native action | `stackhawk/hawkscan-action@v2` | GitHub Actions only |
-| 2. Docker image | `stackhawk/hawkscan:latest` | Anywhere with Docker (GitLab, Jenkins, CircleCI, Azure, Bitbucket, Buildkite, AWS CodeBuild) |
-| 3. Binary download | `hawk.manifest.json` → `download.stackhawk.com/hawk/<version>/<platform>/hawk` (self-contained binary) | Bare shell runners (Travis without sudo, some Spinnaker stages) |
+| 1. Native integration | `stackhawk/hawkscan-action@v3` (GitHub Actions); the StackHawk Azure extension tasks (Azure Pipelines) | GitHub Actions and Azure Pipelines — both install the native `hawk` binary for you. Fallback: the hawk CLI install script with `$GITHUB_PATH` / `##vso[task.prependpath]` |
+| 2. hawk CLI install script | `curl -fsSL https://download.stackhawk.com/hawk/install.sh \| sh` (Windows: `irm https://download.stackhawk.com/hawk/install.ps1 \| iex`) + a PATH line | **Default for every other shell-capable runner** (GitLab, Jenkins, CircleCI, Bitbucket, Buildkite, Travis CI, AWS CodeBuild, Bamboo, Concourse) |
+| 3. Docker image | `stackhawk/hawkscan:latest` | Where scans run as container images — e.g. scans integrated into ArgoCD deployments or other Kubernetes Jobs (Harness, Spinnaker) — or as the labelled alternative when the team prefers containers |
+
+The hawk CLI install script is StackHawk's published installer for the `hawk` binary — not this repo's own `scripts/install.sh`, which installs agent skills. It needs no `sudo`, `jq`, or Docker, and checks the download's SHA-256. Canonical docs: <https://docs.stackhawk.com/stackhawk-cli/#install-with-a-script>.
+
+**The script never puts `hawk` on the PATH.** Always add the provider's PATH line after the install, or `hawk scan` fails with `command not found`:
+
+| Where the scan runs | PATH line |
+|---|---|
+| Same shell (GitLab `before_script` + `script`, Bitbucket step, Travis, CodeBuild, one Jenkins `sh` block, one Buildkite `command`) | `export PATH="$HOME/.hawk/bin:$PATH"` |
+| A later GitHub Actions step | `echo "$HOME/.hawk/bin" >> "$GITHUB_PATH"` |
+| A later CircleCI `run` step | `echo 'export PATH="$HOME/.hawk/bin:$PATH"' >> "$BASH_ENV"` |
+| A later Azure Pipelines step | `echo "##vso[task.prependpath]$HOME/.hawk/bin"` |
 
 **Track the latest stable scanner:**
-- Image: use **`stackhawk/hawkscan:latest`** — HawkScan is a security scanner, so CI should run the newest stable build for the freshest checks.
-- Action: pin the major (`@v2`) — auto-receives the newest action within v2.
-- CLI: resolve the version + platform binary URL from the manifest (`download.stackhawk.com/hawkdocs/hawk.manifest.json` → `.latest.version` and asset `.url`); it's a single self-contained binary (no Java).
-- **Need fully reproducible builds?** Pin an explicit version (`stackhawk/hawkscan:<X.Y.Z>`, `@vX.Y.Z`, or an image digest) instead — see [`references/execution-shapes.md`](references/execution-shapes.md).
+- Install script: leave `HAWK_INSTALL_VERSION` unset so each run installs the newest release, and always write the commented pin line beside the install so it's visible:
+  ```bash
+  # Optional: pin a version (6.0.0 or later). Leave it unset to install the latest release.
+  # export HAWK_INSTALL_VERSION=6.6.0
+  ```
+- Action: pin the major (`@v3`). Replace any `@v2` — on HawkScan 6.x it runs a deprecated shim.
+- Image: `stackhawk/hawkscan:latest`.
+- **Need fully reproducible builds?** Set `HAWK_INSTALL_VERSION=<X.Y.Z>` (6.0.0+), or pin `stackhawk/hawkscan:<X.Y.Z>`, `@vX.Y.Z`, or an image digest — see [`references/execution-shapes.md`](references/execution-shapes.md).
 
 See [`references/execution-shapes.md`](references/execution-shapes.md) for the full per-provider mapping.
 
@@ -306,7 +321,7 @@ Per provider:
 | Bitbucket | `artifacts:` block |
 
 Path: the location the invocation shape produces (typically
-`hawkscan-report/` for the action, or `$(pwd)/hawkscan/` for Docker).
+`hawkscan-report/` for the action, or `$(pwd)/hawkscan/` for the CLI and Docker).
 
 Full per-provider workflow examples live in
 [`references/execution-shapes.md`](references/execution-shapes.md).
@@ -334,7 +349,10 @@ After writing/patching the workflow file:
 
 - **Don't generate `stackhawk.yml`.** That's the `hawkscan` skill's surface. If the config is missing, hand off.
 - **Don't set `HAWK_AGENT`.** CI pipelines aren't agents; the `${HAWK_AGENT:none}` default resolves correctly without intervention.
-- **Use `stackhawk/hawkscan:latest` for the scanner image.** It's a security scanner — CI should run the newest stable build for the best detection. Pin an explicit version only when an org reproducibility mandate requires it.
+- **Track the latest scanner.** Leave `HAWK_INSTALL_VERSION` unset (with the commented pin line visible), use `hawkscan-action@v3`, or `stackhawk/hawkscan:latest`. It's a security scanner — CI should run the newest stable build for the best detection. Pin an explicit version only when an org reproducibility mandate requires it.
+- **Don't default to Docker on shell runners.** Use the hawk CLI install script; Docker is the alternative, and the default only where scans run as container images (ArgoCD deployments, Kubernetes Jobs).
+- **Don't forget the PATH line after the install script.** It never changes the PATH; see Step 4.
+- **Don't hand-roll a manifest + `jq` binary download.** The install script resolves the version, picks the platform, and verifies the checksum.
 - **Don't inline the API key.** Never, in any form. Always reference the provider's secret store or external secrets manager.
 - **Don't try to set the secret autonomously.** Prompt the user and tell them where to put it.
 - **Don't forget GitLab's key-split rule.** `HAWK_API_KEY` in the form `hawk.<id>.<secret>` triggers GitLab's variable-masking bug. Split into `HAWK_API_ID` + `HAWK_API_SECRET` and reassemble in the job.

@@ -49,13 +49,21 @@ GitLab's `services:` runs sidecar containers alongside the job container. Useful
 
 ```yaml
 hawkscan:
-  image: stackhawk/hawkscan:latest
+  image: ubuntu:22.04
   services:
     - name: my-org/my-app:latest
       alias: app
+  before_script:
+    - apt-get update -qq && apt-get install -qq -y curl
+    # Optional: pin a version (6.0.0 or later). Leave it unset to install the latest release.
+    # - export HAWK_INSTALL_VERSION=6.6.0
+    - curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
+    - export PATH="$HOME/.hawk/bin:$PATH"
   script:
-    - hawk scan
+    - hawk --api-key="hawk.${HAWK_API_ID}.${HAWK_API_SECRET}" --no-color scan
 ```
+
+The job installs `hawk` with the hawk CLI install script; `before_script` and `script` share one shell, so the PATH line carries over. Alternatively, use `image: stackhawk/hawkscan:latest` as the job image, which already has `hawk` on the PATH.
 
 The scan target becomes `http://app:8080` (the alias), not `localhost`. Update `stackhawk.yml`'s `host` accordingly — typically by setting `APP_HOST=http://app:8080` as a job variable.
 
@@ -78,7 +86,7 @@ jobs:
           --health-retries 12
     steps:
       - uses: actions/checkout@v4
-      - uses: stackhawk/hawkscan-action@v2.5.0
+      - uses: stackhawk/hawkscan-action@v3
         with:
           apiKey: ${{ secrets.HAWK_API_KEY }}
 ```
@@ -141,7 +149,7 @@ If the pipeline deploys to an ephemeral environment before scanning (preview URL
 
 ```yaml
 - name: Run HawkScan against preview
-  uses: stackhawk/hawkscan-action@v2.5.0
+  uses: stackhawk/hawkscan-action@v3
   env:
     APP_HOST: ${{ steps.deploy.outputs.preview_url }}
   with:

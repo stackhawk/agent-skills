@@ -9,7 +9,7 @@ This skill graduates a working *local* HawkScan setup (`stackhawk.yml` exists an
 1. Detects your CI provider from repo files (`.github/workflows/`, `.gitlab-ci.yml`, `Jenkinsfile`, `.circleci/config.yml`, etc.).
 2. Asks how the scan should run — trigger (PRs / push / schedule), blocking behavior (fail on findings or warn-only), job placement (chained after build or standalone).
 3. Prompts you for where `HAWK_API_KEY` lives — your CI's native secrets engine (default) or an organizationally-approved external secrets manager (Vault, AWS/GCP/Azure secret managers, 1Password, Doppler).
-4. Picks the right execution shape — the `stackhawk/hawkscan-action` GitHub Action where available, the `stackhawk/hawkscan` Docker image elsewhere, or the bare `hawk` CLI as a fallback.
+4. Picks the right execution shape — the `stackhawk/hawkscan-action@v3` GitHub Action or the StackHawk Azure extension where available, the hawk CLI install script on every other shell runner, or the `stackhawk/hawkscan` Docker image where scans run as container images (e.g. ArgoCD deployments, Kubernetes Jobs) and as an alternative. The install script is also the fallback when the Action or extension can't be used.
 5. Writes or patches the workflow file with a HawkScan job that exports `COMMIT_SHA` and `BRANCH_NAME` for traceability, runs the scan, handles the exit code per your choice, and uploads the scan artifact.
 6. Tells you the out-of-band steps still needed — setting the secret in the provider UI/CLI, updating branch protection if the job should be a required check.
 

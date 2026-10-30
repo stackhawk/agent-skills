@@ -50,7 +50,7 @@ Three valid integration modes:
 
 ```yaml
 # GitHub Actions
-- uses: stackhawk/hawkscan-action@v2.5.0
+- uses: stackhawk/hawkscan-action@v3
   with:
     apiKey: ${{ secrets.HAWK_API_KEY }}
 # (exit 42 naturally fails the step)
@@ -61,11 +61,14 @@ The exit code propagates; the job fails; the pipeline fails; the PR check turns 
 ### Mode 2 — Warn-only
 
 ```yaml
+# hawk installed by an earlier step (the hawk CLI install script + $GITHUB_PATH)
 - name: Run HawkScan (warn-only)
     # exit code handled explicitly below (do not use continue-on-error here)
+  env:
+    HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
   run: |
     set +e
-    docker run --rm ... stackhawk/hawkscan:latest
+    hawk --api-key="${HAWK_API_KEY}" scan
     EXIT_CODE=$?
     case $EXIT_CODE in
       0)  echo "HawkScan passed." ;;
@@ -102,7 +105,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: stackhawk/hawkscan-action@v2.5.0
+      - uses: stackhawk/hawkscan-action@v3
         env:
           APP_HOST: https://staging.example.com
         with:
@@ -115,7 +118,7 @@ jobs:
 
 **Retry exit 1 only on specific transient signals:**
 - HTTP 5xx from the platform during scan submission (rare; the scanner handles its own retries internally).
-- Container-pull failures (`Error response from daemon: ... timeout`).
+- Install-script download failures (`curl: (28) ...`) or container-pull failures (`Error response from daemon: ... timeout`).
 - Network blips during initial app health-check.
 
 Don't retry blindly. If retry succeeds, the original failure was a flake. If retry fails, the issue is real and needs investigation.
@@ -123,9 +126,11 @@ Don't retry blindly. If retry succeeds, the original failure was a flake. If ret
 ```yaml
 # GitHub Actions retry pattern (exit 1 only, max 2 attempts)
 - name: Run HawkScan (with retry on transient errors)
+  env:
+    HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
   run: |
     for attempt in 1 2; do
-      docker run --rm ... stackhawk/hawkscan:latest
+      hawk --api-key="${HAWK_API_KEY}" scan
       EXIT=$?
       case $EXIT in
         0|42) exit $EXIT ;;
@@ -137,43 +142,38 @@ Don't retry blindly. If retry succeeds, the original failure was a flake. If ret
 
 ## Caching Strategy
 
-**Do cache:** the `hawk` CLI binary (when using Tier 3), the HawkScan Docker image layer (when the runner supports image caching).
+**Do cache:** the `hawk` CLI install directory (`~/.hawk/bin`, about 320 MB per fresh install), the HawkScan Docker image layer (when the runner supports image caching).
 
 **Do NOT cache:**
 - Scan output / findings. Each scan must be independent — caching findings between runs defeats the purpose.
 - `~/.hawk/` if `HAWK_API_KEY` is in the env (it's not in the cache anyway; just don't go out of your way to include it).
 
-### GitHub Actions image cache
+### GitHub Actions
 
-GHA's `ubuntu-latest` runners cache popular images automatically. A `stackhawk/hawkscan:latest` pull is ~5 seconds on a warm cache, so an explicit image-cache step is rarely worth it.
+`stackhawk/hawkscan-action@v3` installs `hawk` itself, so an explicit cache step is rarely worth it there. The recipe below applies when a workflow runs the hawk CLI install script directly.
 
-### Caching the CLI download (Tier 3)
+### Caching the hawk CLI install
 
-The CLI zip is version-numbered (there's no `hawk-latest.zip`), so resolve the current version first and key the cache on it — that tracks the latest CLI while keeping a stable cache key:
+The hawk CLI install script always downloads, even when the same version is already installed, so caching `~/.hawk/bin` only helps if the pipeline **skips the script on a cache hit**. Key the cache on the current release from the version endpoint — that tracks the latest release while keeping a stable key:
 
 ```yaml
-- name: Resolve current hawk version + binary URL (from the manifest)
+- name: Resolve current hawk version
   id: hawk
-  run: |
-    read -r version url < <(curl -fsSL https://download.stackhawk.com/hawkdocs/hawk.manifest.json \
-      | jq -r '.latest | "\(.version) \(.assets[] | select(.asset.group=="linux-x64" and (.url|endswith("/hawk"))) | .url)"')
-    [ -n "$url" ] || { echo "ERROR: no linux-x64 hawk binary in manifest"; exit 1; }
-    echo "version=$version" >> "$GITHUB_OUTPUT"
-    echo "url=$url" >> "$GITHUB_OUTPUT"
+  run: echo "version=$(curl -fsSL https://api.stackhawk.com/hawkscan/version)" >> "$GITHUB_OUTPUT"
 - name: Cache hawk CLI
+  id: hawk-cache
   uses: actions/cache@v4
   with:
-    path: ~/.local/bin/hawk
-    key: hawk-cli-${{ steps.hawk.outputs.version }}
-- name: Install hawk if not cached
-  run: |
-    if [ ! -x ~/.local/bin/hawk ]; then
-      mkdir -p ~/.local/bin
-      curl -fsSL "${{ steps.hawk.outputs.url }}" -o ~/.local/bin/hawk
-      chmod +x ~/.local/bin/hawk
-    fi
-    echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+    path: ~/.hawk/bin
+    key: hawk-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.hawk.outputs.version }}
+- name: Install HawkScan
+  if: steps.hawk-cache.outputs.cache-hit != 'true'
+  run: curl -fsSL https://download.stackhawk.com/hawk/install.sh | HAWK_INSTALL_VERSION="${{ steps.hawk.outputs.version }}" sh
+- name: Put hawk on the PATH
+  run: echo "$HOME/.hawk/bin" >> "$GITHUB_PATH"
 ```
+
+Read the version endpoint as plain text — its body is a bare version string, so don't pipe it to `jq`. Other providers with a cache (GitLab `cache:`, CircleCI `save_cache`/`restore_cache`) follow the same shape: key on the version, cache `~/.hawk/bin`, skip the install script on a hit, then add the PATH line.
 
 ## Scheduled vs PR-Trigger Tradeoffs
 
@@ -193,4 +193,4 @@ The CLI zip is version-numbered (there's no `hawk-latest.zip`), so resolve the c
 - **Catching all non-zero exit codes and continuing.** Exit 1 means the scan didn't run — silently passing means CI claims a security check happened when none did.
 - **Setting `failureThreshold: All` on day 1.** Drowns the team in noise; the first real finding gets buried. Start at `High`.
 - **Using `continue-on-error: true` to ship warn-only.** That swallows exit 1 too. Use the explicit `case` pattern from Mode 2 instead.
-- **Hard-pinning an old scanner image and leaving it.** A frozen `stackhawk/hawkscan:<old>` misses newly-added checks. Track `:latest` so CI runs current detections; pin a specific version only when you have a reproducibility mandate (and bump it regularly).
+- **Hard-pinning an old scanner and leaving it.** A frozen `HAWK_INSTALL_VERSION` or `stackhawk/hawkscan:<old>` misses newly-added checks. Leave the install script on latest (or use `:latest`) so CI runs current detections; pin a specific version only when you have a reproducibility mandate (and bump it regularly).

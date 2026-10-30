@@ -142,7 +142,7 @@
     {
       "id": "execution_shape_appropriate",
       "phase": "step_4",
-      "description": "The agent picks a sensible execution shape — the GHA action/image, or the docker image / CLI for other providers.",
+      "description": "The agent picks a sensible execution shape — the GHA action or Azure extension, the hawk CLI install script on other shell runners, or the docker image.",
       "type": "output_contains",
       "signals": [
         "stackhawk/hawkscan-action",
@@ -152,7 +152,7 @@
       ],
       "applies_to": ["hci-01","hci-02","hci-03","hci-04","hci-05","hci-06","hci-07","hci-08","hci-09","hci-10","hci-13"],
       "severity": "warning",
-      "failure_guidance": "Tiered preference: GHA native action > docker image > CLI download."
+      "failure_guidance": "Tiered preference: native integration (GHA action, Azure extension) > hawk CLI install script > docker image."
     },
     {
       "id": "exit_code_42_handled",
