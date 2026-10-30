@@ -264,6 +264,11 @@ jobs:
           HAWK_API_KEY: $(HAWK_API_KEY)
           COMMIT_SHA: $(Build.SourceVersion)
           BRANCH_NAME: $(Build.SourceBranchName)
+      - task: PublishBuildArtifacts@1
+        condition: always()
+        inputs:
+          PathtoPublish: '$(System.DefaultWorkingDirectory)/hawkscan'
+          ArtifactName: 'hawkscan-report'
 ```
 
 **Alternative (no extension):** a script step with the hawk CLI install script, using `##vso[task.prependpath]` so later steps find `hawk`:
@@ -281,6 +286,11 @@ jobs:
           HAWK_API_KEY: $(HAWK_API_KEY)
           COMMIT_SHA: $(Build.SourceVersion)
           BRANCH_NAME: $(Build.SourceBranchName)
+      - task: PublishBuildArtifacts@1
+        condition: always()
+        inputs:
+          PathtoPublish: '$(System.DefaultWorkingDirectory)/hawkscan'
+          ArtifactName: 'hawkscan-report'
 ```
 
 On Windows agents, use a `powershell:` step with `irm https://download.stackhawk.com/hawk/install.ps1 | iex` and `Write-Host "##vso[task.prependpath]$env:USERPROFILE\.hawk\bin"`.

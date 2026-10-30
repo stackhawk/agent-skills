@@ -58,6 +58,8 @@ The exit code propagates; the job fails; the pipeline fails; the PR check turns 
 # hawk installed by an earlier step (the hawk CLI install script + $GITHUB_PATH)
 - name: Run HawkScan (warn-only)
     # exit code handled explicitly below (do not use continue-on-error here)
+  env:
+    HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
   run: |
     set +e
     hawk --api-key="${HAWK_API_KEY}" scan
@@ -118,6 +120,8 @@ Don't retry blindly. If retry succeeds, the original failure was a flake. If ret
 ```yaml
 # GitHub Actions retry pattern (exit 1 only, max 2 attempts)
 - name: Run HawkScan (with retry on transient errors)
+  env:
+    HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
   run: |
     for attempt in 1 2; do
       hawk --api-key="${HAWK_API_KEY}" scan
