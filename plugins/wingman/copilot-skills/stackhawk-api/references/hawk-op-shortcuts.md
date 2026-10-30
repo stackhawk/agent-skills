@@ -43,7 +43,7 @@ and persist it for new sessions:
 ```bash
 curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
 export PATH="$HOME/.hawk/bin:$PATH"
-# Persist for new shells (use ~/.bashrc for bash, ~/.zshrc for zsh, ~/.profile otherwise):
+# Persist for new shells (use ~/.zshrc for zsh; for bash, ~/.bash_profile on macOS and ~/.bashrc elsewhere; ~/.profile otherwise):
 grep -qs '.hawk/bin' <shell-profile> || echo 'export PATH="$HOME/.hawk/bin:$PATH"' >> <shell-profile>
 ```
 

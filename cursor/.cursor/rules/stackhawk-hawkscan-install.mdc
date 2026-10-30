@@ -142,7 +142,7 @@ macOS / Linux — append to the profile of the user's login shell (idempotent):
 ```bash
 case "$(basename "${SHELL:-sh}")" in
   zsh)  PROFILE="$HOME/.zshrc" ;;
-  bash) PROFILE="$HOME/.bashrc" ;;   # macOS bash login shells read ~/.bash_profile instead
+  bash) [ "$(uname -s)" = Darwin ] && PROFILE="$HOME/.bash_profile" || PROFILE="$HOME/.bashrc" ;;
   *)    PROFILE="$HOME/.profile" ;;
 esac
 grep -qs '.hawk/bin' "$PROFILE" || echo 'export PATH="$HOME/.hawk/bin:$PATH"' >> "$PROFILE"
