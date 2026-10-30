@@ -160,13 +160,13 @@ first pipeline run, or the scan will fail with a 401.
 
 ## Step 4: Pick the Execution Shape
 
-Three tiers, prefer highest the provider supports:
+Three tiers, prefer highest the provider supports. If a higher tier isn't available or fails for this pipeline, fall back to the hawk CLI install script:
 
 | Tier | Mechanism | When to use |
 |---|---|---|
-| 1. Native integration | `stackhawk/hawkscan-action@v3` (GitHub Actions); the StackHawk Azure extension (Azure Pipelines) | GitHub Actions and Azure Pipelines — both install the native `hawk` binary for you |
+| 1. Native integration | `stackhawk/hawkscan-action@v3` (GitHub Actions); the StackHawk Azure extension tasks (Azure Pipelines) | GitHub Actions and Azure Pipelines — both install the native `hawk` binary for you. Fallback: the hawk CLI install script with `$GITHUB_PATH` / `##vso[task.prependpath]` |
 | 2. hawk CLI install script | `curl -fsSL https://download.stackhawk.com/hawk/install.sh \| sh` (Windows: `irm https://download.stackhawk.com/hawk/install.ps1 \| iex`) + a PATH line | **Default for every other shell-capable runner** (GitLab, Jenkins, CircleCI, Bitbucket, Buildkite, Travis CI, AWS CodeBuild, Bamboo, Concourse) |
-| 3. Docker image | `stackhawk/hawkscan:latest` | Kubernetes-Job orchestrators (Harness, Spinnaker), or as the labelled alternative when the team prefers containers |
+| 3. Docker image | `stackhawk/hawkscan:latest` | Where scans run as container images — e.g. scans integrated into ArgoCD deployments or other Kubernetes Jobs (Harness, Spinnaker) — or as the labelled alternative when the team prefers containers |
 
 The hawk CLI install script is StackHawk's published installer for the `hawk` binary — not this repo's own `scripts/install.sh`, which installs agent skills. It needs no `sudo`, `jq`, or Docker, and checks the download's SHA-256. Canonical docs: <https://docs.stackhawk.com/stackhawk-cli/#install-with-a-script>.
 
@@ -347,7 +347,7 @@ After writing/patching the workflow file:
 - **Don't generate `stackhawk.yml`.** That's the `hawkscan` skill's surface. If the config is missing, hand off.
 - **Don't set `HAWK_AGENT`.** CI pipelines aren't agents; the `${HAWK_AGENT:none}` default resolves correctly without intervention.
 - **Track the latest scanner.** Leave `HAWK_INSTALL_VERSION` unset (with the commented pin line visible), use `hawkscan-action@v3`, or `stackhawk/hawkscan:latest`. It's a security scanner — CI should run the newest stable build for the best detection. Pin an explicit version only when an org reproducibility mandate requires it.
-- **Don't default to Docker on shell runners.** Use the hawk CLI install script; Docker is the alternative, and the default only for Kubernetes-Job orchestrators.
+- **Don't default to Docker on shell runners.** Use the hawk CLI install script; Docker is the alternative, and the default only where scans run as container images (ArgoCD deployments, Kubernetes Jobs).
 - **Don't forget the PATH line after the install script.** It never changes the PATH; see Step 4.
 - **Don't hand-roll a manifest + `jq` binary download.** The install script resolves the version, picks the platform, and verifies the checksum.
 - **Don't inline the API key.** Never, in any form. Always reference the provider's secret store or external secrets manager.

@@ -12,10 +12,11 @@ If `hawk config` is unrecognized, upgrade hawk before running this skill.
 ## Contents
 - [CLI Installation](#cli-installation)
   - [Which method to use](#which-method-to-use)
-  - [Homebrew (macOS — recommended)](#homebrew-macos--recommended)
-  - [hawk CLI install script (Linux, Windows automation, no-admin installs)](#hawk-cli-install-script-linux-windows-automation-no-admin-installs)
+  - [macOS — Homebrew (recommended)](#macos--homebrew-recommended)
+  - [Windows — .msi installer (recommended)](#windows--msi-installer-recommended)
+  - [hawk CLI install script (Linux; fallback on macOS and Windows)](#hawk-cli-install-script-linux-fallback-on-macos-and-windows)
+  - [Keep hawk on the PATH in new sessions](#keep-hawk-on-the-path-in-new-sessions)
   - [macOS — .pkg installer](#macos--pkg-installer)
-  - [Windows — .msi installer (PowerShell)](#windows--msi-installer-powershell)
   - [Pin a specific version](#pin-a-specific-version)
   - [Prerequisites](#prerequisites)
   - [Verify Installation](#verify-installation)
@@ -34,18 +35,26 @@ https://docs.stackhawk.com/stackhawk-cli/#install-with-a-script
 
 ### Which method to use
 
-| Context | Method |
-|---|---|
-| macOS workstation | **Homebrew** (puts `hawk` on the PATH, updates cleanly) |
-| Linux (workstation, container, headless agent sandbox) | **hawk CLI install script** |
-| Windows workstation with admin rights | **MSI installer** (machine PATH) |
-| Windows automation, or no admin rights | **hawk CLI install script** (`install.ps1`, or `install.bat` for cmd.exe) |
-| CI/CD pipelines | the `hawkscan-ci` skill, which leads with the GitHub Action or Azure extension where they exist and the hawk CLI install script elsewhere |
+These are **local installs** — on a developer's machine, by hand or by an agent in the
+developer's coding session. They follow the downloads page
+(https://docs.stackhawk.com/downloads/hawkscan/):
 
-If `hawk` is already installed from a package manager (e.g. Homebrew), upgrade it there
-(`brew upgrade stackhawk/cli/hawk`) rather than installing a second copy with the script.
+| Platform | Method | Fallback |
+|---|---|---|
+| macOS | **Homebrew** (puts `hawk` on the PATH, updates with `brew upgrade`) | the hawk CLI install script |
+| Linux | **the hawk CLI install script** | — |
+| Windows | **MSI installer** (adds `hawk` to the system PATH) | the hawk CLI install script (`install.ps1`, or `install.bat` for cmd.exe) — e.g. no administrator rights, or the MSI fails |
 
-### Homebrew (macOS — recommended)
+Try the primary method first; use the fallback only if it isn't available or fails.
+**Automation installs** (CI/CD pipelines and other automated jobs) are different: use the
+`hawkscan-ci` skill, which leads with the HawkScan GitHub Action or the Azure extension
+where they exist and the hawk CLI install script elsewhere.
+
+If `hawk` is already installed from a package manager or installer (Homebrew, `.pkg`, MSI),
+upgrade that copy (e.g. `brew upgrade stackhawk/cli/hawk`) rather than installing a second
+copy with the script.
+
+### macOS — Homebrew (recommended)
 
 ```bash
 brew tap stackhawk/cli
@@ -53,17 +62,34 @@ brew trust stackhawk/cli
 brew install hawk
 ```
 
-### hawk CLI install script (Linux, Windows automation, no-admin installs)
+### Windows — `.msi` installer (recommended)
+
+Installs for all users and adds `hawk` to the system PATH (needs administrator rights).
+Open a new terminal afterwards so it picks up the updated PATH.
+
+```powershell
+$ProgressPreference = 'SilentlyContinue'   # large download; progress rendering is slow on PS 5.1
+$Version  = (Invoke-WebRequest https://api.stackhawk.com/hawkscan/version -UseBasicParsing).Content.Trim()
+$Platform = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'windows-arm64' } else { 'windows-x64' }
+Invoke-WebRequest "https://download.stackhawk.com/hawk/$Version/$Platform/hawk.msi" -OutFile hawk.msi -UseBasicParsing
+Start-Process msiexec.exe -ArgumentList "/i hawk.msi /passive" -Wait
+```
+
+The MSI is also a browser download on the downloads page:
+https://docs.stackhawk.com/downloads/hawkscan/
+
+### hawk CLI install script (Linux; fallback on macOS and Windows)
 
 StackHawk publishes a hawk CLI install script per platform. (This is the hawk CLI
 installer, not the agent-skills repo's own `scripts/install.sh`, which installs skills.)
 Each script detects the OS and architecture, downloads the latest release, checks its
 SHA-256 against the published value, installs `hawk` to `~/.hawk/bin`
 (`%USERPROFILE%\.hawk\bin` on Windows), and runs `hawk version`. No `sudo` or administrator
-access, no `jq`.
+access, no `jq`. Canonical docs: https://docs.stackhawk.com/stackhawk-cli/#install-with-a-script
 
-**The scripts never change the PATH** — the second line of each snippet adds the install
-directory to the current shell so `hawk` works right away.
+**The scripts never change the PATH** — they only print a hint. The second line of each
+snippet adds the install directory to the current shell; then
+[keep it on the PATH in new sessions](#keep-hawk-on-the-path-in-new-sessions).
 
 macOS / Linux:
 
@@ -89,9 +115,7 @@ set "PATH=%USERPROFILE%\.hawk\bin;%PATH%"
 hawk version
 ```
 
-To keep `hawk` on the PATH in new shells, add the `export` line to the shell profile
-(e.g. `~/.bashrc`, `~/.zshrc`); on Windows the script prints a command that saves the
-directory to the user PATH. Environment variables:
+Environment variables:
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -101,7 +125,37 @@ directory to the user PATH. Environment variables:
 The Linux binaries need glibc — they don't run on Alpine or other musl-based images; use a
 Debian- or Ubuntu-based image.
 
+### Keep `hawk` on the PATH in new sessions
+
+After a script install, persist the install directory so `hawk` is found in new shells and
+new agent sessions. Skip this for Homebrew and the MSI, which already put `hawk` on the
+PATH. Tell the user which profile file or PATH setting you changed.
+
+macOS / Linux — append to the profile of the user's login shell (idempotent):
+
+```bash
+case "$(basename "${SHELL:-sh}")" in
+  zsh)  PROFILE="$HOME/.zshrc" ;;
+  bash) PROFILE="$HOME/.bashrc" ;;   # macOS bash login shells read ~/.bash_profile instead
+  *)    PROFILE="$HOME/.profile" ;;
+esac
+grep -qs '.hawk/bin' "$PROFILE" || echo 'export PATH="$HOME/.hawk/bin:$PATH"' >> "$PROFILE"
+```
+
+Windows (PowerShell) — add the directory to the user PATH (idempotent; no administrator
+rights needed). New terminals pick it up:
+
+```powershell
+$dir  = "$env:USERPROFILE\.hawk\bin"
+$user = [Environment]::GetEnvironmentVariable('Path', 'User')
+if (($user -split ';') -notcontains $dir) {
+  [Environment]::SetEnvironmentVariable('Path', ((@($dir) + ($user -split ';' | Where-Object { $_ })) -join ';'), 'User')
+}
+```
+
 ### macOS — `.pkg` installer
+
+An alternative to Homebrew; installs system-wide and puts `hawk` on the PATH:
 
 ```bash
 VERSION=$(curl -fsSL https://api.stackhawk.com/hawkscan/version)
@@ -112,21 +166,6 @@ esac
 curl -fL "https://download.stackhawk.com/hawk/${VERSION}/${PLATFORM}/hawk.pkg" -o hawk.pkg
 sudo installer -pkg hawk.pkg -target /
 ```
-
-### Windows — `.msi` installer (PowerShell)
-
-Installs for all users and adds `hawk` to the system PATH (needs administrator rights):
-
-```powershell
-$ProgressPreference = 'SilentlyContinue'   # large download; progress rendering is slow on PS 5.1
-$Version  = (Invoke-WebRequest https://api.stackhawk.com/hawkscan/version -UseBasicParsing).Content.Trim()
-$Platform = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'windows-arm64' } else { 'windows-x64' }
-Invoke-WebRequest "https://download.stackhawk.com/hawk/$Version/$Platform/hawk.msi" -OutFile hawk.msi -UseBasicParsing
-Start-Process msiexec.exe -ArgumentList "/i hawk.msi /passive" -Wait
-```
-
-A browser download is also available on the downloads page:
-https://docs.stackhawk.com/downloads/
 
 ### Pin a specific version
 
@@ -205,5 +244,6 @@ No Java or CLI installation needed. See `references/docker-usage.md` for run com
 - Docker requires `--network host` (Linux) or `host.docker.internal` (Mac/Windows) to
   reach apps on localhost
 - CLI is faster for local iteration and has simpler localhost networking
-- Docker suits pipelines that run each step as a container image (e.g. Kubernetes Jobs);
-  for other CI runners the hawk CLI install script is simpler
+- Docker suits automation that runs each step as a container image — e.g. scans
+  integrated into ArgoCD deployments or other Kubernetes Jobs; for other CI runners the
+  hawk CLI install script is simpler

@@ -25,7 +25,7 @@ This reference covers the three ways CI pipelines invoke HawkScan, how to put th
 |---|---|---|---|---|
 | **1. Native integration** | `stackhawk/hawkscan-action@v3` (GitHub Actions); the StackHawk Azure extension (`HawkScanInstall@1` + `RunHawkScan@1`) | Both install the native `hawk` binary for you. The action has the richest input surface (SARIF upload, Code Scanning, `commitShaCheck`, multi-file overlays). One-step invocation. | Provider-specific. | GitHub Actions and Azure Pipelines. |
 | **2. hawk CLI install script** | `curl -fsSL https://download.stackhawk.com/hawk/install.sh \| sh` (Windows: `irm https://download.stackhawk.com/hawk/install.ps1 \| iex`), then put `~/.hawk/bin` on the PATH | No Docker daemon, no `sudo`, no `jq`. Checks the download's SHA-256 before installing. Runs in the build shell, so it reaches the app on `localhost` with no network flags. Self-contained binary, no Java. | About 320 MB download per fresh install. The script never changes the PATH, so every pipeline needs a provider-specific PATH line. Linux binaries need glibc (not Alpine/musl images). | Every other shell-capable runner: GitLab, Jenkins, CircleCI, Bitbucket, Buildkite, Travis CI, AWS CodeBuild, Bamboo Script tasks, Concourse tasks. |
-| **3. Docker image** | `docker run stackhawk/hawkscan:latest` | Same scanner as the CLI, packaged as an image. | Needs a Docker daemon (DinD on GitLab, `docker` group on Jenkins). Reaching the app needs `--network host` (Linux) or `host.docker.internal` (Mac/Windows runners). | Orchestrators that run each step as a container image, such as Kubernetes Jobs (Harness, Spinnaker), or when the team prefers containers. Otherwise a labelled alternative to Tier 2. |
+| **3. Docker image** | `docker run stackhawk/hawkscan:latest` | Same scanner as the CLI, packaged as an image. | Needs a Docker daemon (DinD on GitLab, `docker` group on Jenkins). Reaching the app needs `--network host` (Linux) or `host.docker.internal` (Mac/Windows runners). | Where scans run as container images — e.g. scans integrated into ArgoCD deployments, or Kubernetes Jobs in Harness or Spinnaker — or when the team prefers containers. Otherwise a labelled alternative to Tier 2. |
 
 ## Versioning Strategy
 
@@ -110,7 +110,7 @@ jobs:
           path: hawkscan-report/
 ```
 
-**Without the action** (e.g. to run other `hawk` commands in the job), install with the hawk CLI install script and add the directory to `$GITHUB_PATH`, which applies to every later step:
+**Fallback — without the action** (the action isn't usable, or you need to run other `hawk` commands in the job), install with the hawk CLI install script and add the directory to `$GITHUB_PATH`, which applies to every later step:
 
 ```yaml
       - name: Install HawkScan
@@ -277,7 +277,7 @@ jobs:
           ArtifactName: 'hawkscan-report'
 ```
 
-**Alternative (no extension):** a script step with the hawk CLI install script, using `##vso[task.prependpath]` so later steps find `hawk`:
+**Fallback (no extension):** a script step with the hawk CLI install script, using `##vso[task.prependpath]` so later steps find `hawk`:
 
 ```yaml
       - bash: |
@@ -409,7 +409,7 @@ artifacts:
 
 ## Docker Image Alternative
 
-Use the `stackhawk/hawkscan` image when steps must run as container images (Kubernetes Jobs in Harness or Spinnaker), or when the team prefers containers. It replaces the install + scan lines in any example above:
+Use the `stackhawk/hawkscan` image when scans run as container images — e.g. scans integrated into ArgoCD deployments, or Kubernetes Jobs in Harness or Spinnaker — or when the team prefers containers. It replaces the install + scan lines in any example above:
 
 ```bash
 docker run --rm \
@@ -429,7 +429,7 @@ docker run --rm \
 
 ## Long-Tail Providers
 
-For Bamboo, Concourse, Harness, Spinnaker, and other providers not listed above, defer to the per-provider canonical guides at [docs.stackhawk.com/integrations/ci-cd/](https://docs.stackhawk.com/integrations/ci-cd/). On a shell-capable runner (a Bamboo Script task, a Concourse task), use the hawk CLI install script with the same-shell PATH line. On Kubernetes-Job orchestrators (Harness, Spinnaker), use the Docker image. Only the secret-store wiring and artifact-publishing mechanism differ.
+For Bamboo, Concourse, Harness, Spinnaker, and other providers not listed above, defer to the per-provider canonical guides at [docs.stackhawk.com/integrations/ci-cd/](https://docs.stackhawk.com/integrations/ci-cd/). On a shell-capable runner (a Bamboo Script task, a Concourse task), use the hawk CLI install script with the same-shell PATH line. Where scans run as container images (ArgoCD deployments, Kubernetes-Job orchestrators such as Harness and Spinnaker), use the Docker image. Only the secret-store wiring and artifact-publishing mechanism differ.
 
 ## Code Scanning / SARIF Upload (GitHub Actions only)
 
