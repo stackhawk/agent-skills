@@ -1,6 +1,6 @@
 ---
 description: >
-  HawkScan installation: Homebrew (macOS), manifest-driven binary download, package installers (.pkg/.msi), verification (hawk version). Self-contained binary — no separate Java install needed.
+  HawkScan installation: local installs (Homebrew on macOS, MSI on Windows, hawk CLI install script on Linux and as fallback), package installers (.pkg/.msi), PATH persistence, verification (hawk version). Self-contained binary — no separate Java install needed.
 globs:
 alwaysApply: false
 ---

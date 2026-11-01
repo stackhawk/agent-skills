@@ -1,6 +1,6 @@
 ---
 description: >
-  HawkScan CI execution shapes reference: native action (stackhawk/hawkscan-action) vs Docker image (stackhawk/hawkscan) vs CLI download; pinning strategy; per-provider quick-reference recipes for GitHub Actions, GitLab CI, Jenkins, CircleCI, Azure Pipelines, Bitbucket, Buildkite, Travis, AWS CodeBuild; SARIF / Code Scanning notes.
+  HawkScan CI execution shapes reference: native integration (stackhawk/hawkscan-action, Azure extension) vs hawk CLI install script vs Docker image (stackhawk/hawkscan); pinning strategy; per-provider quick-reference recipes for GitHub Actions, GitLab CI, Jenkins, CircleCI, Azure Pipelines, Bitbucket, Buildkite, Travis, AWS CodeBuild; SARIF / Code Scanning notes.
 globs:
 alwaysApply: false
 ---
