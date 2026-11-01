@@ -81,6 +81,8 @@ on the platform scan page.
 
 **Not available from `hawk op` yet:** more than 10 alert types per scan or 10 paths
 per alert type (above),
+more than 10,000 scans in one `scan list` (an app whose newest completed scan is
+older than the 10,000th is missing from Recipe 1 and shows as never scanned in Recipe 3),
 an exact scan start time in `scan list` (only the relative/date `started` string),
 app UUIDs in `scan list` (join to `hawk op app list` by name), team ownership or
 env counts in `hawk op app list` (it emits `id`, `name`, `cloud` only), and scans of
@@ -179,12 +181,15 @@ jq -r --argjson total "${TOTAL_TYPES}" --slurpfile counts /tmp/uri_counts.json '
       .plugin_name,
       (if .cwe_id then "CWE-\(.cwe_id)" else "—" end),
       ($counts[0][.plugin_id] // .total_paths | tostring)
-    ]),
-    (if length < $total
-     then ["NOTE: showing \(length) of \($total) alert types; see the platform for the rest"]
-     else empty end)
+    ])
   | @tsv
 ' /tmp/scan.json | column -t -s $'\t'
+
+# Print the truncation note after `column` so it does not widen the table
+SHOWN=$(jq '.findings | length' /tmp/scan.json)
+if [ "${SHOWN}" -lt "${TOTAL_TYPES}" ]; then
+  echo "NOTE: showing ${SHOWN} of ${TOTAL_TYPES} alert types; see the platform for the rest"
+fi
 ```
 
 ### Step 3 — Expand affected paths for High and Medium alerts
