@@ -35,30 +35,31 @@ Start-Process msiexec.exe -ArgumentList "/i hawk.msi /passive" -Wait
 ```
 
 Linux, or the fallback on macOS/Windows — the hawk CLI install script (not this repo's
-`scripts/install.sh`). It installs the latest release to `~/.hawk/bin`
-(`%USERPROFILE%\.hawk\bin` on Windows) after a checksum check, with no `sudo` or `jq`.
+`scripts/install.sh`). It installs the latest release after a checksum check, with no `sudo` or `jq`. Set
+`HAWK_INSTALL_DIR` to `~/.local/bin` (`%USERPROFILE%\.local\bin` on Windows) as below — not the
+default `~/.hawk/bin`, where `hawk scan` unpacks its runtime into `~/.hawk/bin` and removes the `hawk` binary from it.
 **It never changes the PATH** (it only prints a hint), so add the directory for this shell
 and persist it for new sessions:
 
 ```bash
-curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
-export PATH="$HOME/.hawk/bin:$PATH"
+curl -fsSL https://download.stackhawk.com/hawk/install.sh | HAWK_INSTALL_DIR="$HOME/.local/bin" sh
+export PATH="$HOME/.local/bin:$PATH"
 # Persist for new shells in the login shell's profile (idempotent):
 case "$(basename "${SHELL:-sh}")" in
   zsh)  PROFILE="$HOME/.zshrc" ;;
   bash) [ "$(uname -s)" = Darwin ] && PROFILE="$HOME/.bash_profile" || PROFILE="$HOME/.bashrc" ;;
   *)    PROFILE="$HOME/.profile" ;;
 esac
-grep -qs '.hawk/bin' "$PROFILE" || echo 'export PATH="$HOME/.hawk/bin:$PATH"' >> "$PROFILE"
+grep -qs '.local/bin' "$PROFILE" || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$PROFILE"
 ```
 
 Windows fallback (PowerShell):
 
 ```powershell
-irm https://download.stackhawk.com/hawk/install.ps1 | iex
-$env:Path = "$env:USERPROFILE\.hawk\bin;$env:Path"
+$env:HAWK_INSTALL_DIR = "$env:USERPROFILE\.local\bin"; irm https://download.stackhawk.com/hawk/install.ps1 | iex
+$env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
 # Persist in the user PATH for new terminals:
-$dir  = "$env:USERPROFILE\.hawk\bin"
+$dir  = "$env:USERPROFILE\.local\bin"
 $user = [Environment]::GetEnvironmentVariable('Path', 'User')
 if (($user -split ';') -notcontains $dir) {
   [Environment]::SetEnvironmentVariable('Path', ((@($dir) + ($user -split ';' | Where-Object { $_ })) -join ';'), 'User')

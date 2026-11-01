@@ -168,19 +168,19 @@ Three tiers, prefer highest the provider supports. If a higher tier isn't availa
 | Tier | Mechanism | When to use |
 |---|---|---|
 | 1. Native integration | `stackhawk/hawkscan-action@v3` (GitHub Actions); the StackHawk Azure extension tasks (Azure Pipelines) | GitHub Actions and Azure Pipelines — both install the native `hawk` binary for you. Fallback: the hawk CLI install script with `$GITHUB_PATH` / `##vso[task.prependpath]` |
-| 2. hawk CLI install script | `curl -fsSL https://download.stackhawk.com/hawk/install.sh \| sh` (Windows: `irm https://download.stackhawk.com/hawk/install.ps1 \| iex`) + a PATH line | **Default for every other shell-capable runner** (GitLab, Jenkins, CircleCI, Bitbucket, Buildkite, Travis CI, AWS CodeBuild, Bamboo, Concourse) |
+| 2. hawk CLI install script | `curl -fsSL https://download.stackhawk.com/hawk/install.sh \| HAWK_INSTALL_DIR="$HOME/.local/bin" sh` (Windows: `$env:HAWK_INSTALL_DIR = "$env:USERPROFILE\.local\bin"; irm https://download.stackhawk.com/hawk/install.ps1 \| iex`) + a PATH line | **Default for every other shell-capable runner** (GitLab, Jenkins, CircleCI, Bitbucket, Buildkite, Travis CI, AWS CodeBuild, Bamboo, Concourse) |
 | 3. Docker image | `stackhawk/hawkscan:latest` | Where scans run as container images — e.g. scans integrated into ArgoCD deployments or other Kubernetes Jobs (Harness, Spinnaker) — or as the labelled alternative when the team prefers containers |
 
-The hawk CLI install script is StackHawk's published installer for the `hawk` binary — not this repo's own `scripts/install.sh`, which installs agent skills. It needs no `sudo`, `jq`, or Docker, and checks the download's SHA-256. Canonical docs: <https://docs.stackhawk.com/stackhawk-cli/#install-with-a-script>.
+The hawk CLI install script is StackHawk's published installer for the `hawk` binary — not this repo's own `scripts/install.sh`, which installs agent skills. It needs no `sudo`, `jq`, or Docker, and checks the download's SHA-256. Always set `HAWK_INSTALL_DIR="$HOME/.local/bin"` as shown: in the default `~/.hawk/bin`, `hawk scan` unpacks its runtime and removes the `hawk` binary, so a later `hawk` command or a cached install directory finds no `hawk`. Canonical docs: <https://docs.stackhawk.com/stackhawk-cli/#install-with-a-script>.
 
 **The script never puts `hawk` on the PATH.** Always add the provider's PATH line after the install, or `hawk scan` fails with `command not found`:
 
 | Where the scan runs | PATH line |
 |---|---|
-| Same shell (GitLab `before_script` + `script`, Bitbucket step, Travis, CodeBuild, one Jenkins `sh` block, one Buildkite `command`) | `export PATH="$HOME/.hawk/bin:$PATH"` |
-| A later GitHub Actions step | `echo "$HOME/.hawk/bin" >> "$GITHUB_PATH"` |
-| A later CircleCI `run` step | `echo 'export PATH="$HOME/.hawk/bin:$PATH"' >> "$BASH_ENV"` |
-| A later Azure Pipelines step | `echo "##vso[task.prependpath]$HOME/.hawk/bin"` |
+| Same shell (GitLab `before_script` + `script`, Bitbucket step, Travis, CodeBuild, one Jenkins `sh` block, one Buildkite `command`) | `export PATH="$HOME/.local/bin:$PATH"` |
+| A later GitHub Actions step | `echo "$HOME/.local/bin" >> "$GITHUB_PATH"` |
+| A later CircleCI `run` step | `echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$BASH_ENV"` |
+| A later Azure Pipelines step | `echo "##vso[task.prependpath]$HOME/.local/bin"` |
 
 **Track the latest stable scanner:**
 - Install script: leave `HAWK_INSTALL_VERSION` unset so each run installs the newest release, and always write the commented pin line beside the install so it's visible:

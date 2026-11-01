@@ -89,8 +89,9 @@ https://docs.stackhawk.com/downloads/hawkscan/
 StackHawk publishes a hawk CLI install script per platform. (This is the hawk CLI
 installer, not the agent-skills repo's own `scripts/install.sh`, which installs skills.)
 Each script detects the OS and architecture, downloads the latest release, checks its
-SHA-256 against the published value, installs `hawk` to `~/.hawk/bin`
-(`%USERPROFILE%\.hawk\bin` on Windows), and runs `hawk version`. No `sudo` or administrator
+SHA-256 against the published value, installs `hawk`, and runs `hawk version`. The snippets
+set `HAWK_INSTALL_DIR` to `~/.local/bin` (`%USERPROFILE%\.local\bin` on Windows). **Don't use
+the default `~/.hawk/bin`**: `hawk scan` unpacks its runtime into `~/.hawk/bin` and removes the `hawk` binary from it, so `hawk` is gone after the first scan. No `sudo` or administrator
 access, no `jq`. Canonical docs: https://docs.stackhawk.com/stackhawk-cli/#install-with-a-script
 
 **The scripts never change the PATH** — they only print a hint. The second line of each
@@ -100,24 +101,24 @@ snippet adds the install directory to the current shell; then
 macOS / Linux:
 
 ```bash
-curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
-export PATH="$HOME/.hawk/bin:$PATH"
+curl -fsSL https://download.stackhawk.com/hawk/install.sh | HAWK_INSTALL_DIR="$HOME/.local/bin" sh
+export PATH="$HOME/.local/bin:$PATH"
 hawk version
 ```
 
 Windows (PowerShell):
 
 ```powershell
-irm https://download.stackhawk.com/hawk/install.ps1 | iex
-$env:Path = "$env:USERPROFILE\.hawk\bin;$env:Path"
+$env:HAWK_INSTALL_DIR = "$env:USERPROFILE\.local\bin"; irm https://download.stackhawk.com/hawk/install.ps1 | iex
+$env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
 hawk version
 ```
 
 Windows (cmd.exe):
 
 ```bat
-curl -fsSL -o "%TEMP%\hawk-install.bat" https://download.stackhawk.com/hawk/install.bat && call "%TEMP%\hawk-install.bat"
-set "PATH=%USERPROFILE%\.hawk\bin;%PATH%"
+set "HAWK_INSTALL_DIR=%USERPROFILE%\.local\bin" && curl -fsSL -o "%TEMP%\hawk-install.bat" https://download.stackhawk.com/hawk/install.bat && call "%TEMP%\hawk-install.bat"
+set "PATH=%USERPROFILE%\.local\bin;%PATH%"
 hawk version
 ```
 
@@ -126,7 +127,7 @@ Environment variables:
 | Variable | Default | Purpose |
 |---|---|---|
 | `HAWK_INSTALL_VERSION` | latest release (from `https://api.stackhawk.com/hawkscan/version`) | Version to install; any version from 6.0.0 onward |
-| `HAWK_INSTALL_DIR` | `~/.hawk/bin` (`%USERPROFILE%\.hawk\bin`) | Install directory; on Windows, not under `Program Files` |
+| `HAWK_INSTALL_DIR` | `~/.hawk/bin` (`%USERPROFILE%\.hawk\bin`) | Install directory; on Windows, not under `Program Files`. Always set it outside `~/.hawk/bin` (the snippets use `~/.local/bin`): `hawk scan` unpacks its runtime there and removes the binary |
 
 The Linux binaries need glibc — they don't run on Alpine or other musl-based images; use a
 Debian- or Ubuntu-based image.
@@ -145,14 +146,14 @@ case "$(basename "${SHELL:-sh}")" in
   bash) [ "$(uname -s)" = Darwin ] && PROFILE="$HOME/.bash_profile" || PROFILE="$HOME/.bashrc" ;;
   *)    PROFILE="$HOME/.profile" ;;
 esac
-grep -qs '.hawk/bin' "$PROFILE" || echo 'export PATH="$HOME/.hawk/bin:$PATH"' >> "$PROFILE"
+grep -qs '.local/bin' "$PROFILE" || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$PROFILE"
 ```
 
 Windows (PowerShell) — add the directory to the user PATH (idempotent; no administrator
 rights needed). New terminals pick it up:
 
 ```powershell
-$dir  = "$env:USERPROFILE\.hawk\bin"
+$dir  = "$env:USERPROFILE\.local\bin"
 $user = [Environment]::GetEnvironmentVariable('Path', 'User')
 if (($user -split ';') -notcontains $dir) {
   [Environment]::SetEnvironmentVariable('Path', ((@($dir) + ($user -split ';' | Where-Object { $_ })) -join ';'), 'User')
@@ -179,7 +180,7 @@ The install script installs the latest release by default. To pin, set
 `HAWK_INSTALL_VERSION` (any version from 6.0.0 onward):
 
 ```bash
-curl -fsSL https://download.stackhawk.com/hawk/install.sh | HAWK_INSTALL_VERSION=<X.Y.Z> sh
+curl -fsSL https://download.stackhawk.com/hawk/install.sh | HAWK_INSTALL_VERSION=<X.Y.Z> HAWK_INSTALL_DIR="$HOME/.local/bin" sh
 ```
 
 In PowerShell, set `$env:HAWK_INSTALL_VERSION = '<X.Y.Z>'` before running the script. For
