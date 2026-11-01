@@ -169,7 +169,7 @@ The hawk CLI install script always downloads, even when the same version is alre
     key: hawk-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.hawk.outputs.version }}
 - name: Install HawkScan
   if: steps.hawk-cache.outputs.cache-hit != 'true'
-  run: curl -fsSL https://download.stackhawk.com/hawk/install.sh | HAWK_INSTALL_VERSION="${{ steps.hawk.outputs.version }}" sh
+  run: curl -fsSL https://download.stackhawk.com/hawk/install.sh | HAWK_INSTALL_VERSION="${{ steps.hawk.outputs.version }}" HAWK_INSTALL_DIR="$HOME/.local/bin" sh
 - name: Put hawk on the PATH
   run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 ```

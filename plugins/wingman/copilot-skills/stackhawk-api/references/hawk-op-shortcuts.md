@@ -37,7 +37,7 @@ Start-Process msiexec.exe -ArgumentList "/i hawk.msi /passive" -Wait
 Linux, or the fallback on macOS/Windows — the hawk CLI install script (not this repo's
 `scripts/install.sh`). It installs the latest release after a checksum check, with no `sudo` or `jq`. Set
 `HAWK_INSTALL_DIR` to `~/.local/bin` (`%USERPROFILE%\.local\bin` on Windows) as below — not the
-default `~/.hawk/bin`, where `hawk scan` unpacks its runtime into `~/.hawk/bin` and removes the `hawk` binary from it.
+default `~/.hawk/bin`, because `hawk scan` replaces `~/.hawk/bin` with its runtime, which deletes or breaks a `hawk` installed there.
 **It never changes the PATH** (it only prints a hint), so add the directory for this shell
 and persist it for new sessions:
 

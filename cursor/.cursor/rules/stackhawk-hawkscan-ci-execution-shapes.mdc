@@ -57,7 +57,7 @@ This is the hawk CLI install script published by StackHawk — not this reposito
 | Windows (PowerShell) | `https://download.stackhawk.com/hawk/install.ps1` | `$env:HAWK_INSTALL_DIR = "$env:USERPROFILE\.local\bin"; irm https://download.stackhawk.com/hawk/install.ps1 \| iex` |
 | Windows (cmd.exe) | `https://download.stackhawk.com/hawk/install.bat` | `set "HAWK_INSTALL_DIR=%USERPROFILE%\.local\bin" && curl -fsSL -o "%TEMP%\hawk-install.bat" https://download.stackhawk.com/hawk/install.bat && call "%TEMP%\hawk-install.bat"` |
 
-- Defaults to `~/.hawk/bin` (`%USERPROFILE%\.hawk\bin` on Windows). Always set `HAWK_INSTALL_DIR` to `~/.local/bin` (`%USERPROFILE%\.local\bin`) as the examples do: `hawk scan` unpacks its runtime into `~/.hawk/bin` and removes the `hawk` binary from it, which breaks any later `hawk` command and a cached install directory (on Windows, don't put it under `Program Files`).
+- Defaults to `~/.hawk/bin` (`%USERPROFILE%\.hawk\bin` on Windows). Always set `HAWK_INSTALL_DIR` to `~/.local/bin` (`%USERPROFILE%\.local\bin`) as the examples do: `hawk scan` replaces `~/.hawk/bin` with its runtime, which deletes or breaks a `hawk` installed there, which breaks any later `hawk` command and a cached install directory (on Windows, don't put it under `Program Files`).
 - `HAWK_INSTALL_VERSION` pins the version; unset means latest.
 - `install.sh` needs `curl`, `mktemp`, and `sha256sum` or `shasum`. Slim images (e.g. `ubuntu:22.04`) need `curl` installed first.
 
@@ -77,7 +77,7 @@ This is the hawk CLI install script published by StackHawk — not this reposito
 
 ## Per-Provider Quick Reference
 
-Every example passes the API key with `--api-key`; the CLI also reads `API_KEY` from the environment. `COMMIT_SHA` / `BRANCH_NAME` are exported for the `stackhawk.yml` tags (see Step 5.3 in SKILL.md).
+Every install-script example passes the API key with `--api-key`, except Buildkite, which exposes it as `API_KEY` (the CLI reads that automatically). The GitHub Action and the Azure extension take it through their own inputs or step env. `COMMIT_SHA` / `BRANCH_NAME` are exported for the `stackhawk.yml` tags (see Step 5.3 in SKILL.md).
 
 ### GitHub Actions
 

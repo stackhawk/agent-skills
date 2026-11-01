@@ -91,7 +91,7 @@ installer, not the agent-skills repo's own `scripts/install.sh`, which installs 
 Each script detects the OS and architecture, downloads the latest release, checks its
 SHA-256 against the published value, installs `hawk`, and runs `hawk version`. The snippets
 set `HAWK_INSTALL_DIR` to `~/.local/bin` (`%USERPROFILE%\.local\bin` on Windows). **Don't use
-the default `~/.hawk/bin`**: `hawk scan` unpacks its runtime into `~/.hawk/bin` and removes the `hawk` binary from it, so `hawk` is gone after the first scan. No `sudo` or administrator
+the default `~/.hawk/bin`**: `hawk scan` replaces `~/.hawk/bin` with its runtime, which deletes or breaks a `hawk` installed there, so `hawk` is gone or broken after the first scan. This is a workaround until HawkScan fixes the collision. No `sudo` or administrator
 access, no `jq`. Canonical docs: https://docs.stackhawk.com/stackhawk-cli/#install-with-a-script
 
 **The scripts never change the PATH** — they only print a hint. The second line of each
@@ -127,7 +127,7 @@ Environment variables:
 | Variable | Default | Purpose |
 |---|---|---|
 | `HAWK_INSTALL_VERSION` | latest release (from `https://api.stackhawk.com/hawkscan/version`) | Version to install; any version from 6.0.0 onward |
-| `HAWK_INSTALL_DIR` | `~/.hawk/bin` (`%USERPROFILE%\.hawk\bin`) | Install directory; on Windows, not under `Program Files`. Always set it outside `~/.hawk/bin` (the snippets use `~/.local/bin`): `hawk scan` unpacks its runtime there and removes the binary |
+| `HAWK_INSTALL_DIR` | `~/.hawk/bin` (`%USERPROFILE%\.hawk\bin`) | Install directory; on Windows, not under `Program Files`. Always set it outside `~/.hawk/bin` (the snippets use `~/.local/bin`): `hawk scan` replaces `~/.hawk/bin` with its runtime, which deletes or breaks a `hawk` installed there |
 
 The Linux binaries need glibc — they don't run on Alpine or other musl-based images; use a
 Debian- or Ubuntu-based image.
