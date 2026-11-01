@@ -75,11 +75,15 @@ repo's existing mappings; `set-apps` replaces the entire list.
    or your tool's own 60 s command timeout. On Windows (PowerShell/cmd),
    `timeout` is a sleep, not a time box: don't use it; rely on your tool's own
    60 s command timeout.)
-4. Exit 0 → Report: "Linked app <APP_NAME> to repo <BARE_NAME>"
-   "No repository found" → Report: "Repo <BARE_NAME> isn't in StackHawk's attack
-     surface yet (connect or sync the SCM org) — skipped linking"
-   "Ambiguous: N repositories match" → Report: "Several repos are named
-     <BARE_NAME>; skipped linking. Link with --repo-id from the StackHawk UI"
+4. Exit 0 → Report: "Linked app <APP_NAME> to <the repo name and ID exactly as
+     repo link printed them>" (check the owner matches your remote; if not,
+     unlink it in the StackHawk UI)
+   "No repository found" or "No repository matching" → Report: "Repo
+     <BARE_NAME> isn't in StackHawk's attack surface yet (connect or sync the
+     SCM org) — skipped linking"
+   "N repositories match" (with or without a leading "Ambiguous:") → Report:
+     "Several repos are named <BARE_NAME>; skipped linking. Link with
+     --repo-id from the StackHawk UI"
    Timeout or any other error → Report: "Repo linking skipped: <reason>"
    Ignore any "→ hawkop …" hint in the output, whatever the result.
 5. Continue to Phase 0b. Do not retry, list repos, or trigger an SCM sync.
