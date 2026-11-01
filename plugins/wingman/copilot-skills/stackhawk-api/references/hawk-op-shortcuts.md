@@ -144,7 +144,7 @@ hawk op scan get <SCAN_ID> --detail full --format json
 hawk op scan get <SCAN_ID> --plugin-id 40012
 ```
 
-Wraps: `/scan/{scanId}/alert/{pluginId}` — returns `.alert.uriCount` (the true count) and at most 10 URIs.
+Wraps: `/scan/{scanId}/alert/{pluginId}` — returns `.totalCount` (the true path count, as a string; left out when 0), `.alert.uriCount` (distinct URIs, which can be lower), and at most 10 paths.
 
 ### A single finding with HTTP request/response
 

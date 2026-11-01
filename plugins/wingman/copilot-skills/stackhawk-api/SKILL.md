@@ -154,8 +154,9 @@ hawk op scan get --app "<APP_NAME>" --detail full --format json
 at most **10 plugins per call** (the CLI prints "Fetching 10 plugin details"); for a
 scan with more alert types, drill the rest with `--plugin-id`, or read the scanner's own
 `hawk scan --json-output` file, which is the complete list. Each alert type also
-lists at most 10 paths; its true count is `.alert.uriCount` from
-`hawk op scan get <SCAN_ID> --plugin-id <PLUGIN_ID> --format json`.
+lists at most 10 paths; its true path count is `.totalCount` (a string, left out when 0) from
+`hawk op scan get <SCAN_ID> --plugin-id <PLUGIN_ID> --format json`. `.alert.uriCount`
+counts distinct URIs, so it is lower when one URI is hit by several methods or params.
 
 → Specific scan IDs, single-alert / single-URI drill-down, `--max-findings` tuning:
 [`references/hawk-op-shortcuts.md`](references/hawk-op-shortcuts.md#2--app-deep-dive-scan--alerts--findings) §2.

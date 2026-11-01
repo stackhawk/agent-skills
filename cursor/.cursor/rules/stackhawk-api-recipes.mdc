@@ -66,20 +66,23 @@ record — `.scan.id`, `.scan.applicationId`, `.scan.applicationName`, `.scan.en
 — complete). Its `.applicationAlerts` holds a single sample alert, not the list.
 
 **`hawk op scan get … --detail full --format json`**: `.scan` (`id`,
-`application_name`, `environment`, `status`, `completed_at`), `.summary`
+`application_name`, `environment`, `status`, `completed_at` — despite the name, the
+scan's start time, left out when unknown), `.summary`
 (`by_severity`, `by_status`), and `.findings[]` — one entry per alert type, with
 `plugin_id`, `plugin_name`, `severity`, `cwe_id`, `total_paths`, and `paths[]`
 (`method`, `uri`, `param`, `status`; `status` `UNKNOWN` means new).
 
 **`hawk op scan get <SCAN_ID> --plugin-id <PLUGIN_ID> --format json`**:
-`.alert.uriCount` is the true number of affected paths for that alert type.
+`.totalCount` is the true number of affected paths for that alert type (a string,
+left out when 0). `.alert.uriCount` counts distinct URIs, so it is lower when one URI
+is hit by several methods or parameters.
 
 **10-row caps:** `hawk op` returns at most **10 alert types per scan** and at most
 **10 paths per alert type** — in `--detail full` and in the default pretty output.
 The 10 alert types are sorted by severity but are not necessarily the most severe
 ones, so a High or Medium type can be missing; `.severityStats` holds the true
 per-severity counts. `total_paths` never exceeds 10; read the true count from
-`.alert.uriCount`. Compare `.findings | length` against `.severityStats | add` to
+`.totalCount` of the `--plugin-id` call. Compare `.findings | length` against `.severityStats | add` to
 detect a truncated alert list, and say so when it happens. The complete lists are in the scanner's `hawk scan --json-output` file or
 on the platform scan page.
 
@@ -186,13 +189,13 @@ fi
 hawk op scan get "${SCAN_ID}" --detail full --format json > /tmp/scan.json \
   || { echo "ERROR: scan get failed for ${SCAN_ID}." >&2; exit 1; }
 
-SCAN_TS=$(jq -r '.scan.completed_at' /tmp/scan.json)
+SCAN_STARTED=$(jq -r '.scan.completed_at // "unknown"' /tmp/scan.json)  # holds the start time
 # Total alert types in the scan, to detect the 10-type cap
 STATS=$(hawk op scan get "${SCAN_ID}" --format json) \
   || { echo "ERROR: scan get failed for ${SCAN_ID}." >&2; exit 1; }
 TOTAL_TYPES=$(printf '%s' "${STATS}" | jq '.severityStats | add // 0')
 
-echo "Latest scan: ${SCAN_ID} (${SCAN_TS})"
+echo "Latest scan: ${SCAN_ID} (started ${SCAN_STARTED})"
 echo "Platform URL: https://app.stackhawk.com/scans/${SCAN_ID}"
 ```
 
@@ -205,7 +208,7 @@ for pid in $(jq -r '.findings[].plugin_id' /tmp/scan.json); do
     echo "ERROR: could not read the path count for alert type ${pid}." >&2
     exit 1
   fi
-  printf '%s' "${alert}" | jq -c '{(.alert.pluginId): .alert.uriCount}'
+  printf '%s' "${alert}" | jq -c --arg pid "${pid}" '{($pid): ((.totalCount // "0") | tonumber)}'
 done > /tmp/uri_counts.jsonl
 jq -s 'add // {}' /tmp/uri_counts.jsonl > /tmp/uri_counts.json
 
