@@ -54,8 +54,8 @@ Org ID and output format can be set via env vars:
 
 ```bash
 export HAWK_API_KEY=<your-api-key>   # from app.stackhawk.com → Settings → API Keys
-export HAWK_ORG_ID=<org-uuid>
-export HAWK_FORMAT=json
+export HAWKOP_ORG_ID=<org-uuid>
+export HAWKOP_FORMAT=json
 
 hawk op app list
 ```
@@ -280,7 +280,7 @@ hawk op scan list --format json | jq '.data[] | select(.highAlertCount > 0)'
 hawk op scan get <ID> --detail full --format json | jq '.findings[].uri'
 ```
 
-Setting `HAWK_FORMAT=json` once in the shell avoids `--format json` on every
+Setting `HAWKOP_FORMAT=json` once in the shell avoids `--format json` on every
 call — useful when building a reporting pipeline.
 
 ---
