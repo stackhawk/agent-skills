@@ -107,6 +107,11 @@ extraction, no token handling.
 hawk op scan get --app "<NAME|UUID>"    # --app takes a name or a UUID
 ```
 
+`--app` picks the newest scan even when it failed. For the newest completed scan,
+look it up with `hawk op scan list --app <APP_ID> --status complete --sort-by started
+--sort-dir desc --limit 1` and pass its ID, as Recipe 2 in
+[`reporting-recipes.md`](reporting-recipes.md#recipe-2-app-deep-dive) does.
+
 Wraps: `/scan/{orgId}` + `/scan/{scanId}/alerts`. Returns a scan header, alert
 counts by severity, and a table of alerts.
 
@@ -120,7 +125,10 @@ Wraps the **entire drill-down chain** plus per-URI HTTP request/response bodies 
 the ZAP remediation advice. Best JSON for an AI agent to reason over.
 
 Tune the envelope:
-- `--max-findings N` (default 100) — sorted by severity, highest first
+- `--max-findings N` (default 100) — can lower the number of alert types returned, but
+  never raises it above **10 per scan**. Those 10 are sorted by severity but are not
+  necessarily the most severe; read the true per-severity counts from `.severityStats`
+  in `hawk op scan get <SCAN_ID> --format json`
 - `--max-body-size BYTES` (default 10240) — HTTP response body truncation threshold
 
 ### A specific scan by ID
@@ -162,20 +170,11 @@ across pages — add `--sort-by started --sort-dir desc` when order matters.
 
 ### Diff recipe — "what changed since last scan?"
 
-```bash
-# Two most recent completed scans for one app + env as JSON
-hawk op scan list --app <APP_ID> --env <ENV> --status complete \
-  --sort-by started --sort-dir desc --limit 2 --format json > /tmp/last2.json
-SCAN_A=$(jq -r '.data[0].id' /tmp/last2.json)
-SCAN_B=$(jq -r '.data[1].id' /tmp/last2.json)
-
-# Pull alert types for each (at most 10 per scan) and diff the plugin ID sets
-hawk op scan get "$SCAN_A" --detail full --format json | jq -r '.findings[].plugin_id' | sort -u > /tmp/a.ids
-hawk op scan get "$SCAN_B" --detail full --format json | jq -r '.findings[].plugin_id' | sort -u > /tmp/b.ids
-
-comm -23 /tmp/a.ids /tmp/b.ids    # New in A (not in B)
-comm -13 /tmp/a.ids /tmp/b.ids    # Resolved (in B, gone in A)
-```
+Use Recipe 4 in [`reporting-recipes.md`](reporting-recipes.md#recipe-4-what-changed-since-last-scan).
+It takes the two most recent completed scans of one app + env from `hawk op scan list`,
+diffs their `plugin_id` sets, stops when there are fewer than 2 completed scans, and
+checks each new or resolved alert type against the other scan with `--plugin-id`, since
+`hawk op` returns at most 10 alert types per scan.
 
 ---
 
@@ -298,7 +297,8 @@ call — useful when building a reporting pipeline.
 - **Don't forget `--detail full` when you need the remediation/HTTP message payload.**
   The default `hawk op scan get` output is the overview — it won't include per-URI
   evidence.
-- **`--app` takes a name or a UUID.** A UUID resolves exactly; a name resolves by
-  case-insensitive exact match. If a name matches **more than one** app, `hawk op` errors and
-  lists the matches — disambiguate by passing that app's UUID to `--app` (grab it from
-  `hawk op app list`).
+- **`scan get --app` takes a name or a UUID; `scan list --app` takes only a UUID.**
+  On `scan get`, a UUID resolves exactly and a name resolves by case-insensitive exact
+  match. If a name matches **more than one** app, `hawk op` errors and lists the
+  matches — disambiguate by passing that app's UUID (grab it from `hawk op app list`).
+  `scan list --app <NAME>` fails with "Bad request".

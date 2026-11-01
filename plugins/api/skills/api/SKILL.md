@@ -142,6 +142,7 @@ cannot report yet:
 
 ```bash
 # Latest scan for an app — overview + alerts table
+# (the newest scan, even a failed one; Recipe 2 picks the newest completed scan)
 hawk op scan get --app "<APP_NAME>"
 
 # Full findings with HTTP evidence + remediation (best for AI agent reasoning)
@@ -180,9 +181,8 @@ returns at most 10 alert types per scan, sorted by severity but not necessarily 
 most severe, so a High or Medium type can be missing and a diff over a larger scan
 is partial; `.severityStats` holds the true counts.
 
-→ Executable recipe (`hawk op` pipeline with `comm` diff):
-[`references/hawk-op-shortcuts.md`](references/hawk-op-shortcuts.md#2--app-deep-dive-scan--alerts--findings) §2.
-→ Full jq recipes: [`references/reporting-recipes.md`](references/reporting-recipes.md).
+→ Executable recipe, with a guard for fewer than 2 scans and verification of a
+partial diff: [`references/reporting-recipes.md`](references/reporting-recipes.md#recipe-4-what-changed-since-last-scan) Recipe 4.
 
 ---
 
@@ -193,7 +193,7 @@ is partial; `.severityStats` holds the true counts.
 - Use **tables** for multi-app/multi-finding summaries
 - Use **structured lists** for single-app deep dives
 - Include the platform link (`app.stackhawk.com/scans/{scanId}`) whenever referencing a specific scan
-- Show triage status (`NEW`, `FALSE_POSITIVE`, `RISK_ACCEPTED`, `ASSIGNED`) alongside each finding
+- Show triage status alongside each finding. `hawk op` path statuses are `UNKNOWN` (new, untriaged), `PROMOTED` (assigned), `RISK_ACCEPTED`, and `FALSE_POSITIVE`
 
 ### Next action suggestions
 
@@ -204,8 +204,7 @@ Base suggestions on what the data shows:
 | High severity findings present | Recommend immediate remediation; offer to hand finding details to → hawkscan skill for a re-scan to verify fixes |
 | Stale apps (no scan > 30 days) | Recommend running a fresh scan → hawkscan skill |
 | Clean results across all envs | Note that low path count may mean the spider needs tuning → hawkscan skill, config-patterns reference |
-| Untriaged findings (`status: NEW`) | Direct to platform for triage: **app.stackhawk.com** — triage write operations are out of scope for this skill |
-| `ENV_INCOMPLETE` app status | Direct to platform to complete environment configuration |
+| Untriaged findings (`status: UNKNOWN`) | Direct to platform for triage: **app.stackhawk.com** — triage write operations are out of scope for this skill |
 
 ### Platform UI vs API data
 
