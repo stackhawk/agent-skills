@@ -107,10 +107,11 @@ Run Phase 0 whenever a `stackhawk.yml` is being **created** — a new applicatio
 app with a fresh config. Do NOT run on every scan (0a/0b are idempotent; 0c is non-destructive).
 
 **Phase 0a — Repo Linking (never blocks the scan):** Run **one** `hawk op repo link --repo
-<BARE_NAME> --app-id <APP_ID>` (bare name = last segment of the git origin, `.git` stripped) under
-a 60 s time box. On timeout, error or "No repository found", skip linking, report why, continue.
-**Never list repos or apps here to search them** (`hawk op repo list` pages through the whole org);
-ignore the `→ hawkop repo list` hint. A `git_origin` tag is only a breadcrumb, never a link.
+<BARE_NAME> --app-id <APP_ID>` (bare name = last segment of the origin split on `/` and `:`, `.git`
+stripped) under a 60 s time box. On timeout, error, "No repository found" or "Ambiguous", skip
+linking, report why, continue. Some hawk versions page the org's repos inside `repo link`, so very
+large orgs may hit the time box. **Never list repos or apps here to search them**; ignore every
+`→ hawkop …` hint `repo link` prints, on success or failure. A `git_origin` tag is only a breadcrumb.
 → Exact commands, time box, and result handling: [`references/repo-linking.md`](references/repo-linking.md)
 
 **Phase 0b — Agent Tagging:** Add the `_STACKHAWK_AGENT` tag to `stackhawk.yml` once if missing:
