@@ -167,7 +167,7 @@ Three tiers, prefer highest the provider supports. If a higher tier isn't availa
 
 | Tier | Mechanism | When to use |
 |---|---|---|
-| 1. Native integration | `stackhawk/hawkscan-action@v3` (GitHub Actions); the StackHawk Azure extension tasks (Azure Pipelines) | GitHub Actions and Azure Pipelines — both install the native `hawk` binary for you. Fallback: the hawk CLI install script with `$GITHUB_PATH` / `##vso[task.prependpath]` |
+| 1. Native integration | `stackhawk/hawkscan-action@v3` (GitHub Actions); the StackHawk Azure extension tasks (Azure Pipelines) | GitHub Actions and Azure Pipelines — both install the native `hawk` binary for you. Other `hawk` commands in a GitHub Actions job: the action with `installCLIOnly: true`. Fallback, only when the action or extension can't be used: the hawk CLI install script with `$GITHUB_PATH` / `##vso[task.prependpath]` |
 | 2. hawk CLI install script | `curl -fsSL https://download.stackhawk.com/hawk/install.sh \| HAWK_INSTALL_DIR="$HOME/.local/bin" sh` (Windows: `install.ps1` with `HAWK_INSTALL_DIR` set to `.local` under `USERPROFILE` — use the exact form in `references/execution-shapes.md`) + a PATH line | **Default for every other shell-capable runner** (GitLab, Jenkins, CircleCI, Bitbucket, Buildkite, Travis CI, AWS CodeBuild, Bamboo, Concourse) |
 | 3. Docker image | `stackhawk/hawkscan:latest` | Where scans run as container images — e.g. scans integrated into ArgoCD deployments or other Kubernetes Jobs (Harness, Spinnaker) — or as the labelled alternative when the team prefers containers |
 

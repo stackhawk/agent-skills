@@ -55,7 +55,7 @@ The exit code propagates; the job fails; the pipeline fails; the PR check turns 
 ### Mode 2 — Warn-only
 
 ```yaml
-# hawk installed by an earlier step (the hawk CLI install script + $GITHUB_PATH)
+# hawk installed by an earlier step (stackhawk/hawkscan-action@v3 with installCLIOnly: true)
 - name: Run HawkScan (warn-only)
     # exit code handled explicitly below (do not use continue-on-error here)
   env:
@@ -145,7 +145,7 @@ Don't retry blindly. If retry succeeds, the original failure was a flake. If ret
 
 ### GitHub Actions
 
-`stackhawk/hawkscan-action@v3` installs `hawk` itself, so an explicit cache step is rarely worth it there. The recipe below applies when a workflow runs the hawk CLI install script directly.
+`stackhawk/hawkscan-action@v3` installs `hawk` itself (with `installCLIOnly: true` when later steps run `hawk` directly), so an explicit cache step is rarely worth it there. The recipe below applies only when a workflow can't use the action and runs the hawk CLI install script directly.
 
 ### Caching the hawk CLI install
 

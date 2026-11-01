@@ -104,7 +104,22 @@ jobs:
           path: hawkscan-report/
 ```
 
-**Fallback — without the action** (the action isn't usable, or you need to run other `hawk` commands in the job), install with the hawk CLI install script and add the directory to `$GITHUB_PATH`, which applies to every later step:
+**Other `hawk` commands in the job:** use the action with `installCLIOnly: true`. It installs `hawk` without scanning and adds it to the PATH for every later step. It puts the binary in a runner temp directory, outside `~/.hawk/bin`, so the runtime `hawk scan` unpacks into `~/.hawk/bin` doesn't clobber it:
+
+```yaml
+      - name: Install HawkScan
+        uses: stackhawk/hawkscan-action@v3
+        with:
+          installCLIOnly: true
+      - name: Run HawkScan
+        run: hawk --api-key="${HAWK_API_KEY}" scan stackhawk.yml
+        env:
+          HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
+          COMMIT_SHA: ${{ github.sha }}
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+```
+
+**Fallback — only when the action can't be used** (e.g. Marketplace actions are blocked by org policy): install with the hawk CLI install script into `~/.local/bin` and add that directory to `$GITHUB_PATH`, which applies to every later step:
 
 ```yaml
       - name: Install HawkScan
