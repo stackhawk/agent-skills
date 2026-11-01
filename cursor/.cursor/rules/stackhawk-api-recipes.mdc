@@ -45,6 +45,8 @@ list` does not emit raw API fields such as `applicationId` or `highAlertCount`.
 `4H0 47M2` reads "4 new High, 0 triaged High; 47 new Medium, 2 triaged Medium".
 "New" counts findings not yet triaged; "triaged" counts promoted, risk-accepted,
 and false-positive findings. A severity with zero of both is omitted.
+These numbers count affected paths, not alert types, so they won't match
+`.severityStats` or Recipe 2's rows.
 
 **`hawk op scan list` flags that matter for reporting:**
 
@@ -99,9 +101,13 @@ of these.
 scan, showing new (untriaged) findings by severity, sorted by High then Medium.
 
 ```bash
-hawk op scan list --status complete --sort-by started --sort-dir desc \
-    --limit 10000 --format json \
-| jq -r '
+scans=$(hawk op scan list --status complete --sort-by started --sort-dir desc \
+    --limit 10000 --format json)
+if [ "$(printf '%s' "${scans}" | jq '.data | length')" -ge 10000 ]; then
+  echo "WARNING: 10,000-scan cap reached; apps whose newest completed scan is older are missing." >&2
+fi
+
+printf '%s' "${scans}" | jq -r '
   def counts: [.findings | scan("([0-9]+)([HML])([0-9]+)")]
     | map({(.[1]): {new: (.[0] | tonumber), triaged: (.[2] | tonumber)}})
     | add // {};
@@ -133,6 +139,7 @@ admin-portal   Development   0     0       0    0        2025-11-01
 
 > **Note:** these are per-scan counts from each app + env's latest completed scan.
 > HIGH/MEDIUM/LOW are new (untriaged) findings; TRIAGED sums all triaged findings.
+> Apps that share a name merge into one row (`scan list` has no app UUID).
 > For per-finding triage detail, use Recipe 2.
 
 ---
@@ -154,9 +161,10 @@ newest completed scan first. `scan list --app` takes only a UUID, so resolve the
 ```bash
 APP_NAME="<your-app-name>"
 
-# Exactly one app must have this name; otherwise set APP_ID to the UUID from hawk op app list
+# Exactly one app must have this name (any case, as hawk op matches it); otherwise set APP_ID to the UUID from hawk op app list
 APP_ID=$(hawk op app list --format json | jq -r --arg n "${APP_NAME}" '
-  [.data[] | select(.name == $n) | .id] | if length == 1 then .[0] else empty end')
+  [.data[] | select((.name | ascii_downcase) == ($n | ascii_downcase)) | .id]
+  | if length == 1 then .[0] else empty end')
 if [[ -z "${APP_ID}" ]]; then
   echo "ERROR: no app, or more than one app, is named ${APP_NAME}; set APP_ID to its UUID." >&2
   exit 1
@@ -170,11 +178,14 @@ if [[ -z "${SCAN_ID}" ]]; then
 fi
 
 # Full findings in one command
-hawk op scan get "${SCAN_ID}" --detail full --format json > /tmp/scan.json
+hawk op scan get "${SCAN_ID}" --detail full --format json > /tmp/scan.json \
+  || { echo "ERROR: scan get failed for ${SCAN_ID}." >&2; exit 1; }
 
 SCAN_TS=$(jq -r '.scan.completed_at' /tmp/scan.json)
 # Total alert types in the scan, to detect the 10-type cap
-TOTAL_TYPES=$(hawk op scan get "${SCAN_ID}" --format json | jq '.severityStats | add // 0')
+STATS=$(hawk op scan get "${SCAN_ID}" --format json) \
+  || { echo "ERROR: scan get failed for ${SCAN_ID}." >&2; exit 1; }
+TOTAL_TYPES=$(printf '%s' "${STATS}" | jq '.severityStats | add // 0')
 
 echo "Latest scan: ${SCAN_ID} (${SCAN_TS})"
 echo "Platform URL: https://app.stackhawk.com/scans/${SCAN_ID}"
@@ -185,9 +196,13 @@ echo "Platform URL: https://app.stackhawk.com/scans/${SCAN_ID}"
 ```bash
 # True affected-path count per alert type (total_paths stops at 10)
 for pid in $(jq -r '.findings[].plugin_id' /tmp/scan.json); do
-  hawk op scan get "${SCAN_ID}" --plugin-id "${pid}" --format json \
-    | jq -c '{(.alert.pluginId): .alert.uriCount}'
-done | jq -s 'add // {}' > /tmp/uri_counts.json
+  if ! alert=$(hawk op scan get "${SCAN_ID}" --plugin-id "${pid}" --format json); then
+    echo "ERROR: could not read the path count for alert type ${pid}." >&2
+    exit 1
+  fi
+  printf '%s' "${alert}" | jq -c '{(.alert.pluginId): .alert.uriCount}'
+done > /tmp/uri_counts.jsonl
+jq -s 'add // {}' /tmp/uri_counts.jsonl > /tmp/uri_counts.json
 
 jq -r --slurpfile counts /tmp/uri_counts.json '
   .findings
@@ -272,6 +287,9 @@ than the threshold, plus apps with no completed scan at all, longest gap first.
 apps=$(hawk op app list --format json)
 scans=$(hawk op scan list --status complete --sort-by started --sort-dir desc \
     --limit 10000 --format json)
+if [ "$(printf '%s' "${scans}" | jq '.data | length')" -ge 10000 ]; then
+  echo "WARNING: 10,000-scan cap reached; environments whose newest completed scan is older are missing, and apps with no newer scan show as never scanned." >&2
+fi
 ```
 
 ### Step 2 — Find stale apps
@@ -323,7 +341,8 @@ payment-api    Staging       2025-11-20   55
 ```
 
 > **Precision:** `started` is a `YYYY-MM-DD` date once a scan is 4 weeks old, so
-> ages are exact to the day for any threshold of 28 days or more. Below that,
+> ages are within a day for any threshold of 28 days or more (a date counts from
+> midnight UTC, so an age can read up to one day high). Below that,
 > `Nw ago` is rounded down to whole weeks. `hawk op scan list` has no app UUID, so
 > the never-scanned check matches apps by name.
 
