@@ -208,7 +208,7 @@ By default (no `--page`/`--page-token`) a `list` **auto-follows every page** and
 returns the full set — you don't paginate manually. Use `--limit` to cap the rows
 (it trims after collection, not a server-side early stop).
 
-**Never list repos (or apps) to search for one.** `repo list` pages through every
+**Never list repos (or apps) to search for one while linking an app to its repo.** `repo list` pages through every
 repo in the org, which can take many minutes in large orgs, and its rows carry no
 repo ID or remote URL. To link an app to its repo, run
 `hawk op repo link --repo <BARE_NAME> --app-id <APP_ID>` once under a 60 s time box

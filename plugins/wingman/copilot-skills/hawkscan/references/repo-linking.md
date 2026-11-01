@@ -98,6 +98,7 @@ tags:
     value: org/my-repo   # owner/repo path from the git remote, lowercased
 ```
 
-Value: the last two path segments of the remote (split on `/` and `:`), `.git`
-stripped, any `user:token@` credentials dropped, lowercased. Never write the URL
-itself.
+Value: drop the scheme, any `user@` or `user:token@` prefix and the host (and
+port) first, then take the last two path segments of what remains (split on `/`
+and `:`), `.git` stripped, lowercased. If only one segment remains, write just
+that bare repo name. Never write the URL itself.
