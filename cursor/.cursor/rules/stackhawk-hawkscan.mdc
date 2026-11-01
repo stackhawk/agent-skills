@@ -182,9 +182,9 @@ strategy, frontend-vs-backend scenarios, and config templates:
 5. **App exists?** Run `hawk op app list --format json`. Match by name (normalized: lowercased,
    `_` and `-` equivalent). Exactly one match → use its `applicationId`. Multiple matches →
    pick by host if established, else surface to user. No match → create it **on the user's
-   team**: run `hawk op team list --format json`. One team → use it without asking; several → ask which, never pick;
-   none → say the app will be visible to the whole org and a member can't move it to a team later, then ask before creating.
-   Refusals and the retry guard: [`references/platform-model.md`](references/platform-model.md#team-assignment-on-create).
+   team**: run `hawk op team list --format json`. One team → use it without asking; several → ask which, never pick; none → say the
+   app is visible to the whole org and a member can't move it to a team later, then ask before creating. Headless and not exactly
+   one team → don't create or wait on a question: print the teams and the create command, then stop. Details (headless, refusals, retry guard): [`references/platform-model.md`](references/platform-model.md#team-assignment-on-create).
    ```bash
    hawk op app create --name "<repo-name>" --env <env-name> --team-id <team-id> --format json   # applicationId: .data.applicationId
    ```
