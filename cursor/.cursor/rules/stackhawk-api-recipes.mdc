@@ -54,7 +54,9 @@ These numbers count affected paths, not alert types, so they won't match
 - Page order is not guaranteed across pages. Add `--sort-by started --sort-dir desc`
   to get a true newest-first list (sorted client-side by the exact timestamp,
   up to 10,000 scans).
-- `--status complete` keeps completed scans only. `--app` takes an app **UUID**, not
+- `--status complete` keeps completed scans only. With `--sort-by` it filters after
+  fetching up to 10,000 scans of any status, so check the 10,000-scan cap on an
+  unfiltered list. `--app` takes an app **UUID**, not
   a name; `--env` takes an environment name.
 
 **`hawk op scan get <SCAN_ID> --format json`** (no `--detail`): the raw scan
@@ -101,7 +103,9 @@ of these.
 scan, showing new (untriaged) findings by severity, sorted by High then Medium.
 
 ```bash
-scans=$(hawk op scan list --status complete --sort-by started --sort-dir desc \
+# No --status here: hawk op filters after fetching 10,000 scans of any status,
+# so the cap check must see the unfiltered list. Keep completed scans in jq.
+scans=$(hawk op scan list --sort-by started --sort-dir desc \
     --limit 10000 --format json)
 if [ "$(printf '%s' "${scans}" | jq '.data | length')" -ge 10000 ]; then
   echo "WARNING: 10,000-scan cap reached; apps whose newest completed scan is older are missing." >&2
@@ -112,8 +116,9 @@ printf '%s' "${scans}" | jq -r '
     | map({(.[1]): {new: (.[0] | tonumber), triaged: (.[2] | tonumber)}})
     | add // {};
 
-  # Rows are newest-first, so the first row per app + env is its latest scan
+  # Rows are newest-first, so the first completed row per app + env is its latest scan
   .data
+  | map(select(.status == "Complete"))
   | reduce .[] as $s ({}; .[$s.app + "\u0000" + $s.env] //= $s)
   | [.[] | . + {c: counts}]
   | sort_by(-(.c.H.new // 0), -(.c.M.new // 0), .app)
@@ -285,7 +290,9 @@ than the threshold, plus apps with no completed scan at all, longest gap first.
 
 ```bash
 apps=$(hawk op app list --format json)
-scans=$(hawk op scan list --status complete --sort-by started --sort-dir desc \
+# No --status here: hawk op filters after fetching 10,000 scans of any status,
+# so the cap check must see the unfiltered list. Keep completed scans in jq.
+scans=$(hawk op scan list --sort-by started --sort-dir desc \
     --limit 10000 --format json)
 if [ "$(printf '%s' "${scans}" | jq '.data | length')" -ge 10000 ]; then
   echo "WARNING: 10,000-scan cap reached; environments whose newest completed scan is older are missing, and apps with no newer scan show as never scanned." >&2
@@ -307,7 +314,7 @@ printf '%s\n%s' "${apps}" "${scans}" | jq -rs --argjson threshold "${STALE_DAYS}
     elif . == "--" then null
     else 0 end;
 
-  .[0].data as $apps | .[1].data as $scans |
+  .[0].data as $apps | (.[1].data | map(select(.status == "Complete"))) as $scans |
 
   # Latest completed scan per app + env (rows are newest-first)
   ($scans | reduce .[] as $s ({}; .[$s.app + "\u0000" + $s.env] //= $s) | [.[]])
@@ -393,10 +400,16 @@ echo "Latest scan : ${SCAN_A} (${TS_A})"
 echo "Previous scan: ${SCAN_B} (${TS_B})"
 
 # Fetch the alert types for each (at most 10 per scan) and each scan's total
-hawk op scan get "${SCAN_A}" --detail full --format json | jq '.findings // []' > /tmp/alerts_a.json
-hawk op scan get "${SCAN_B}" --detail full --format json | jq '.findings // []' > /tmp/alerts_b.json
-TOTAL_A=$(hawk op scan get "${SCAN_A}" --format json | jq '.severityStats | add // 0')
-TOTAL_B=$(hawk op scan get "${SCAN_B}" --format json | jq '.severityStats | add // 0')
+for id in "${SCAN_A}" "${SCAN_B}"; do
+  hawk op scan get "${id}" --detail full --format json > "/tmp/detail_${id}.json" \
+    || { echo "ERROR: scan get failed for ${id}." >&2; exit 1; }
+  hawk op scan get "${id}" --format json > "/tmp/stats_${id}.json" \
+    || { echo "ERROR: scan get failed for ${id}." >&2; exit 1; }
+done
+jq '.findings // []' "/tmp/detail_${SCAN_A}.json" > /tmp/alerts_a.json
+jq '.findings // []' "/tmp/detail_${SCAN_B}.json" > /tmp/alerts_b.json
+TOTAL_A=$(jq '.severityStats | add // 0' "/tmp/stats_${SCAN_A}.json")
+TOTAL_B=$(jq '.severityStats | add // 0' "/tmp/stats_${SCAN_B}.json")
 ```
 
 ### Step 2 — Diff the alert sets by plugin ID
