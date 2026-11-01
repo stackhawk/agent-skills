@@ -47,7 +47,7 @@ Once installed, Claude will use the StackHawk API skill when you ask questions l
 - **Org-wide security posture summaries** — aggregate findings and severity counts across all applications
 - **Per-app findings deep dives** — drill from application → scan → alerts → individual findings
 - **Stale app detection** — identify applications that haven't been scanned recently
-- **Scan comparison** — surface what changed (new, resolved, or modified findings) between scans
+- **Scan comparison** — surface which alert types are new, resolved, or unchanged between scans
 - **Environment views** — view scan results by app and environment
 
 ## Security Note
