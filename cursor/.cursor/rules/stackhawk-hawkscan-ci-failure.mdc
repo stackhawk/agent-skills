@@ -129,6 +129,7 @@ Don't retry blindly. If retry succeeds, the original failure was a flake. If ret
   env:
     HAWK_API_KEY: ${{ secrets.HAWK_API_KEY }}
   run: |
+    set +e   # GitHub Actions runs bash -e; without this a failed scan ends the step before EXIT=$?
     for attempt in 1 2; do
       hawk --api-key="${HAWK_API_KEY}" scan
       EXIT=$?

@@ -1,6 +1,6 @@
 # HawkScan Docker Usage Reference
 
-Use Docker when the `hawk` CLI isn't installed or in CI environments with Docker support.
+Use Docker when the `hawk` CLI isn't installed and can't be. For CI, prefer the hawkscan-ci tiers (native integration, then the hawk CLI install script); use the image only where the runner is container-only.
 
 ## Standard Run
 

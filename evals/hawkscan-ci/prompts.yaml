@@ -52,13 +52,13 @@
   invocation_type: contextual
   prompt: We're on CircleCI (.circleci/config.yml) with a validated stackhawk.yml.
     Add hawkscan to CI.
-  notes: CircleCI — expect docker image execution shape + Context for the secret
+  notes: CircleCI — expect hawk CLI install script + Context for the secret
 - id: hci-09
   should_trigger: true
   invocation_type: contextual
   prompt: Add StackHawk scanning to our Azure pipeline (azure-pipelines.yml). Local
     scan already passes.
-  notes: Azure Pipelines — expect variable group + docker image
+  notes: Azure Pipelines — expect variable group + StackHawk Azure extension (HawkScanInstall@2/RunHawkScan@2)
 - id: hci-10
   should_trigger: true
   invocation_type: contextual

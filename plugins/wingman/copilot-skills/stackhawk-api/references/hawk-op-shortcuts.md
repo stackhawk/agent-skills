@@ -43,8 +43,13 @@ and persist it for new sessions:
 ```bash
 curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
 export PATH="$HOME/.hawk/bin:$PATH"
-# Persist for new shells (use ~/.zshrc for zsh; for bash, ~/.bash_profile on macOS and ~/.bashrc elsewhere; ~/.profile otherwise):
-grep -qs '.hawk/bin' <shell-profile> || echo 'export PATH="$HOME/.hawk/bin:$PATH"' >> <shell-profile>
+# Persist for new shells in the login shell's profile (idempotent):
+case "$(basename "${SHELL:-sh}")" in
+  zsh)  PROFILE="$HOME/.zshrc" ;;
+  bash) [ "$(uname -s)" = Darwin ] && PROFILE="$HOME/.bash_profile" || PROFILE="$HOME/.bashrc" ;;
+  *)    PROFILE="$HOME/.profile" ;;
+esac
+grep -qs '.hawk/bin' "$PROFILE" || echo 'export PATH="$HOME/.hawk/bin:$PATH"' >> "$PROFILE"
 ```
 
 Windows fallback (PowerShell):

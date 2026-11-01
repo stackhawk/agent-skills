@@ -148,7 +148,9 @@
         "stackhawk/hawkscan-action",
         "stackhawk/hawkscan:latest",
         "stackhawk/hawkscan",
-        "download.stackhawk.com/hawk"
+        "download.stackhawk.com/hawk",
+        "HawkScanInstall",
+        "RunHawkScan"
       ],
       "applies_to": ["hci-01","hci-02","hci-03","hci-04","hci-05","hci-06","hci-07","hci-08","hci-09","hci-10","hci-13"],
       "severity": "warning",
