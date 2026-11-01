@@ -393,7 +393,7 @@ place an app on their own team, so choose the team before creating.
    | Several | Ask the user which team should own the app. Never pick one yourself |
    | None | Tell the user the app will be visible to everyone in the org and that a member can't put it on a team later. Ask before creating; create without `--team-id` only if they agree |
    | Refused (exit 1 with `Error: Access denied. You don't have permission to access this resource.`, or a 403 or an error naming `API_ACCESS`) | Ask the user which team should own the app, and for its team ID (shown for the team in the StackHawk web UI). If they name no team, treat it as "None" |
-| Headless (CI or any run with no person to answer) and anything but exactly one team | Do not create the app and never wait on a question. Stop and print the team names and IDs from `hawk op team list`, plus the exact command to run: `hawk op app create --name "<repo-name>" --env <env-name> --team-id <team-id>`. A preset `applicationId` in `stackhawk.yml` skips creation entirely |
+   | Headless (CI or any run with no person to answer) and anything but exactly one team | Do not create the app and never wait on a question. Stop and print the team names and IDs from `hawk op team list`, plus the exact command to run: `hawk op app create --name "<repo-name>" --env <env-name> --team-id <team-id>`. A preset `applicationId` in `stackhawk.yml` skips creation entirely |
 
 3. **Create:** `hawk op app create --name "<repo-name>" --env <env-name> --team-id <team-id> --format json`.
    The new app's ID is `.data.applicationId`.
