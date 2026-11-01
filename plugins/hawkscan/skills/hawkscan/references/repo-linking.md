@@ -1,15 +1,15 @@
 # Repo Linking (Attack Surface Management)
 
 Linking a StackHawk application to its source repository enables API Discovery
-tracking and SCM-driven automapping. Do this once during app onboarding (Phase 0).
+tracking. Do this once during app onboarding (Phase 0). Linking is best-effort:
+it never blocks the scan.
 
 ## Contents
 - [When to Run](#when-to-run)
+- [Hard Rule: Never List to Search](#hard-rule-never-list-to-search)
 - [Commands](#commands)
-- [How to Identify the Repo](#how-to-identify-the-repo)
-- [No Match Fallback: git_origin Tag](#no-match-fallback-git_origin-tag)
 - [Full Phase 0a Algorithm](#full-phase-0a-algorithm)
-- [hawk op repo list Output Shape](#hawk-op-repo-list-output-shape)
+- [Optional Breadcrumb: git_origin Tag](#optional-breadcrumb-git_origin-tag)
 
 ---
 
@@ -19,18 +19,31 @@ tracking and SCM-driven automapping. Do this once during app onboarding (Phase 0
 - The user explicitly requests setup or verification
 - NOT on every scan — this is app-level setup
 
+## Hard Rule: Never List to Search
+
+**While linking, never run `hawk op repo list` or `hawk op app list` to find the
+repo or app by scanning the output.** The app ID is already known from SKILL.md
+Step 1 substep 5. `repo list` pages through every repo in the org (tens of
+thousands in large orgs; it can run for many minutes), and its rows carry no repo
+ID or remote URL to match on anyway. Let `hawk op repo link --repo <name>` resolve
+the name. Depending on the hawk version, `repo link` may itself page the org's
+repos to resolve the name, so in very large orgs it can hit the 60 s time box;
+expect that skip. `repo link` prints `→ hawkop …` hints (such as
+`→ hawkop repo list`) on success and on failure; ignore every one of them.
+
 ## Commands
 
 ```bash
-# List all repositories in the org's attack surface
-hawk op repo list --format json
+# Link an existing app to a repo by its bare name (additive — preserves existing links)
+hawk op repo link --repo <BARE_NAME> --app-id <APP_UUID>
 
-# Link an existing app to a repo (additive — safe to re-run)
+# Link by repo UUID, only when the user supplied one
 hawk op repo link --repo-id <REPO_UUID> --app-id <APP_UUID>
-
-# Link by app name (creates a new app if the name doesn't exist)
-hawk op repo link --repo-id <REPO_UUID> --app-name "my-api"
 ```
+
+Pass `--repo` the **bare** repo name (e.g. `my-repo`), not `owner/repo` or a URL:
+some hawk versions return "No repository found" for those forms. Add `--dry-run`
+to preview.
 
 > ⚠️ **Do not use `--app-name` to create applications.** Application creation must
 > go through SKILL.md Step 1 substep 5 (`hawk create app`), which announces the
@@ -43,111 +56,55 @@ hawk op repo link --repo-id <REPO_UUID> --app-name "my-api"
 hawk op repo set-apps --repo-id <REPO_UUID> --app-ids <UUID1>,<UUID2>
 ```
 
-**Prefer `repo link` over `repo set-apps`.** The `link` command reads the current
-mappings, merges in the new app, and posts the complete list — existing links are
-preserved. `set-apps` replaces the entire list.
+**Prefer `repo link` over `repo set-apps`.** `link` merges the new app into the
+repo's existing mappings; `set-apps` replaces the entire list.
 
-## How to Identify the Repo
+## Full Phase 0a Algorithm
 
-1. Get the git remote URL:
-   ```bash
-   git remote get-url origin
-   ```
+```
+1. git remote get-url origin → LOCAL_URL
+   If this fails (no git repo or no origin remote), skip Phase 0a and continue
+   to Phase 0b.
+2. BARE_NAME = last segment of LOCAL_URL after splitting on "/" and ":",
+   trailing "/" and ".git" stripped
+   (e.g. git@github.com:Org/My-Repo.git → My-Repo; git@host:my-repo.git → my-repo)
+3. Run ONCE, time-boxed to 60 s:
+     timeout 60 hawk op repo link --repo <BARE_NAME> --app-id <APP_ID>
+   (<APP_ID> is the applicationId from SKILL.md Step 1 substep 5. Without
+   `timeout`, e.g. stock macOS: perl -e 'alarm 60; exec @ARGV' hawk op repo link …,
+   or your tool's own 60 s command timeout. On Windows (PowerShell/cmd),
+   `timeout` is a sleep, not a time box: don't use it; rely on your tool's own
+   60 s command timeout.)
+4. Exit 0 with "already linked" → Report: "App <APP_NAME> was already linked to
+     <the repo exactly as repo link printed it>"
+   Exit 0 otherwise → Report: "Linked app <APP_NAME> to <the repo name and ID
+     exactly as repo link printed them>. Linking matches by repo name only;
+     confirm it's the right repo in the StackHawk UI"
+   "No repository found" or "No repository matching" → Report: "Repo
+     <BARE_NAME> isn't in StackHawk's attack surface yet (connect or sync the
+     SCM org) — skipped linking"
+   "N repositories match" (with or without a leading "Ambiguous:") → Report:
+     "Several repos are named <BARE_NAME>; skipped linking. Link with
+     --repo-id from the StackHawk UI"
+   Timeout or any other error → Report: "Repo linking skipped: <reason>"
+   Ignore any "→ hawkop …" hint in the output, whatever the result.
+5. Continue to Phase 0b. Do not retry, list repos, or trigger an SCM sync.
+```
 
-2. Normalize both the local URL and every `url` field in `hawk op repo list` output
-   using these 4 steps:
-   1. Lowercase
-   2. Strip `.git` suffix
-   3. Strip trailing `/`
-   4. Strip protocol+host prefix to obtain the bare `owner/repo` path:
-      - HTTPS: strip `https://github.com/` (or equivalent host prefix)
-      - SSH SCP-like form (`git@host:path`): strip everything up to and including `:`
-      - SSH URL form (`ssh://git@github.com/org/repo`): strip the entire `ssh://git@host/` prefix (everything through the first `/` after the host)
-      - Embedded credentials (`https://token@github.com/org/repo`): strip
-        credentials before stripping the host (i.e. treat as plain HTTPS)
-      - The result is just `org/repo`
+## Optional Breadcrumb: `git_origin` Tag
 
-3. Match on normalized equality (compare the bare `owner/repo` paths).
-
-### Example
-
-Local: `git@github.com:Org/My-Repo.git`
-
-| Step | Value |
-|------|-------|
-| 1. Lowercase | `git@github.com:org/my-repo.git` |
-| 2. Strip `.git` | `git@github.com:org/my-repo` |
-| 3. Strip trailing `/` | `git@github.com:org/my-repo` |
-| 4. Strip host (`git@github.com:`) | `org/my-repo` |
-
-API entry `url`: `https://github.com/Org/My-Repo`
-
-| Step | Value |
-|------|-------|
-| 1. Lowercase | `https://github.com/org/my-repo` |
-| 2. Strip `.git` | `https://github.com/org/my-repo` |
-| 3. Strip trailing `/` | `https://github.com/org/my-repo` |
-| 4. Strip host (`https://github.com/`) | `org/my-repo` |
-
-Both normalize to `org/my-repo` — they match.
-
-## No Match Fallback: `git_origin` Tag
-
-If no repo in the org's attack surface matches the local git remote, do NOT fail —
-inject a `git_origin` tag into `stackhawk.yml` instead:
+Whether or not the link succeeded, you may add a `git_origin` tag to
+`stackhawk.yml`. It records the source repo on every scan from this config, so a
+person can see where the scan came from. It does **not** link the app to the
+repo; StackHawk does not automap from it.
 
 ```yaml
 tags:
   - name: git_origin
-    value: org/my-repo   # bare path after 4-step normalization
+    value: org/my-repo   # owner/repo path from the git remote, lowercased
 ```
 
-Use the bare `owner/repo` path (step 4 of normalization) so the platform can match
-against any transport. This breadcrumb is visible in every scan from this config.
-Once the SCM org is connected in StackHawk's attack surface, the platform can
-automap repos to apps using the `git_origin` tag values.
-
-### Full Phase 0a Algorithm
-
-```
-1. git remote get-url origin → LOCAL_URL
-   If this command fails (no git repo or no origin remote), skip Phase 0a entirely
-   and continue to Phase 0b. Repo linking is non-blocking.
-2. Apply 4-step normalization to LOCAL_URL → PATH_LOCAL (bare owner/repo path)
-3. hawk op repo list --format json → REPOS[]
-4. For each repo in REPOS[]:
-     apply 4-step normalization to repo.url → PATH_REPO
-     if PATH_LOCAL == PATH_REPO:
-       hawk op repo link --repo-id repo.id --app-id <APP_ID>
-         (where <APP_ID> is the applicationId resolved in SKILL.md Step 1 substep 5)
-       Report: "Ensured link: app <APP_NAME> ↔ ASM repo <REPO_NAME>"
-       DONE
-5. No match found:
-   Inject into stackhawk.yml tags block:
-     - name: git_origin
-       value: PATH_LOCAL
-   Report: "No ASM repo match for PATH_LOCAL — added git_origin tag for future automapping"
-```
-
-## `hawk op repo list` Output Shape
-
-```json
-{
-  "data": [
-    {
-      "id": "uuid",
-      "name": "My-Repo",
-      "url": "https://github.com/Org/My-Repo",
-      "defaultBranch": "main",
-      "frameworkNames": ["Spring Boot", "React"],
-      "appInfos": [
-        { "appId": "uuid", "appName": "my-api" }
-      ]
-    }
-  ]
-}
-```
-
-`frameworkNames` is a bonus signal — if the repo is already known to StackHawk's
-ASM scan, it can inform tech flag detection (Phase 0c) even before inspecting
-the local codebase.
+Value: drop the scheme, any `user@` or `user:token@` prefix and the host (and
+port) first, then take the last two path segments of what remains (split on `/`
+and `:`), `.git` stripped, lowercased. If only one segment remains, write just
+that bare repo name. Never write the URL itself.

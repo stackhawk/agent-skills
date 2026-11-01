@@ -175,8 +175,6 @@ The detection heuristics produce friendly tech names (e.g., "Spring", "PostgreSQ
 
 **Primary rule: use explicit heuristic mappings first.** The detection heuristics table already maps specific evidence directly to expected canonical key names (e.g., "pom.xml or build.gradle → `Language.Java`"). Use those explicit mappings directly before falling back to terminal-segment fuzzy matching.
 
-**Additionally:** If Phase 0a (repo linking) completed and returned `frameworkNames` from `hawk op repo list`, treat those as additional tech evidence — match each framework name against canonical flags using the terminal-segment rule below.
-
 **Terminal-segment matching algorithm:**
 
 The correct rule is **terminal segment matching**: a detected technology matches a canonical key only when the technology term matches the *last* (terminal) segment of the dot-namespaced key.
