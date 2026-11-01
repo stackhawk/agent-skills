@@ -172,7 +172,7 @@ for pid in $(jq -r '.findings[].plugin_id' /tmp/scan.json); do
     | jq -c '{(.alert.pluginId): .alert.uriCount}'
 done | jq -s 'add // {}' > /tmp/uri_counts.json
 
-jq -r --argjson total "${TOTAL_TYPES}" --slurpfile counts /tmp/uri_counts.json '
+jq -r --slurpfile counts /tmp/uri_counts.json '
   .findings
   | ["SEVERITY", "PLUGIN_ID", "ALERT_NAME", "CWE", "AFFECTED_PATHS"],
     (.[] | [
