@@ -75,9 +75,11 @@ repo's existing mappings; `set-apps` replaces the entire list.
    or your tool's own 60 s command timeout. On Windows (PowerShell/cmd),
    `timeout` is a sleep, not a time box: don't use it; rely on your tool's own
    60 s command timeout.)
-4. Exit 0 → Report: "Linked app <APP_NAME> to <the repo name and ID exactly as
-     repo link printed them>" (check the owner matches your remote; if not,
-     unlink it in the StackHawk UI)
+4. Exit 0 with "already linked" → Report: "App <APP_NAME> was already linked to
+     <the repo exactly as repo link printed it>"
+   Exit 0 otherwise → Report: "Linked app <APP_NAME> to <the repo name and ID
+     exactly as repo link printed them>. Linking matches by repo name only;
+     confirm it's the right repo in the StackHawk UI"
    "No repository found" or "No repository matching" → Report: "Repo
      <BARE_NAME> isn't in StackHawk's attack surface yet (connect or sync the
      SCM org) — skipped linking"
