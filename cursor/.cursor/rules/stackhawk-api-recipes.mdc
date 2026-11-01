@@ -416,14 +416,21 @@ diff_result=$(jq -n \
 # Verify each candidate against the other scan. --plugin-id answers for any alert
 # type in the scan, including ones outside the 10 returned; an absent one returns {}.
 present_in() {
-  hawk op scan get "$1" --plugin-id "$2" --format json | jq -e '.alert.pluginId != null' >/dev/null
+  local alert
+  if ! alert=$(hawk op scan get "$1" --plugin-id "$2" --format json); then
+    echo "ERROR: could not check alert type $2 against scan $1." >&2
+    exit 1
+  fi
+  printf '%s' "${alert}" | jq -e '.alert.pluginId != null' >/dev/null
 }
 not_new=$(for pid in $(printf '%s' "${diff_result}" | jq -r '.new_findings[].plugin_id'); do
-  present_in "${SCAN_B}" "${pid}" && echo "${pid}"
-done | jq -R . | jq -s .)
+  if present_in "${SCAN_B}" "${pid}"; then echo "${pid}"; fi
+done) || exit 1
 not_resolved=$(for pid in $(printf '%s' "${diff_result}" | jq -r '.resolved_findings[].plugin_id'); do
-  present_in "${SCAN_A}" "${pid}" && echo "${pid}"
-done | jq -R . | jq -s .)
+  if present_in "${SCAN_A}" "${pid}"; then echo "${pid}"; fi
+done) || exit 1
+not_new=$(printf '%s' "${not_new}" | jq -R . | jq -s .)
+not_resolved=$(printf '%s' "${not_resolved}" | jq -R . | jq -s .)
 
 diff_result=$(printf '%s' "${diff_result}" | jq --argjson nn "${not_new}" --argjson nr "${not_resolved}" '
   .new_findings |= map(select(.plugin_id as $id | $nn | index($id) | not))
