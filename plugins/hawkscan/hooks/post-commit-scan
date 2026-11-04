@@ -5,30 +5,43 @@
 
 set -euo pipefail
 
-# The tool input is passed via stdin as JSON by the hook system.
-# Read it to check if this was a git commit command.
-tool_input=""
+# The hook system passes the PostToolUse payload on stdin as JSON. The Bash command
+# is at .tool_input.command. The payload also carries the tool's output
+# (.tool_response), which must never be searched for a commit.
 if [ -t 0 ]; then
   # No stdin (interactive terminal) — not a tool use context
   exit 0
 fi
 tool_input=$(cat)
 
-# Extract the command that was run (best-effort — look for git commit pattern)
-# The tool input JSON has a "command" field for Bash tool uses.
+# Extract the command that was run. No command means nothing to match: never fall
+# back to the whole payload.
 if command -v jq >/dev/null 2>&1; then
-  command_text=$(printf '%s' "$tool_input" | jq -r '.command // empty' 2>/dev/null || true)
+  command_text=$(printf '%s' "$tool_input" | jq -r '(.tool_input | objects | .command | strings) // empty' 2>/dev/null || true)
 else
-  command_text=$(printf '%s' "$tool_input" | grep -oE '"command"\s*:\s*"[^"]*"' | head -1 | sed 's/"command"\s*:\s*"//;s/"$//' || true)
+  # Best effort without jq: the first "command" string after "tool_input" (which
+  # precedes tool_response in the payload), with the common JSON escapes undone.
+  command_text=$(printf '%s' "$tool_input" \
+    | sed -E 's/^.*"tool_input"[[:space:]]*:[[:space:]]*\{//' \
+    | grep -oE '"command"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"' | head -1 \
+    | sed -E 's/^"command"[[:space:]]*:[[:space:]]*"//; s/"$//; s/\\n/;/g; s/\\"/"/g; s/\\\\/\\/g' || true)
 fi
 
-# If we couldn't extract it, try the whole input as a fallback
 if [ -z "$command_text" ]; then
-  command_text="$tool_input"
+  exit 0
 fi
 
-# Check if this was a git commit command
-if ! printf '%s' "$command_text" | grep -qE 'git\s+commit'; then
+# Is the command a real `git commit`? Replace quoted strings with a placeholder (so a
+# commit message or `echo "git commit"` cannot match), split into simple commands,
+# and require one to start with: [VAR=x ...] git [global options] commit
+simple_commands=$(printf '%s' "$command_text" \
+  | tr '\n' '\001' \
+  | sed -E "s/\"[^\"]*\"/Q/g; s/'[^']*'/Q/g" \
+  | tr '\001' ';' \
+  | sed -E 's/&&|\|\|/;/g' \
+  | tr ';|&()`' '\n\n\n\n\n\n')
+git_commit_re='^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*([^[:space:]]*/)?git([[:space:]]+(-C[[:space:]]+[^[:space:]]+|-c[[:space:]]+[^[:space:]]+|--[A-Za-z-]+(=[^[:space:]]*)?|-[pP]))*[[:space:]]+commit([[:space:]]|$)'
+if ! printf '%s\n' "$simple_commands" | grep -qE "$git_commit_re"; then
   exit 0
 fi
 
