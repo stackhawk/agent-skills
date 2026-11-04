@@ -32,39 +32,42 @@ if [ -z "$command_text" ]; then
   exit 0
 fi
 
-# Is the command a real `git commit`? Drop heredoc bodies (text, not commands), unquote
-# strings with their blanks, newlines and separators encoded as \021-\031 (so a commit
-# message or `echo "git commit"` cannot start a command), split into simple commands, and
-# require one to start with: [VAR=x ...] git [-C dir | -c k=v | --no-pager | -p | -P ...] commit
+# Is the command a real `git commit`? One pass tracks quotes, `$(...)`, comments and
+# heredocs as the shell does: it drops comments and heredoc bodies (text, not commands),
+# unquotes strings with their blanks, newlines and separators encoded as \021-\031 (so a
+# commit message or `echo "git commit"` cannot start a command), then the command is split
+# into simple commands, one of which must start with:
+# [! { if then elif else do while until time ...] [VAR=x ...] git [-C dir | -c k=v | --no-pager | -p | -P ...] commit
 simple_commands=$(printf '%s\n' "$command_text" \
   | awk '
       n { line = $0; if (tabs[k]) sub(/^\t+/, "", line); if (line == delims[k] && ++k > n) n = 0; next }
       {
-        print; rest = " " $0; k = 1
-        while (match(rest, /<<-?[ \t]*[^ \t;&|<>()]+/)) {
-          op = substr(rest, RSTART, RLENGTH); before = substr(rest, RSTART - 1, 1)
-          rest = substr(rest, RSTART + RLENGTH)
-          if (before == "<") continue
-          d = op; sub(/^<<-?[ \t]*/, "", d); gsub(/[\\"\047]/, "", d)
-          delims[++n] = d; tabs[n] = (substr(op, 3, 1) == "-")
-        }
-      }' \
-  | awk '
-      {
-        s = $0; out = ""
+        s = $0; out = ""; sep = 1; k = 1
         for (i = 1; i <= length(s); i++) {
           c = substr(s, i, 1); lit = 0
-          if (q == "" && (c == "\"" || c == "\047")) { q = c; continue }
-          if (c == q) { q = ""; continue }
-          if (c == "\\" && q != "\047" && i < length(s)) { c = substr(s, ++i, 1); lit = 1 }
-          if ((q != "" || lit) && (k = index(" \t;|&()`", c))) c = substr("\021\022\023\024\025\026\027\030", k, 1)
+          if (q == "") {
+            if (c == "#" && sep) break
+            if (c == "\"" || c == "\047") { q = c; sep = 0; continue }
+            if (c == ")" && depth) { q = stack[depth--]; out = out c; sep = (q == ""); continue }
+            if (substr(s, i, 3) == "<<<") { out = out "<<<"; i += 2; sep = 1; continue }
+            if (match(substr(s, i), /^<<-?[ \t]*[^ \t;&|<>()]+/)) {
+              op = substr(s, i, RLENGTH); i += RLENGTH - 1; out = out op; sep = 0
+              d = op; sub(/^<<-?[ \t]*/, "", d); gsub(/[\\"\047]/, "", d)
+              delims[++n] = d; tabs[n] = (substr(op, 3, 1) == "-")
+              continue
+            }
+          } else if (c == q) { q = ""; sep = 0; continue }
+          if (q != "\047" && c == "$" && substr(s, i + 1, 1) == "(") { stack[++depth] = q; q = ""; out = out "$("; i++; sep = 1; continue }
+          if (q != "\047" && c == "\\" && i < length(s) && (q == "" || index("$`\"\\", substr(s, i + 1, 1)))) { c = substr(s, ++i, 1); lit = 1 }
+          if ((q != "" || lit) && (j = index(" \t;|&()`", c))) c = substr("\021\022\023\024\025\026\027\030", j, 1)
           out = out c
+          sep = (q == "" && !lit && index(" \t;|&()<>", c) > 0)
         }
         printf "%s%s", out, (q == "" ? "\n" : "\031")
       }' \
   | sed -E 's/&&|\|\|/;/g' \
   | tr ';|&()`' '\n\n\n\n\n\n')
-git_commit_re='^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*([^[:space:]]*/)?git([[:space:]]+(-[Cc][[:space:]]+[^[:space:]]+|--no-pager|-[pP]))*[[:space:]]+commit([[:space:]]|$)'
+git_commit_re='^[[:space:]]*(([!{]|if|then|elif|else|do|while|until|time)[[:space:]]+)*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*([^[:space:]]*/)?git([[:space:]]+(-[Cc][[:space:]]+[^[:space:]]+|--no-pager|-[pP]))*[[:space:]]+commit([[:space:]]|$)'
 commit_line=$(printf '%s\n' "$simple_commands" | grep -E "$git_commit_re" | tail -n 1 || true)
 if [ -z "$commit_line" ]; then
   exit 0
@@ -99,14 +102,13 @@ done
 
 # Report only a commit that was just made: the newest commit entry (commit, amend, merge)
 # in that repo's HEAD reflog from the last 10 minutes. Later entries from the same command
-# (a checkout, a pull --rebase) may follow it; when a rebase on the same branch rewrote
-# it, report HEAD. No such entry (a failed commit with no other recent commit, a repo
-# outside a git checkout) keeps the hook silent.
+# (a checkout, a pull --rebase) may follow it; when a later rebase of the branch the commit
+# was made on rewrote it, report that branch's new tip. No such entry (a failed commit with
+# no other recent commit, a repo outside a git checkout) keeps the hook silent.
 reflog=$(git "${git_args[@]}" reflog -n 50 --date=unix --format='%gd %H %gs' 2>/dev/null || true)
 now=$(date +%s)
 commit_sha=""
-moved=false
-rebased=false
+rebased_branches=""
 while read -r selector sha subject; do
   entry_time=${selector#*@\{}
   entry_time=${entry_time%\}}
@@ -118,16 +120,21 @@ while read -r selector sha subject; do
   fi
   case "$subject" in
     commit*) commit_sha=$sha; break ;;
-    checkout:*) moved=true ;;
-    *rebase*finish*) rebased=true ;;
+    *rebase*"(finish): returning to refs/heads/"*) rebased_branches="$rebased_branches ${subject##*refs/heads/}" ;;
   esac
 done <<< "$reflog"
 if [ -z "$commit_sha" ]; then
   exit 0
 fi
-if [ "$rebased" = true ] && [ "$moved" = false ]; then
-  commit_sha=$(git "${git_args[@]}" rev-parse HEAD 2>/dev/null || echo "$commit_sha")
-fi
+for branch in $rebased_branches; do
+  branch_reflog=$(git "${git_args[@]}" reflog -n 50 --format='%H %gs' "refs/heads/$branch" -- 2>/dev/null || true)
+  case "$branch_reflog" in
+    *"$commit_sha commit"*)
+      commit_sha=$(git "${git_args[@]}" rev-parse "refs/heads/$branch" 2>/dev/null || echo "$commit_sha")
+      break
+      ;;
+  esac
+done
 short_sha=$(git "${git_args[@]}" rev-parse --short "$commit_sha" 2>/dev/null || echo "unknown")
 
 # Check for scan evidence already in this session (avoid double-triggering)

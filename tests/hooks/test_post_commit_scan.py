@@ -126,6 +126,14 @@ REAL_COMMITS = [
     "git commit -m \"$(cat <<'EOF'\nfix: handle it\n\nBody mentioning git log.\nEOF\n)\"",
     "make test\ngit commit -m x",
     "cat > notes.md <<'EOF'\nDon't forget\nEOF\ngit commit -m x",
+    "# Don't stage the lockfile\ngit add src && git commit -m x",
+    "echo \"shift << 2\"\ngit commit -m x",
+    "# write it <<EOF\ngit commit -m x",
+    "if ! git diff --cached --quiet; then git commit -m x; fi",
+    "! git commit -m x",
+    "time git commit -m x",
+    "{ git add -A; git commit -m x; }",
+    "for f in a; do git commit -m x; done",
 ]
 
 HEREDOC_NOT_COMMITS = [
@@ -133,6 +141,7 @@ HEREDOC_NOT_COMMITS = [
     "cat > release.sh <<'EOF'\ngit add -A\ngit commit -m release\nEOF",
     "gh pr create --body-file - <<'EOF'\nDon't run `git commit` here\nEOF",
     "cat <<-EOF > release.sh\n\tgit commit -m release\n\tEOF",
+    "gh pr comment 1 --body \"$(cat <<'EOF'\nA 6\" screen\ngit commit -m x\nEOF\n)\"",
 ]
 
 NOT_COMMITS = [
@@ -147,6 +156,8 @@ NOT_COMMITS = [
     'grep -rn "git commit" docs/',
     "git log --grep='git commit'",
     "git config alias.ci commit",
+    "ls # later: && git commit -m x",
+    "# git commit -m x",
     "git --git-dir=.git commit -m x",
     "git --work-tree=. commit -m x",
     "GIT_DIR=.git git commit -m x",
@@ -236,7 +247,8 @@ def test_chained_commit_then_pull_rebase_reports_rewritten_head(tmp_path):
     assert before_rebase not in context
 
 
-def test_rebase_on_another_branch_does_not_replace_the_commit(repo):
+@pytest.mark.parametrize("switch", ["checkout", "rebase-arg"])
+def test_rebase_on_another_branch_does_not_replace_the_commit(repo, switch):
     base = git(repo, "rev-parse", "--abbrev-ref", "HEAD")
     git(repo, "checkout", "-q", "-b", "other")
     git(repo, "commit", "-q", "--allow-empty", "-m", "other work")
@@ -245,9 +257,13 @@ def test_rebase_on_another_branch_does_not_replace_the_commit(repo):
     git(repo, "checkout", "-q", "-b", "feature")
     git(repo, "commit", "-q", "--allow-empty", "-m", "feature work")
     feature_sha = head_sha(repo)
-    git(repo, "checkout", "-q", "other")
-    git(repo, "rebase", "-q", base)
-    command = f"git commit -m f && git checkout other && git rebase {base}"
+    if switch == "checkout":
+        git(repo, "checkout", "-q", "other")
+        git(repo, "rebase", "-q", base)
+        command = f"git commit -m f && git checkout other && git rebase {base}"
+    else:
+        git(repo, "rebase", "-q", base, "other")
+        command = f"git commit -m f && git rebase {base} other"
     context = json.loads(run_hook(repo, payload(command)))["hookSpecificOutput"]["additionalContext"]
     assert f"Code committed at {feature_sha}" in context
     assert head_sha(repo) not in context
@@ -280,7 +296,12 @@ def test_silent_when_scan_evidence_exists(repo):
 
 
 @pytest.mark.parametrize(
-    "command", REAL_COMMITS[:6] + REAL_COMMITS[-1:] + ["cat <<-EOF\n\tgit commit -m x\n\tEOF\ngit commit -m y"]
+    "command",
+    REAL_COMMITS[:6]
+    + [
+        "cat > notes.md <<'EOF'\nDon't forget\nEOF\ngit commit -m x",
+        "cat <<-EOF\n\tgit commit -m x\n\tEOF\ngit commit -m y",
+    ],
 )
 def test_without_jq_fires_on_real_git_commit(repo, no_jq_path, command):
     out = json.loads(run_hook(repo, payload(command), path=no_jq_path))
