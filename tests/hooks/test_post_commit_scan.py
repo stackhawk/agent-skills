@@ -6,8 +6,9 @@ tool's output, so any command whose output mentioned "git commit" (a `git log`, 
 the hook itself) told the agent "Code committed at <sha>" and prompted a scan.
 
 It must also never report a commit that was not just made: heredoc bodies are text, a
-commit to another repo is reported from that repo, and a HEAD whose latest reflog entry is
-not a fresh commit (a failed commit, a `cd` elsewhere) keeps the hook silent.
+commit to another repo (`git -C`) is reported from that repo, and a repo whose HEAD reflog
+has no commit from the last 10 minutes keeps the hook silent. A commit followed in the same
+command by a push, checkout or pull --rebase is still reported.
 
 Each case runs the real script against a throwaway git repo with a PostToolUse-shaped
 payload. The no-jq cases run it with a PATH that has no `jq` (the hook has a fallback).
@@ -45,9 +46,7 @@ def payload(command, output="", **extra):
     return json.dumps(body)
 
 
-def make_repo(path, message="add feature", age_seconds=0):
-    """A git repo whose HEAD is a commit made `age_seconds` ago."""
-    path.mkdir()
+def git(path, *args, age_seconds=0):
     env = {
         **os.environ,
         "GIT_AUTHOR_NAME": "t",
@@ -56,8 +55,16 @@ def make_repo(path, message="add feature", age_seconds=0):
         "GIT_COMMITTER_EMAIL": "t@example.com",
         "GIT_COMMITTER_DATE": f"{int(time.time()) - age_seconds} +0000",
     }
-    for args in (["init", "-q"], ["commit", "-q", "--allow-empty", "-m", message]):
-        subprocess.run(["git", *args], cwd=path, env=env, check=True)
+    return subprocess.run(
+        ["git", *args], cwd=path, env=env, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def make_repo(path, message="add feature", age_seconds=0):
+    """A git repo whose HEAD is a commit made `age_seconds` ago."""
+    path.mkdir(parents=True)
+    git(path, "init", "-q")
+    git(path, "commit", "-q", "--allow-empty", "-m", message, age_seconds=age_seconds)
     return path
 
 
@@ -82,8 +89,10 @@ def no_jq_path(tmp_path):
     return str(bin_dir)
 
 
-def run_hook(repo, stdin, path=None):
+def run_hook(repo, stdin, path=None, home=None):
     env = {**os.environ}
+    if home is not None:
+        env["HOME"] = str(home)
     if path is not None:
         env["PATH"] = path
     result = subprocess.run(
@@ -160,11 +169,21 @@ def test_silent_on_other_commands_even_when_output_mentions_git_commit(repo, com
     assert run_hook(repo, stdin) == ""
 
 
-@pytest.mark.parametrize("dash_c", ["abs", "rel"])
-def test_dash_c_commit_reports_that_repos_head(tmp_path, repo, dash_c):
-    other = make_repo(tmp_path / "other", message="other feature")
-    target = str(other) if dash_c == "abs" else "../other"
-    out = json.loads(run_hook(repo, payload(f"git -C {target} commit -m x")))
+@pytest.mark.parametrize(
+    "dirname, target",
+    [
+        ("svc", "{other}"),
+        ("svc", "../svc"),
+        ("svc", "~/svc"),
+        ("My Project", '"{other}"'),
+        ("My Project", "'{other}'"),
+        ("My Project", "~/My\\ Project"),
+    ],
+)
+def test_dash_c_commit_reports_that_repos_head(tmp_path, repo, dirname, target):
+    other = make_repo(tmp_path / dirname, message="other feature")
+    command = f"git -C {target.format(other=other)} commit -m x"
+    out = json.loads(run_hook(repo, payload(command), home=tmp_path))
     context = out["hookSpecificOutput"]["additionalContext"]
     assert f"Code committed at {head_sha(other)}" in context
     assert head_sha(repo) not in context
@@ -178,9 +197,60 @@ def test_silent_when_head_is_not_a_fresh_commit(stale_repo, command):
     assert run_hook(stale_repo, payload(command)) == ""
 
 
-def test_silent_when_latest_reflog_entry_is_not_a_commit(repo):
-    subprocess.run(["git", "reset", "-q", "--soft", "HEAD"], cwd=repo, check=True)
-    assert run_hook(repo, payload("git commit -m x")) == ""
+def test_silent_when_recent_reflog_entries_hold_no_commit(stale_repo):
+    git(stale_repo, "checkout", "-q", "-b", "other")
+    assert run_hook(stale_repo, payload("git commit -m x && git checkout -b other")) == ""
+
+
+def test_chained_commit_then_slow_push_still_fires(tmp_path):
+    repo = make_repo(tmp_path / "repo", age_seconds=300)
+    out = json.loads(run_hook(repo, payload("git commit -m x && git push")))
+    assert f"Code committed at {head_sha(repo)}" in out["hookSpecificOutput"]["additionalContext"]
+
+
+def test_chained_commit_then_checkout_reports_the_commit(repo):
+    git(repo, "checkout", "-q", "-b", "feature")
+    git(repo, "commit", "-q", "--allow-empty", "-m", "feature work")
+    feature_sha = head_sha(repo)
+    git(repo, "checkout", "-q", "-")
+    out = json.loads(run_hook(repo, payload("git commit -m x && git checkout main")))
+    context = out["hookSpecificOutput"]["additionalContext"]
+    assert f"Code committed at {feature_sha}" in context
+    assert head_sha(repo) not in context
+    assert run_hook(repo, payload("git status")) == ""
+    assert run_hook(repo, payload("git log --oneline")) == ""
+
+
+def test_chained_commit_then_pull_rebase_reports_rewritten_head(tmp_path):
+    upstream = make_repo(tmp_path / "upstream")
+    local = tmp_path / "local"
+    git(tmp_path, "clone", "-q", str(upstream), str(local))
+    git(upstream, "commit", "-q", "--allow-empty", "-m", "upstream work")
+    git(local, "commit", "-q", "--allow-empty", "-m", "mine")
+    before_rebase = head_sha(local)
+    git(local, "pull", "-q", "--rebase")
+    assert head_sha(local) != before_rebase
+    out = json.loads(run_hook(local, payload("git commit -m mine && git pull --rebase && git push")))
+    context = out["hookSpecificOutput"]["additionalContext"]
+    assert f"Code committed at {head_sha(local)}" in context
+    assert before_rebase not in context
+
+
+def test_rebase_on_another_branch_does_not_replace_the_commit(repo):
+    base = git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    git(repo, "checkout", "-q", "-b", "other")
+    git(repo, "commit", "-q", "--allow-empty", "-m", "other work")
+    git(repo, "checkout", "-q", base)
+    git(repo, "commit", "-q", "--allow-empty", "-m", "base moves")
+    git(repo, "checkout", "-q", "-b", "feature")
+    git(repo, "commit", "-q", "--allow-empty", "-m", "feature work")
+    feature_sha = head_sha(repo)
+    git(repo, "checkout", "-q", "other")
+    git(repo, "rebase", "-q", base)
+    command = f"git commit -m f && git checkout other && git rebase {base}"
+    context = json.loads(run_hook(repo, payload(command)))["hookSpecificOutput"]["additionalContext"]
+    assert f"Code committed at {feature_sha}" in context
+    assert head_sha(repo) not in context
 
 
 def test_reproduction_git_log_whose_output_mentions_git_commit(repo):
@@ -209,7 +279,9 @@ def test_silent_when_scan_evidence_exists(repo):
     assert run_hook(repo, payload("git commit -m x")) == ""
 
 
-@pytest.mark.parametrize("command", REAL_COMMITS[:6] + REAL_COMMITS[-1:])
+@pytest.mark.parametrize(
+    "command", REAL_COMMITS[:6] + REAL_COMMITS[-1:] + ["cat <<-EOF\n\tgit commit -m x\n\tEOF\ngit commit -m y"]
+)
 def test_without_jq_fires_on_real_git_commit(repo, no_jq_path, command):
     out = json.loads(run_hook(repo, payload(command), path=no_jq_path))
     assert f"Code committed at {head_sha(repo)}" in out["hookSpecificOutput"]["additionalContext"]

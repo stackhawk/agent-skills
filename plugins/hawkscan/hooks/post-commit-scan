@@ -25,17 +25,17 @@ else
     | sed -E 's/^.*"tool_input"[[:space:]]*:[[:space:]]*\{//' \
     | grep -oE '"command"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"' | head -1 \
     | sed -E 's/^"command"[[:space:]]*:[[:space:]]*"//; s/"$//; s/\\n/\
-/g; s/\\"/"/g; s/\\\\/\\/g' || true)
+/g; s/\\t/	/g; s/\\"/"/g; s/\\\\/\\/g' || true)
 fi
 
 if [ -z "$command_text" ]; then
   exit 0
 fi
 
-# Is the command a real `git commit`? Drop heredoc bodies (text, not commands), replace
-# quoted strings with a placeholder (so a commit message or `echo "git commit"` cannot
-# match), split into simple commands, and require one to start with:
-# [VAR=x ...] git [-C dir | -c k=v | --no-pager | -p | -P ...] commit
+# Is the command a real `git commit`? Drop heredoc bodies (text, not commands), unquote
+# strings with their blanks, newlines and separators encoded as \021-\031 (so a commit
+# message or `echo "git commit"` cannot start a command), split into simple commands, and
+# require one to start with: [VAR=x ...] git [-C dir | -c k=v | --no-pager | -p | -P ...] commit
 simple_commands=$(printf '%s\n' "$command_text" \
   | awk '
       n { line = $0; if (tabs[k]) sub(/^\t+/, "", line); if (line == delims[k] && ++k > n) n = 0; next }
@@ -49,9 +49,19 @@ simple_commands=$(printf '%s\n' "$command_text" \
           delims[++n] = d; tabs[n] = (substr(op, 3, 1) == "-")
         }
       }' \
-  | tr '\n' '\001' \
-  | sed -E "s/\"[^\"]*\"/Q/g; s/'[^']*'/Q/g" \
-  | tr '\001' ';' \
+  | awk '
+      {
+        s = $0; out = ""
+        for (i = 1; i <= length(s); i++) {
+          c = substr(s, i, 1); lit = 0
+          if (q == "" && (c == "\"" || c == "\047")) { q = c; continue }
+          if (c == q) { q = ""; continue }
+          if (c == "\\" && q != "\047" && i < length(s)) { c = substr(s, ++i, 1); lit = 1 }
+          if ((q != "" || lit) && (k = index(" \t;|&()`", c))) c = substr("\021\022\023\024\025\026\027\030", k, 1)
+          out = out c
+        }
+        printf "%s%s", out, (q == "" ? "\n" : "\031")
+      }' \
   | sed -E 's/&&|\|\|/;/g' \
   | tr ';|&()`' '\n\n\n\n\n\n')
 git_commit_re='^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*([^[:space:]]*/)?git([[:space:]]+(-[Cc][[:space:]]+[^[:space:]]+|--no-pager|-[pP]))*[[:space:]]+commit([[:space:]]|$)'
@@ -60,14 +70,22 @@ if [ -z "$commit_line" ]; then
   exit 0
 fi
 
-# Resolve the repo the commit went to: follow `git -C <dir>`. A commit that names its
-# repository another way (GIT_DIR=, GIT_WORK_TREE=) is not reported.
+# Resolve the repo the commit went to: follow `git -C <dir>` (decoded, with a leading ~
+# expanded). A commit that names its repository another way (GIT_DIR=, GIT_WORK_TREE=)
+# is not reported.
 read -ra words <<< "$commit_line"
 git_args=(-C .)
 prev=""
 for word in "${words[@]}"; do
   case "$prev" in
-    -C) git_args+=(-C "$word") ;;
+    -C)
+      dir=$(printf '%s' "$word" | tr '\021-\031' ' \t;|&()`\n')
+      case "$dir" in
+        "~") dir=$HOME ;;
+        "~/"*) dir=$HOME/${dir#"~/"} ;;
+      esac
+      git_args+=(-C "$dir")
+      ;;
     -c) ;;
     *)
       case "$word" in
@@ -79,25 +97,38 @@ for word in "${words[@]}"; do
   prev=$word
 done
 
-# Report only a commit that was just made: HEAD's latest reflog entry in that repo must
-# be a commit from the last minute. A failed commit, a `cd` elsewhere, or a repo outside
-# a git checkout leaves this unmet, and the hook stays silent.
-reflog=$(git "${git_args[@]}" reflog -1 --date=unix --format='%gd %gs' 2>/dev/null || true)
-reflog_time=${reflog#*@\{}
-reflog_time=${reflog_time%%\}*}
-case "$reflog_time" in
-  ''|*[!0-9]*) exit 0 ;;
-esac
-case "${reflog#*\} }" in
-  commit*) ;;
-  *) exit 0 ;;
-esac
-if [ $(( $(date +%s) - reflog_time )) -gt 60 ]; then
+# Report only a commit that was just made: the newest commit entry (commit, amend, merge)
+# in that repo's HEAD reflog from the last 10 minutes. Later entries from the same command
+# (a checkout, a pull --rebase) may follow it; when a rebase on the same branch rewrote
+# it, report HEAD. No such entry (a failed commit with no other recent commit, a repo
+# outside a git checkout) keeps the hook silent.
+reflog=$(git "${git_args[@]}" reflog -n 50 --date=unix --format='%gd %H %gs' 2>/dev/null || true)
+now=$(date +%s)
+commit_sha=""
+moved=false
+rebased=false
+while read -r selector sha subject; do
+  entry_time=${selector#*@\{}
+  entry_time=${entry_time%\}}
+  case "$entry_time" in
+    ''|*[!0-9]*) break ;;
+  esac
+  if [ $(( now - entry_time )) -gt 600 ]; then
+    break
+  fi
+  case "$subject" in
+    commit*) commit_sha=$sha; break ;;
+    checkout:*) moved=true ;;
+    *rebase*finish*) rebased=true ;;
+  esac
+done <<< "$reflog"
+if [ -z "$commit_sha" ]; then
   exit 0
 fi
-
-commit_sha=$(git "${git_args[@]}" rev-parse HEAD 2>/dev/null || echo "unknown")
-short_sha=$(git "${git_args[@]}" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+if [ "$rebased" = true ] && [ "$moved" = false ]; then
+  commit_sha=$(git "${git_args[@]}" rev-parse HEAD 2>/dev/null || echo "$commit_sha")
+fi
+short_sha=$(git "${git_args[@]}" rev-parse --short "$commit_sha" 2>/dev/null || echo "unknown")
 
 # Check for scan evidence already in this session (avoid double-triggering)
 # Look for scan-related commits made after our commit
