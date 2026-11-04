@@ -38,6 +38,7 @@ fi
 # commit message or `echo "git commit"` cannot start a command), then the command is split
 # into simple commands, one of which must start with:
 # [! { if then elif else do while until time ...] [VAR=x ...] git [-C dir | -c k=v | --no-pager | -p | -P ...] commit
+# shellcheck disable=SC2020 # tr maps each separator character to a newline
 simple_commands=$(printf '%s\n' "$command_text" \
   | awk '
       n { line = $0; if (tabs[k]) sub(/^\t+/, "", line); if (line == delims[k] && ++k > n) n = 0; next }
@@ -82,6 +83,7 @@ for word in "${words[@]}"; do
   case "$prev" in
     -C)
       dir=$(printf '%s' "$word" | tr '\021-\031' ' \t;|&()`\n')
+      # shellcheck disable=SC2088 # matching a literal ~ to expand it by hand
       case "$dir" in
         "~") dir=$HOME ;;
         "~/"*) dir=$HOME/${dir#"~/"} ;;
