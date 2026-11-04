@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PostToolUse hook for hawkscan plugin
-# Fires after Bash tool use. If the command was a git commit, outputs the
+# Fires after Bash tool use. If the command just made a git commit, outputs the
 # commit SHA and instructs the agent to run HawkScan against it.
 
 set -euo pipefail
@@ -24,35 +24,80 @@ else
   command_text=$(printf '%s' "$tool_input" \
     | sed -E 's/^.*"tool_input"[[:space:]]*:[[:space:]]*\{//' \
     | grep -oE '"command"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"' | head -1 \
-    | sed -E 's/^"command"[[:space:]]*:[[:space:]]*"//; s/"$//; s/\\n/;/g; s/\\"/"/g; s/\\\\/\\/g' || true)
+    | sed -E 's/^"command"[[:space:]]*:[[:space:]]*"//; s/"$//; s/\\n/\
+/g; s/\\"/"/g; s/\\\\/\\/g' || true)
 fi
 
 if [ -z "$command_text" ]; then
   exit 0
 fi
 
-# Is the command a real `git commit`? Replace quoted strings with a placeholder (so a
-# commit message or `echo "git commit"` cannot match), split into simple commands,
-# and require one to start with: [VAR=x ...] git [global options] commit
-simple_commands=$(printf '%s' "$command_text" \
+# Is the command a real `git commit`? Drop heredoc bodies (text, not commands), replace
+# quoted strings with a placeholder (so a commit message or `echo "git commit"` cannot
+# match), split into simple commands, and require one to start with:
+# [VAR=x ...] git [-C dir | -c k=v | --no-pager | -p | -P ...] commit
+simple_commands=$(printf '%s\n' "$command_text" \
+  | awk '
+      n { line = $0; if (tabs[k]) sub(/^\t+/, "", line); if (line == delims[k] && ++k > n) n = 0; next }
+      {
+        print; rest = " " $0; k = 1
+        while (match(rest, /<<-?[ \t]*[^ \t;&|<>()]+/)) {
+          op = substr(rest, RSTART, RLENGTH); before = substr(rest, RSTART - 1, 1)
+          rest = substr(rest, RSTART + RLENGTH)
+          if (before == "<") continue
+          d = op; sub(/^<<-?[ \t]*/, "", d); gsub(/[\\"\047]/, "", d)
+          delims[++n] = d; tabs[n] = (substr(op, 3, 1) == "-")
+        }
+      }' \
   | tr '\n' '\001' \
   | sed -E "s/\"[^\"]*\"/Q/g; s/'[^']*'/Q/g" \
   | tr '\001' ';' \
   | sed -E 's/&&|\|\|/;/g' \
   | tr ';|&()`' '\n\n\n\n\n\n')
-git_commit_re='^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*([^[:space:]]*/)?git([[:space:]]+(-C[[:space:]]+[^[:space:]]+|-c[[:space:]]+[^[:space:]]+|--[A-Za-z-]+(=[^[:space:]]*)?|-[pP]))*[[:space:]]+commit([[:space:]]|$)'
-if ! printf '%s\n' "$simple_commands" | grep -qE "$git_commit_re"; then
+git_commit_re='^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*([^[:space:]]*/)?git([[:space:]]+(-[Cc][[:space:]]+[^[:space:]]+|--no-pager|-[pP]))*[[:space:]]+commit([[:space:]]|$)'
+commit_line=$(printf '%s\n' "$simple_commands" | grep -E "$git_commit_re" | tail -n 1 || true)
+if [ -z "$commit_line" ]; then
   exit 0
 fi
 
-# It was a git commit — check if we're in a git repo
-if ! git rev-parse --git-dir > /dev/null 2>&1; then
+# Resolve the repo the commit went to: follow `git -C <dir>`. A commit that names its
+# repository another way (GIT_DIR=, GIT_WORK_TREE=) is not reported.
+read -ra words <<< "$commit_line"
+git_args=(-C .)
+prev=""
+for word in "${words[@]}"; do
+  case "$prev" in
+    -C) git_args+=(-C "$word") ;;
+    -c) ;;
+    *)
+      case "$word" in
+        GIT_DIR=*|GIT_WORK_TREE=*) exit 0 ;;
+        commit) break ;;
+      esac
+      ;;
+  esac
+  prev=$word
+done
+
+# Report only a commit that was just made: HEAD's latest reflog entry in that repo must
+# be a commit from the last minute. A failed commit, a `cd` elsewhere, or a repo outside
+# a git checkout leaves this unmet, and the hook stays silent.
+reflog=$(git "${git_args[@]}" reflog -1 --date=unix --format='%gd %gs' 2>/dev/null || true)
+reflog_time=${reflog#*@\{}
+reflog_time=${reflog_time%%\}*}
+case "$reflog_time" in
+  ''|*[!0-9]*) exit 0 ;;
+esac
+case "${reflog#*\} }" in
+  commit*) ;;
+  *) exit 0 ;;
+esac
+if [ $(( $(date +%s) - reflog_time )) -gt 60 ]; then
   exit 0
 fi
 
-# Get the HEAD commit SHA
-commit_sha=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
-short_sha=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+commit_sha=$(git "${git_args[@]}" rev-parse HEAD 2>/dev/null || echo "unknown")
+short_sha=$(git "${git_args[@]}" rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 # Check for scan evidence already in this session (avoid double-triggering)
 # Look for scan-related commits made after our commit
@@ -61,7 +106,7 @@ if [ -f "findings.json" ] || [ -f "hawk_scan_output.json" ]; then
   scan_evidence="true"
 fi
 # Check if there's a very recent scan-related commit (within last 5 minutes)
-if git log --since="5 minutes ago" --oneline 2>/dev/null | grep -iE "scan|hawkscan|security fix|vulnerability|resolve CWE" >/dev/null 2>&1; then
+if git "${git_args[@]}" log --since="5 minutes ago" --oneline 2>/dev/null | grep -iE "scan|hawkscan|security fix|vulnerability|resolve CWE" >/dev/null 2>&1; then
   scan_evidence="true"
 fi
 

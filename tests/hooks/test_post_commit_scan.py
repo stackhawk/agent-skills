@@ -5,6 +5,10 @@ then fell back to grepping the whole payload for `git commit`. The payload inclu
 tool's output, so any command whose output mentioned "git commit" (a `git log`, a `cat` of
 the hook itself) told the agent "Code committed at <sha>" and prompted a scan.
 
+It must also never report a commit that was not just made: heredoc bodies are text, a
+commit to another repo is reported from that repo, and a HEAD whose latest reflog entry is
+not a fresh commit (a failed commit, a `cd` elsewhere) keeps the hook silent.
+
 Each case runs the real script against a throwaway git repo with a PostToolUse-shaped
 payload. The no-jq cases run it with a PATH that has no `jq` (the hook has a fallback).
 """
@@ -12,6 +16,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 
 import pytest
 
@@ -19,7 +24,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 HOOK = os.path.join(REPO_ROOT, "plugins/hawkscan/hooks/post-commit-scan")
 
 # Tools the hook shells out to; a PATH holding only these has no jq.
-NO_JQ_TOOLS = ["git", "grep", "sed", "tr", "cat", "head", "bash", "env", "dirname"]
+NO_JQ_TOOLS = ["git", "grep", "sed", "tr", "cat", "head", "tail", "awk", "date", "bash", "env", "dirname"]
 
 GIT_LOG_OUTPUT = (
     "d840d01 Code committed at d840d01\n"
@@ -40,9 +45,8 @@ def payload(command, output="", **extra):
     return json.dumps(body)
 
 
-@pytest.fixture
-def repo(tmp_path):
-    path = tmp_path / "repo"
+def make_repo(path, message="add feature", age_seconds=0):
+    """A git repo whose HEAD is a commit made `age_seconds` ago."""
     path.mkdir()
     env = {
         **os.environ,
@@ -50,10 +54,21 @@ def repo(tmp_path):
         "GIT_AUTHOR_EMAIL": "t@example.com",
         "GIT_COMMITTER_NAME": "t",
         "GIT_COMMITTER_EMAIL": "t@example.com",
+        "GIT_COMMITTER_DATE": f"{int(time.time()) - age_seconds} +0000",
     }
-    for args in (["init", "-q"], ["commit", "-q", "--allow-empty", "-m", "add feature"]):
+    for args in (["init", "-q"], ["commit", "-q", "--allow-empty", "-m", message]):
         subprocess.run(["git", *args], cwd=path, env=env, check=True)
     return path
+
+
+@pytest.fixture
+def repo(tmp_path):
+    return make_repo(tmp_path / "repo")
+
+
+@pytest.fixture
+def stale_repo(tmp_path):
+    return make_repo(tmp_path / "repo", age_seconds=3600)
 
 
 @pytest.fixture
@@ -97,11 +112,18 @@ REAL_COMMITS = [
     "git add -A; git commit -m x",
     "cd sub && git commit -am x",
     "GIT_AUTHOR_NAME=a git commit -m x",
-    "git -C /tmp/repo commit -m x",
     "git -c user.name=a commit -m x",
     "git commit --amend --no-edit",
     "git commit -m \"$(cat <<'EOF'\nfix: handle it\n\nBody mentioning git log.\nEOF\n)\"",
     "make test\ngit commit -m x",
+    "cat > notes.md <<'EOF'\nDon't forget\nEOF\ngit commit -m x",
+]
+
+HEREDOC_NOT_COMMITS = [
+    "cat > /tmp/pr-body.md <<'EOF'\n- now fires only on a real `git commit`\nEOF",
+    "cat > release.sh <<'EOF'\ngit add -A\ngit commit -m release\nEOF",
+    "gh pr create --body-file - <<'EOF'\nDon't run `git commit` here\nEOF",
+    "cat <<-EOF > release.sh\n\tgit commit -m release\n\tEOF",
 ]
 
 NOT_COMMITS = [
@@ -116,7 +138,11 @@ NOT_COMMITS = [
     'grep -rn "git commit" docs/',
     "git log --grep='git commit'",
     "git config alias.ci commit",
-]
+    "git --git-dir=.git commit -m x",
+    "git --work-tree=. commit -m x",
+    "GIT_DIR=.git git commit -m x",
+    "GIT_WORK_TREE=. git commit -m x",
+] + HEREDOC_NOT_COMMITS
 
 
 @pytest.mark.parametrize("command", REAL_COMMITS)
@@ -132,6 +158,29 @@ def test_silent_on_other_commands_even_when_output_mentions_git_commit(repo, com
     # The tool output (what the old fallback grepped) mentions "git commit" in every case.
     stdin = payload(command, output="git commit -m x\n" + GIT_LOG_OUTPUT)
     assert run_hook(repo, stdin) == ""
+
+
+@pytest.mark.parametrize("dash_c", ["abs", "rel"])
+def test_dash_c_commit_reports_that_repos_head(tmp_path, repo, dash_c):
+    other = make_repo(tmp_path / "other", message="other feature")
+    target = str(other) if dash_c == "abs" else "../other"
+    out = json.loads(run_hook(repo, payload(f"git -C {target} commit -m x")))
+    context = out["hookSpecificOutput"]["additionalContext"]
+    assert f"Code committed at {head_sha(other)}" in context
+    assert head_sha(repo) not in context
+
+
+@pytest.mark.parametrize(
+    "command", ["git commit -m x", "git commit -m x; git status", "cd sub && git commit -m x"]
+)
+def test_silent_when_head_is_not_a_fresh_commit(stale_repo, command):
+    """A failed commit or a commit elsewhere leaves an old HEAD, which is not reported."""
+    assert run_hook(stale_repo, payload(command)) == ""
+
+
+def test_silent_when_latest_reflog_entry_is_not_a_commit(repo):
+    subprocess.run(["git", "reset", "-q", "--soft", "HEAD"], cwd=repo, check=True)
+    assert run_hook(repo, payload("git commit -m x")) == ""
 
 
 def test_reproduction_git_log_whose_output_mentions_git_commit(repo):
@@ -160,13 +209,13 @@ def test_silent_when_scan_evidence_exists(repo):
     assert run_hook(repo, payload("git commit -m x")) == ""
 
 
-@pytest.mark.parametrize("command", REAL_COMMITS[:6])
+@pytest.mark.parametrize("command", REAL_COMMITS[:6] + REAL_COMMITS[-1:])
 def test_without_jq_fires_on_real_git_commit(repo, no_jq_path, command):
     out = json.loads(run_hook(repo, payload(command), path=no_jq_path))
     assert f"Code committed at {head_sha(repo)}" in out["hookSpecificOutput"]["additionalContext"]
 
 
-@pytest.mark.parametrize("command", NOT_COMMITS[:5])
+@pytest.mark.parametrize("command", NOT_COMMITS[:5] + HEREDOC_NOT_COMMITS[:3])
 def test_without_jq_silent_on_other_commands(repo, no_jq_path, command):
     stdin = payload(command, output="git commit -m x\n" + GIT_LOG_OUTPUT)
     assert run_hook(repo, stdin, path=no_jq_path) == ""
