@@ -269,6 +269,27 @@ def test_rebase_on_another_branch_does_not_replace_the_commit(repo, switch):
     assert head_sha(repo) not in context
 
 
+def test_fires_on_signed_commit_with_log_show_signature_on(tmp_path):
+    keygen = shutil.which("ssh-keygen")
+    if keygen is None:
+        pytest.skip("ssh-keygen is needed to sign a commit")
+    key = tmp_path / "signing-key"
+    subprocess.run([keygen, "-q", "-t", "ed25519", "-N", "", "-f", str(key)], check=True)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q")
+    for name, value in (
+        ("gpg.format", "ssh"),
+        ("user.signingkey", str(key)),
+        ("commit.gpgsign", "true"),
+        ("log.showSignature", "true"),
+    ):
+        git(repo, "config", name, value)
+    git(repo, "commit", "-q", "--allow-empty", "-m", "signed")
+    out = json.loads(run_hook(repo, payload("git commit -m signed")))
+    assert f"Code committed at {head_sha(repo)}" in out["hookSpecificOutput"]["additionalContext"]
+
+
 def test_reproduction_git_log_whose_output_mentions_git_commit(repo):
     """Observed live: `git log` printed "Code committed at d840d01"."""
     assert run_hook(repo, payload("git log --oneline -5", output=GIT_LOG_OUTPUT)) == ""
