@@ -37,3 +37,19 @@ def test_no_hawk_agent_set_distinguishes_default_mention():
     assert bad["no_hawk_agent_set"] is False
     good = _by_id(ParsedRun(output_text="The ${HAWK_AGENT:none} default already resolves to none in CI."))
     assert good["no_hawk_agent_set"] is True
+
+
+def test_install_script_path_line_requires_provider_path_mechanism():
+    gitlab = _by_id(ParsedRun(output_text='- curl -fsSL https://download.stackhawk.com/hawk/install.sh | HAWK_INSTALL_DIR="$HOME/.local/bin" sh\n- export PATH="$HOME/.local/bin:$PATH"'))
+    assert gitlab["install_script_path_line"] is True
+    circleci = _by_id(ParsedRun(output_text="echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> \"$BASH_ENV\""))
+    assert circleci["install_script_path_line"] is True
+    missing = _by_id(ParsedRun(output_text="- curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh\n- hawk scan"))
+    assert missing["install_script_path_line"] is False
+
+
+def test_install_script_install_dir_requires_local_bin():
+    good = _by_id(ParsedRun(output_text='curl -fsSL https://download.stackhawk.com/hawk/install.sh | HAWK_INSTALL_DIR="$HOME/.local/bin" sh'))
+    assert good["install_script_install_dir"] is True
+    default_dir = _by_id(ParsedRun(output_text='curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh\nexport PATH="$HOME/.hawk/bin:$PATH"'))
+    assert default_dir["install_script_install_dir"] is False

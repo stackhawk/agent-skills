@@ -142,17 +142,48 @@
     {
       "id": "execution_shape_appropriate",
       "phase": "step_4",
-      "description": "The agent picks a sensible execution shape — the GHA action/image, or the docker image / CLI for other providers.",
+      "description": "The agent picks a sensible execution shape — the GHA action or Azure extension, the hawk CLI install script on other shell runners, or the docker image.",
       "type": "output_contains",
       "signals": [
         "stackhawk/hawkscan-action",
         "stackhawk/hawkscan:latest",
         "stackhawk/hawkscan",
-        "download.stackhawk.com/hawk"
+        "download.stackhawk.com/hawk",
+        "HawkScanInstall",
+        "RunHawkScan"
       ],
       "applies_to": ["hci-01","hci-02","hci-03","hci-04","hci-05","hci-06","hci-07","hci-08","hci-09","hci-10","hci-13"],
       "severity": "warning",
-      "failure_guidance": "Tiered preference: GHA native action > docker image > CLI download."
+      "failure_guidance": "Tiered preference: native integration (GHA action, Azure extension) > hawk CLI install script > docker image."
+    },
+    {
+      "id": "install_script_path_line",
+      "phase": "step_5",
+      "description": "On install-script runners, the workflow puts ~/.local/bin on the PATH with the provider's mechanism (same-shell export, CircleCI $BASH_ENV, $GITHUB_PATH, or ##vso[task.prependpath]), because the hawk CLI install script never changes the PATH.",
+      "type": "output_contains",
+      "signals": [
+        "export path=\"$home/.local/bin:$path\"",
+        "export path=\"${home}/.local/bin:${path}\"",
+        "/.local/bin\" >> \"$github_path\"",
+        "##vso[task.prependpath]"
+      ],
+      "applies_to": ["hci-06","hci-07","hci-08"],
+      "severity": "warning",
+      "failure_guidance": "Without the provider's PATH line, the step that runs hawk fails with 'hawk: command not found'. See the PATH table in references/execution-shapes.md."
+    },
+    {
+      "id": "install_script_install_dir",
+      "phase": "step_5",
+      "description": "On install-script runners, the hawk CLI install script runs with HAWK_INSTALL_DIR set to ~/.local/bin, not the default ~/.hawk/bin that hawk scan replaces with its runtime (ENG-1356).",
+      "type": "output_contains",
+      "signals": [
+        "hawk_install_dir=\"$home/.local/bin\"",
+        "hawk_install_dir=\"${home}/.local/bin\"",
+        "hawk_install_dir=$home/.local/bin"
+      ],
+      "applies_to": ["hci-06","hci-07","hci-08"],
+      "severity": "warning",
+      "failure_guidance": "In the default ~/.hawk/bin, the first hawk scan deletes the hawk binary, so later hawk commands and cached installs find nothing. Set HAWK_INSTALL_DIR=\"$HOME/.local/bin\"."
     },
     {
       "id": "exit_code_42_handled",

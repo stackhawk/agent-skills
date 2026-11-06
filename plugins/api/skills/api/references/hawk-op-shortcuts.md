@@ -10,6 +10,10 @@ See `SKILL.md` for the full workflow.
 ## Setup (once) {#setup-once}
 
 **Install the combined `hawk` CLI** — a single self-contained binary (no Java needed).
+For a local install (by hand or in the developer's agent session), follow the downloads page
+(https://docs.stackhawk.com/downloads/hawkscan/): macOS → Homebrew, Linux → the hawk CLI
+install script, Windows → the MSI installer. Fall back to the install script on macOS or
+Windows only if the primary method isn't available or fails.
 
 macOS — Homebrew (recommended):
 
@@ -19,27 +23,51 @@ brew trust stackhawk/cli
 brew install hawk
 ```
 
-Otherwise resolve the binary from the manifest (the source of truth for the version
-and every download URL, `https://download.stackhawk.com/hawkdocs/hawk.manifest.json`):
+Windows — MSI installer (recommended; needs administrator rights, adds `hawk` to the system
+PATH — open a new terminal afterwards):
 
-```bash
-# macOS / Linux — resolve the right binary from the manifest, then install
-MANIFEST=https://download.stackhawk.com/hawkdocs/hawk.manifest.json
-case "$(uname -s)/$(uname -m)" in
-  Darwin/arm64)              GROUP=darwin-arm64 ;;
-  Darwin/x86_64)             GROUP=darwin-x64 ;;
-  Linux/x86_64)              GROUP=linux-x64 ;;
-  Linux/aarch64|Linux/arm64) GROUP=linux-aarch64 ;;
-esac
-url=$(curl -fsSL "$MANIFEST" | jq -r --arg g "$GROUP" \
-  '.latest.assets[] | select(.asset.group == $g and (.url | endswith("/hawk"))) | .url')
-curl -fsSL "$url" -o hawk && chmod +x hawk && sudo mv hawk /usr/local/bin/hawk
+```powershell
+$ProgressPreference = 'SilentlyContinue'
+$Version  = (Invoke-WebRequest https://api.stackhawk.com/hawkscan/version -UseBasicParsing).Content.Trim()
+$Platform = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'windows-arm64' } else { 'windows-x64' }
+Invoke-WebRequest "https://download.stackhawk.com/hawk/$Version/$Platform/hawk.msi" -OutFile hawk.msi -UseBasicParsing
+Start-Process msiexec.exe -ArgumentList "/i hawk.msi /passive" -Wait
 ```
 
-URL pattern: `https://download.stackhawk.com/hawk/<version>/<group>/hawk[.pkg|.exe|.msi]`
-(`<group>`: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-aarch64`, `windows-x64`,
-`windows-arm64`). macOS `.pkg` and Windows `.msi` installers are also available —
-see `https://docs.stackhawk.com/downloads/`.
+Linux, or the fallback on macOS/Windows — the hawk CLI install script (not this repo's
+`scripts/install.sh`). It installs the latest release after a checksum check, with no `sudo` or `jq`. Set
+`HAWK_INSTALL_DIR` to `~/.local/bin` (`%USERPROFILE%\.local\bin` on Windows) as below — not the
+default `~/.hawk/bin`, because `hawk scan` replaces `~/.hawk/bin` with its runtime, which deletes or breaks a `hawk` installed there.
+**It never changes the PATH** (it only prints a hint), so add the directory for this shell
+and persist it for new sessions:
+
+```bash
+curl -fsSL https://download.stackhawk.com/hawk/install.sh | HAWK_INSTALL_DIR="$HOME/.local/bin" sh
+export PATH="$HOME/.local/bin:$PATH"
+# Persist for new shells in the login shell's profile (idempotent):
+case "$(basename "${SHELL:-sh}")" in
+  zsh)  PROFILE="$HOME/.zshrc" ;;
+  bash) [ "$(uname -s)" = Darwin ] && PROFILE="$HOME/.bash_profile" || PROFILE="$HOME/.bashrc" ;;
+  *)    PROFILE="$HOME/.profile" ;;
+esac
+grep -qs '.local/bin' "$PROFILE" || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$PROFILE"
+```
+
+Windows fallback (PowerShell):
+
+```powershell
+$env:HAWK_INSTALL_DIR = "$env:USERPROFILE\.local\bin"; irm https://download.stackhawk.com/hawk/install.ps1 | iex
+$env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
+# Persist in the user PATH for new terminals:
+$dir  = "$env:USERPROFILE\.local\bin"
+$user = [Environment]::GetEnvironmentVariable('Path', 'User')
+if (($user -split ';') -notcontains $dir) {
+  [Environment]::SetEnvironmentVariable('Path', ((@($dir) + ($user -split ';' | Where-Object { $_ })) -join ';'), 'User')
+}
+```
+
+Tell the user which profile file or PATH setting you changed. Install docs:
+https://docs.stackhawk.com/stackhawk-cli/#install-with-a-script
 
 ```bash
 hawk init --browser    # Browser device-flow auth; writes ~/.hawk/hawk.properties
