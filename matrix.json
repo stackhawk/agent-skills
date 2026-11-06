@@ -1,7 +1,7 @@
 {
   "schema": 2,
-  "tag": "v2.7.3",
-  "run_url": "https://github.com/stackhawk/agent-skills/actions/runs/40949911049",
+  "tag": "v2.7.4",
+  "run_url": "https://github.com/stackhawk/agent-skills/actions/runs/42250710339",
   "combos": [
     {
       "skill": "hawkscan",
@@ -16,8 +16,8 @@
       "skill": "hawkscan",
       "tool": "claude-code",
       "model": "claude-opus-4-7",
-      "passed": 9,
-      "total": 9,
+      "passed": 8,
+      "total": 8,
       "rate": 1.0,
       "status": "ok"
     },
@@ -43,9 +43,9 @@
       "skill": "hawkscan",
       "tool": "codex",
       "model": "o3",
-      "passed": 17,
+      "passed": 21,
       "total": 22,
-      "rate": 0.7727272727272727,
+      "rate": 0.9545454545454546,
       "status": "ok"
     },
     {
@@ -61,9 +61,9 @@
       "skill": "hawkscan",
       "tool": "cursor",
       "model": "default",
-      "passed": 21,
+      "passed": 20,
       "total": 22,
-      "rate": 0.9545454545454546,
+      "rate": 0.9090909090909091,
       "status": "ok"
     },
     {
@@ -79,8 +79,8 @@
       "skill": "api",
       "tool": "claude-code",
       "model": "claude-opus-4-7",
-      "passed": 7,
-      "total": 7,
+      "passed": 9,
+      "total": 9,
       "rate": 1.0,
       "status": "ok"
     },
@@ -104,74 +104,74 @@
     },
     {
       "skill": "api",
-      "tool": "codex",
-      "model": "o3",
-      "passed": 13,
-      "total": 16,
-      "rate": 0.8125,
-      "status": "ok"
-    },
-    {
-      "skill": "api",
-      "tool": "agy",
-      "model": "default",
-      "passed": 0,
-      "total": 0,
-      "rate": null,
-      "status": "no-data"
-    },
-    {
-      "skill": "api",
-      "tool": "cursor",
-      "model": "default",
-      "passed": 16,
-      "total": 16,
-      "rate": 1.0,
-      "status": "ok"
-    },
-    {
-      "skill": "stackhawk-data-seed",
-      "tool": "claude-code",
-      "model": "claude-haiku-4-5-20251001",
-      "passed": 16,
-      "total": 17,
-      "rate": 0.9411764705882353,
-      "status": "ok"
-    },
-    {
-      "skill": "stackhawk-data-seed",
-      "tool": "claude-code",
-      "model": "claude-opus-4-7",
-      "passed": 8,
-      "total": 8,
-      "rate": 1.0,
-      "status": "ok"
-    },
-    {
-      "skill": "stackhawk-data-seed",
-      "tool": "claude-code",
-      "model": "claude-sonnet-4-6",
-      "passed": 16,
-      "total": 17,
-      "rate": 0.9411764705882353,
-      "status": "ok"
-    },
-    {
-      "skill": "stackhawk-data-seed",
-      "tool": "codex",
-      "model": "gpt-5.5",
-      "passed": 17,
-      "total": 17,
-      "rate": 1.0,
-      "status": "ok"
-    },
-    {
-      "skill": "stackhawk-data-seed",
       "tool": "codex",
       "model": "o3",
       "passed": 15,
+      "total": 16,
+      "rate": 0.9375,
+      "status": "ok"
+    },
+    {
+      "skill": "api",
+      "tool": "agy",
+      "model": "default",
+      "passed": 0,
+      "total": 0,
+      "rate": null,
+      "status": "no-data"
+    },
+    {
+      "skill": "api",
+      "tool": "cursor",
+      "model": "default",
+      "passed": 16,
+      "total": 16,
+      "rate": 1.0,
+      "status": "ok"
+    },
+    {
+      "skill": "stackhawk-data-seed",
+      "tool": "claude-code",
+      "model": "claude-haiku-4-5-20251001",
+      "passed": 16,
       "total": 17,
-      "rate": 0.8823529411764706,
+      "rate": 0.9411764705882353,
+      "status": "ok"
+    },
+    {
+      "skill": "stackhawk-data-seed",
+      "tool": "claude-code",
+      "model": "claude-opus-4-7",
+      "passed": 9,
+      "total": 9,
+      "rate": 1.0,
+      "status": "ok"
+    },
+    {
+      "skill": "stackhawk-data-seed",
+      "tool": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "passed": 17,
+      "total": 17,
+      "rate": 1.0,
+      "status": "ok"
+    },
+    {
+      "skill": "stackhawk-data-seed",
+      "tool": "codex",
+      "model": "gpt-5.5",
+      "passed": 17,
+      "total": 17,
+      "rate": 1.0,
+      "status": "ok"
+    },
+    {
+      "skill": "stackhawk-data-seed",
+      "tool": "codex",
+      "model": "o3",
+      "passed": 16,
+      "total": 17,
+      "rate": 0.9411764705882353,
       "status": "ok"
     },
     {
@@ -196,9 +196,9 @@
       "skill": "hawkscan-ci",
       "tool": "claude-code",
       "model": "claude-haiku-4-5-20251001",
-      "passed": 18,
+      "passed": 19,
       "total": 22,
-      "rate": 0.8181818181818182,
+      "rate": 0.8636363636363636,
       "status": "ok"
     },
     {
@@ -206,8 +206,8 @@
       "tool": "claude-code",
       "model": "claude-opus-4-7",
       "passed": 7,
-      "total": 7,
-      "rate": 1.0,
+      "total": 8,
+      "rate": 0.875,
       "status": "ok"
     },
     {
@@ -232,9 +232,9 @@
       "skill": "hawkscan-ci",
       "tool": "codex",
       "model": "o3",
-      "passed": 18,
+      "passed": 20,
       "total": 22,
-      "rate": 0.8181818181818182,
+      "rate": 0.9090909090909091,
       "status": "ok"
     },
     {
@@ -250,9 +250,9 @@
       "skill": "hawkscan-ci",
       "tool": "cursor",
       "model": "default",
-      "passed": 19,
+      "passed": 20,
       "total": 22,
-      "rate": 0.8636363636363636,
+      "rate": 0.9090909090909091,
       "status": "ok"
     },
     {
@@ -268,8 +268,8 @@
       "skill": "optimize",
       "tool": "claude-code",
       "model": "claude-opus-4-7",
-      "passed": 4,
-      "total": 4,
+      "passed": 2,
+      "total": 2,
       "rate": 1.0,
       "status": "ok"
     },
