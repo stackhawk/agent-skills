@@ -10,53 +10,122 @@ non-interactive session (CI, containers, headless agents).
 export HAWK_API_KEY="hawk.xxxxxxxxxxxx"   # from app.stackhawk.com → Settings → API Keys
 ```
 
+## Contents
+- [What `hawk op` emits](#what-hawk-op-emits)
+- [Recipe 1: Org Security Posture](#recipe-1-org-security-posture)
+- [Recipe 2: App Deep Dive](#recipe-2-app-deep-dive)
+- [Recipe 3: Stale Apps](#recipe-3-stale-apps)
+- [Recipe 4: What Changed Since Last Scan](#recipe-4-what-changed-since-last-scan)
+
+---
+
+## What `hawk op` emits
+
+Every recipe below reads only these fields. Do not reach for others — `hawk op scan
+list` does not emit raw API fields such as `applicationId` or `highAlertCount`.
+
+**`hawk op scan list --format json`** → `{"data": [...], "meta": {...}}`, one row per scan:
+
+| Field | Example | Meaning |
+|---|---|---|
+| `id` | `"aaa-bbb-ccc"` | Scan UUID |
+| `app` | `"payment-api"` | App **name** (no app UUID in this output) |
+| `env` | `"Production"` | Environment name |
+| `status` | `"Complete"` | `Complete`, `Failed`, or `Running` |
+| `findings` | `"4H0 47M2 41L0"` | Per severity, `{new}{H\|M\|L}{triaged}`; `--` when none |
+| `duration` | `"11s"` | Human-readable; `--` when absent |
+| `started` | `"3w ago"` / `"2025-08-26"` | Relative under 4 weeks, else a `YYYY-MM-DD` date (UTC) |
+
+`4H0 47M2` reads "4 new High, 0 triaged High; 47 new Medium, 2 triaged Medium".
+"New" counts findings not yet triaged; "triaged" counts promoted, risk-accepted,
+and false-positive findings. A severity with zero of both is omitted.
+These numbers count affected paths, not alert types, so they won't match
+`.severityStats` or Recipe 2's rows.
+
+**`hawk op scan list` flags that matter for reporting:**
+
+- Without `--limit`, it returns only **10** scans. Pass `--limit 10000` for the whole org.
+- Page order is not guaranteed across pages. Add `--sort-by started --sort-dir desc`
+  to get a true newest-first list (sorted client-side by the exact timestamp,
+  up to 10,000 scans).
+- `--status complete` keeps completed scans only. With `--sort-by` it filters after
+  fetching up to 10,000 scans of any status, so check the 10,000-scan cap on an
+  unfiltered list. `--app` takes an app **UUID**, not
+  a name; `--env` takes an environment name.
+
+**`hawk op scan get <SCAN_ID> --format json`** (no `--detail`): the raw scan
+record — `.scan.id`, `.scan.applicationId`, `.scan.applicationName`, `.scan.env`,
+`.scan.status` (`COMPLETED`), `.scan.timestamp` (epoch ms, as a string), and
+`.severityStats` (number of alert types per severity, e.g. `{"High": 4, "Medium": 5}`
+— complete). Its `.applicationAlerts` holds a single sample alert, not the list.
+
+**`hawk op scan get … --detail full --format json`**: `.scan` (`id`,
+`application_name`, `environment`, `status`, `completed_at` — despite the name, the
+scan's start time, left out when unknown), `.summary`
+(`by_severity`, `by_status`), and `.findings[]` — one entry per alert type, with
+`plugin_id`, `plugin_name`, `severity`, `cwe_id`, `total_paths`, and `paths[]`
+(`method`, `uri`, `param`, `status`; `status` `UNKNOWN` means new).
+
+**`hawk op scan get <SCAN_ID> --plugin-id <PLUGIN_ID> --format json`**:
+`.totalCount` is the true number of affected paths for that alert type (a string,
+left out when 0). `.alert.uriCount` counts distinct URIs, so it is lower when one URI
+is hit by several methods or parameters.
+
+**10-row caps:** `hawk op` returns at most **10 alert types per scan** and at most
+**10 paths per alert type** — in `--detail full` and in the default pretty output.
+The 10 alert types are sorted by severity but are not necessarily the most severe
+ones, so a High or Medium type can be missing; `.severityStats` holds the true
+per-severity counts. `total_paths` never exceeds 10; read the true count from
+`.totalCount` of the `--plugin-id` call. Compare `.findings | length` against `.severityStats | add` to
+detect a truncated alert list, and say so when it happens. The complete lists are in the scanner's `hawk scan --json-output` file or
+on the platform scan page.
+
+**Not available from `hawk op` yet:** more than 10 alert types per scan or 10 paths
+per alert type (above),
+more than 10,000 scans in one `scan list` (an app whose newest completed scan is
+older than the 10,000th is missing from Recipe 1 and shows as never scanned in Recipe 3),
+an exact scan start time in `scan list` (only the relative/date `started` string),
+app UUIDs in `scan list` (join to `hawk op app list` by name), team ownership or
+env counts in `hawk op app list` (it emits `id`, `name`, `cloud` only), and scans of
+cloud-type apps in the default `scan list` output. Say so when a user asks for any
+of these.
+
 ---
 
 ## Recipe 1: Org Security Posture
 
 **Question:** Across all my apps, what is the current security situation?
 
-**What it produces:** One row per app showing latest-scan finding counts by
-severity, sorted by High findings descending.
-
-### Step 1 — Fetch all apps and recent scans
+**What it produces:** One row per app + environment from its latest completed
+scan, showing new (untriaged) findings by severity, sorted by High then Medium.
 
 ```bash
-apps=$(hawk op app list --format json)
-scans=$(hawk op scan list --limit 500 --format json)
-```
+# No --status here: hawk op filters after fetching 10,000 scans of any status,
+# so the cap check must see the unfiltered list. Keep completed scans in jq.
+scans=$(hawk op scan list --sort-by started --sort-dir desc \
+    --limit 10000 --format json)
+if [ "$(printf '%s' "${scans}" | jq '.data | length')" -ge 10000 ]; then
+  echo "WARNING: 10,000-scan cap reached; apps whose newest completed scan is older are missing." >&2
+fi
 
-### Step 2 — Build the posture table
+printf '%s' "${scans}" | jq -r '
+  def counts: [.findings | scan("([0-9]+)([HML])([0-9]+)")]
+    | map({(.[1]): {new: (.[0] | tonumber), triaged: (.[2] | tonumber)}})
+    | add // {};
 
-```bash
-# Join latest scan per app to get severity counts
-printf '%s\n%s' "${apps}" "${scans}" | jq -rs '
-  .[0] as $apps | .[1] as $scans |
-
-  # Build app name lookup: applicationId -> name
-  ($apps.data | map({(.id): .name}) | add // {}) as $names |
-
-  # Find latest completed scan per app
-  ($scans.data
-    | group_by(.applicationId)
-    | map(
-        sort_by(.startedTimestamp) | reverse |
-        map(select(.status == "COMPLETED")) | .[0]
-      )
-    | map(select(. != null))
-  ) as $latest |
-
-  # Output sorted by High desc
-  ($latest | sort_by(.highAlertCount // 0 | . * -1))
-  | ["APP", "ENVIRONMENT", "HIGH", "MEDIUM", "LOW", "LAST_SCAN"],
+  # Rows are newest-first, so the first completed row per app + env is its latest scan
+  .data
+  | map(select(.status == "Complete"))
+  | reduce .[] as $s ({}; .[$s.app + "\u0000" + $s.env] //= $s)
+  | [.[] | . + {c: counts}]
+  | sort_by(-(.c.H.new // 0), -(.c.M.new // 0), .app)
+  | ["APP", "ENVIRONMENT", "HIGH", "MEDIUM", "LOW", "TRIAGED", "LAST_SCAN"],
     (.[] | [
-      ($names[.applicationId] // .applicationId),
-      (.environmentName // "—"),
-      (.highAlertCount   // 0 | tostring),
-      (.mediumAlertCount // 0 | tostring),
-      (.lowAlertCount    // 0 | tostring),
-      (.startedTimestamp // "never")
-    ])
+      .app, .env,
+      (.c.H.new // 0), (.c.M.new // 0), (.c.L.new // 0),
+      ([.c[].triaged] | add // 0),
+      .started
+    ] | map(tostring))
   | @tsv
 ' | column -t -s $'\t'
 ```
@@ -64,15 +133,16 @@ printf '%s\n%s' "${apps}" "${scans}" | jq -rs '
 ### Output format
 
 ```
-APP            ENVIRONMENT   HIGH  MEDIUM  LOW  LAST_SCAN
-payment-api    Production    5     12      8    2024-01-15T10:30:00Z
-auth-service   Staging       3     4       1    2024-01-10T09:00:00Z
-admin-portal   Development   0     0       0    2023-11-01T08:00:00Z
+APP            ENVIRONMENT   HIGH  MEDIUM  LOW  TRIAGED  LAST_SCAN
+payment-api    Production    5     12      8    3        1d ago
+auth-service   Staging       3     4       1    0        2w ago
+admin-portal   Development   0     0       0    0        2025-11-01
 ```
 
-> **Note:** `hawk op scan list` returns per-scan alert totals. For live untriaged
-> counts, use `hawk op scan get <SCAN_ID> --detail full --format json` and filter
-> on `triageStatus`.
+> **Note:** these are per-scan counts from each app + env's latest completed scan.
+> HIGH/MEDIUM/LOW are new (untriaged) findings; TRIAGED sums all triaged findings.
+> Apps that share a name merge into one row (`scan list` has no app UUID).
+> For per-finding triage detail, use Recipe 2.
 
 ---
 
@@ -80,78 +150,122 @@ admin-portal   Development   0     0       0    2023-11-01T08:00:00Z
 
 **Question:** What did the last scan of a specific app find?
 
-**What it produces:** All alerts from the most recent scan, grouped by severity,
-with affected URIs expanded for High and Medium findings.
+**What it produces:** The alerts from the most recent completed scan, sorted by severity
+(up to 10 alert types, not necessarily the most severe — see the cap above; the
+true counts are in `.severityStats`), with affected paths expanded for High and
+Medium findings.
 
-### Step 1 — Get the latest scan for the app
+### Step 1 — Get the latest completed scan for the app
+
+`hawk op scan get --app` picks the newest scan even when it failed, so look up the
+newest completed scan first. `scan list --app` takes only a UUID, so resolve the name.
 
 ```bash
 APP_NAME="<your-app-name>"
 
+# Exactly one app must have this name (any case, as hawk op matches it); otherwise set APP_ID to the UUID from hawk op app list
+APP_ID=$(hawk op app list --format json | jq -r --arg n "${APP_NAME}" '
+  [.data[] | select((.name | ascii_downcase) == ($n | ascii_downcase)) | .id]
+  | if length == 1 then .[0] else empty end')
+if [[ -z "${APP_ID}" ]]; then
+  echo "ERROR: no app, or more than one app, is named ${APP_NAME}; set APP_ID to its UUID." >&2
+  exit 1
+fi
+
+SCAN_ID=$(hawk op scan list --app "${APP_ID}" --status complete \
+    --sort-by started --sort-dir desc --limit 1 --format json | jq -r '.data[0].id // empty')
+if [[ -z "${SCAN_ID}" ]]; then
+  echo "ERROR: ${APP_NAME} has no completed scan." >&2
+  exit 1
+fi
+
 # Full findings in one command
-hawk op scan get --app "${APP_NAME}" --detail full --format json > /tmp/scan.json
+hawk op scan get "${SCAN_ID}" --detail full --format json > /tmp/scan.json \
+  || { echo "ERROR: scan get failed for ${SCAN_ID}." >&2; exit 1; }
 
-SCAN_ID=$(jq -r '.scanId' /tmp/scan.json)
-SCAN_TS=$(jq -r '.startedTimestamp' /tmp/scan.json)
+SCAN_STARTED=$(jq -r '.scan.completed_at // "unknown"' /tmp/scan.json)  # holds the start time
+# Total alert types in the scan, to detect the 10-type cap
+STATS=$(hawk op scan get "${SCAN_ID}" --format json) \
+  || { echo "ERROR: scan get failed for ${SCAN_ID}." >&2; exit 1; }
+TOTAL_TYPES=$(printf '%s' "${STATS}" | jq '.severityStats | add // 0')
 
-echo "Latest scan: ${SCAN_ID} (started ${SCAN_TS})"
+echo "Latest scan: ${SCAN_ID} (started ${SCAN_STARTED})"
 echo "Platform URL: https://app.stackhawk.com/scans/${SCAN_ID}"
 ```
 
-### Step 2 — Print alert summary
+### Step 2 — Print the alert summary
 
 ```bash
-jq -r '
-  def sev_rank: if . == "High" then 0 elif . == "Medium" then 1 else 2 end;
+# True affected-path count per alert type (total_paths stops at 10)
+for pid in $(jq -r '.findings[].plugin_id' /tmp/scan.json); do
+  if ! alert=$(hawk op scan get "${SCAN_ID}" --plugin-id "${pid}" --format json); then
+    echo "ERROR: could not read the path count for alert type ${pid}." >&2
+    exit 1
+  fi
+  printf '%s' "${alert}" | jq -c --arg pid "${pid}" '{($pid): ((.totalCount // "0") | tonumber)}'
+done > /tmp/uri_counts.jsonl
+jq -s 'add // {}' /tmp/uri_counts.jsonl > /tmp/uri_counts.json
 
-  .alerts
-  | sort_by(.severity | sev_rank)
-  | ["SEVERITY", "PLUGIN_ID", "ALERT_NAME", "CWE", "AFFECTED_URIS"],
+jq -r --slurpfile counts /tmp/uri_counts.json '
+  .findings
+  | ["SEVERITY", "PLUGIN_ID", "ALERT_NAME", "CWE", "AFFECTED_PATHS"],
     (.[] | [
       .severity,
-      (.pluginId | tostring),
-      .alertName,
-      (.cweId // "—"),
-      (.affectedUriCount | tostring)
+      .plugin_id,
+      .plugin_name,
+      (if .cwe_id then "CWE-\(.cwe_id)" else "—" end),
+      ($counts[0][.plugin_id] // .total_paths | tostring)
     ])
   | @tsv
 ' /tmp/scan.json | column -t -s $'\t'
+
+# Print the truncation note after `column` so it does not widen the table
+SHOWN=$(jq '.findings | length' /tmp/scan.json)
+if [ "${SHOWN}" -lt "${TOTAL_TYPES}" ]; then
+  echo "NOTE: showing ${SHOWN} of ${TOTAL_TYPES} alert types; see the platform for the rest"
+fi
 ```
 
 ### Step 3 — Expand affected paths for High and Medium alerts
 
+Lists up to 10 paths per alert type; when Step 2 shows more, point the user to the
+platform scan page for the rest.
+
 ```bash
 jq -r '
-  .findings[]
-  | select(.severity == "High" or .severity == "Medium")
-  | "=== [\(.severity)] \(.alertName) (plugin \(.pluginId)) ===",
-    (
-      ["METHOD", "URI", "PARAMETER", "TRIAGE_STATUS"],
-      (.uris[] | [
-        .method,
-        .uri,
-        (.parameter // "—"),
-        (.triageStatus // "New")
+  # Empty cells collapse in `column`, so print a dash instead
+  def dash: if . == null or . == "" then "—" else . end;
+
+  ["SEVERITY", "PLUGIN_ID", "METHOD", "URI", "PARAMETER", "TRIAGE_STATUS"],
+  (.findings[]
+    | select(.severity == "High" or .severity == "Medium")
+    | . as $f
+    | .paths[]
+    | [
+        $f.severity,
+        $f.plugin_id,
+        (.method | dash),
+        (.uri | dash),
+        (.param | dash),
+        (if .status == "UNKNOWN" then "New" else .status end)
       ])
-      | @tsv
-    )
+  | @tsv
 ' /tmp/scan.json | column -t -s $'\t'
 ```
 
 ### Output format
 
 ```
-SEVERITY  PLUGIN_ID  ALERT_NAME                         CWE     AFFECTED_URIS
-High      40012      Cross-Site Scripting (Reflected)   CWE-79  3
-High      90022      Application Error Disclosure       —       1
+SEVERITY  PLUGIN_ID  ALERT_NAME                         CWE     AFFECTED_PATHS
+High      40012      Cross Site Scripting (Reflected)   CWE-79  3
+High      90022      Application Error Disclosure       CWE-200 1
 Medium    10038      Content Security Policy (CSP)      —       8
 Low       10096      Timestamp Disclosure               —       2
 
-=== [High] Cross-Site Scripting (Reflected) (plugin 40012) ===
-METHOD  URI                  PARAMETER  TRIAGE_STATUS
-POST    /api/users/search    q          New
-GET     /api/products        name       New
-GET     /api/items/filter    category   Reopened
+SEVERITY  PLUGIN_ID  METHOD  URI                PARAMETER  TRIAGE_STATUS
+High      40012      POST    /api/users/search  q          New
+High      40012      GET     /api/products      name       New
+High      40012      GET     /api/items/filter  category   RISK_ACCEPTED
 ```
 
 **Platform link** (always include when presenting results):
@@ -166,14 +280,20 @@ https://app.stackhawk.com/scans/${SCAN_ID}
 
 **Question:** Which apps have not been scanned recently?
 
-**What it produces:** All apps where the last completed scan is either missing or
-older than 30 days, sorted by staleness (longest gap first).
+**What it produces:** Every app + environment whose latest completed scan is older
+than the threshold, plus apps with no completed scan at all, longest gap first.
 
-### Step 1 — Fetch apps and recent scans
+### Step 1 — Fetch apps and completed scans
 
 ```bash
 apps=$(hawk op app list --format json)
-scans=$(hawk op scan list --limit 500 --format json)
+# No --status here: hawk op filters after fetching 10,000 scans of any status,
+# so the cap check must see the unfiltered list. Keep completed scans in jq.
+scans=$(hawk op scan list --sort-by started --sort-dir desc \
+    --limit 10000 --format json)
+if [ "$(printf '%s' "${scans}" | jq '.data | length')" -ge 10000 ]; then
+  echo "WARNING: 10,000-scan cap reached; environments whose newest completed scan is older are missing, and apps with no newer scan show as never scanned." >&2
+fi
 ```
 
 ### Step 2 — Find stale apps
@@ -182,43 +302,35 @@ scans=$(hawk op scan list --limit 500 --format json)
 STALE_DAYS=30
 
 printf '%s\n%s' "${apps}" "${scans}" | jq -rs --argjson threshold "${STALE_DAYS}" '
-  .[0] as $apps | .[1] as $scans |
+  # Age in whole days from the `started` string ("3w ago" counts as 21)
+  def age_days:
+    if test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$") then
+      (now - (. + "T00:00:00Z" | fromdateiso8601)) / 86400 | floor
+    elif test("^[0-9]+d ago$") then (capture("^(?<n>[0-9]+)").n | tonumber)
+    elif test("^[0-9]+w ago$") then (capture("^(?<n>[0-9]+)").n | tonumber * 7)
+    elif . == "--" then null
+    else 0 end;
 
-  ($apps.data | map({(.id): .name}) | add // {}) as $names |
+  .[0].data as $apps | (.[1].data | map(select(.status == "Complete"))) as $scans |
 
-  ($scans.data
-    | group_by(.applicationId)
-    | map(
-        sort_by(.startedTimestamp) | reverse |
-        map(select(.status == "COMPLETED")) | .[0]
-      )
-    | map(select(. != null))
-    | map({
-        appId: .applicationId,
-        env:   .environmentName,
-        ts:    .startedTimestamp
-      })
-  ) as $latest_scans |
+  # Latest completed scan per app + env (rows are newest-first)
+  ($scans | reduce .[] as $s ({}; .[$s.app + "\u0000" + $s.env] //= $s) | [.[]])
+    as $latest |
+  ($latest | map({(.app): true}) | add // {}) as $scanned |
 
   [
-    ($latest_scans[] |
-      . as $s |
-      (if $s.ts == null then 999999
-       else (now - ($s.ts | sub("\\.[0-9]+Z$"; "Z") | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime)) / 86400 | floor
-       end) as $days |
-      select($days > $threshold) |
-      {
-        app:  ($names[$s.appId] // $s.appId),
-        env:  ($s.env // "—"),
-        last: ($s.ts // "never"),
-        days: (if $s.ts == null then "never scanned" else ($days | tostring) + " days ago" end)
-      }
-    )
+    ($latest[]
+      | (.started | age_days) as $d
+      | select($d != null and $d > $threshold)
+      | {app, env, last: .started, days: $d}),
+    # Cloud-type apps are left out: their scans are not in the default scan list
+    ($apps[]
+      | select(.cloud == "" and ($scanned[.name] | not))
+      | {app: .name, env: "—", last: "never", days: null})
   ]
-  | sort_by(.days | if . == "never scanned" then "zzz" else . end) | reverse
-
-  | ["APP", "ENVIRONMENT", "LAST_SCAN", "STALENESS"],
-    (.[] | [.app, .env, .last, .days])
+  | sort_by(.days // 1e9) | reverse
+  | ["APP", "ENVIRONMENT", "LAST_SCAN", "DAYS_AGO"],
+    (.[] | [.app, .env, .last, (.days // "no completed scan" | tostring)])
   | @tsv
 ' | column -t -s $'\t'
 ```
@@ -226,17 +338,23 @@ printf '%s\n%s' "${apps}" "${scans}" | jq -rs --argjson threshold "${STALE_DAYS}
 ### Output format
 
 ```
-APP            ENVIRONMENT   LAST_SCAN             STALENESS
-admin-portal   QA            never                 never scanned
-auth-service   Development   2023-09-01T08:00:00Z  116 days ago
-payment-api    Staging       2023-11-20T14:00:00Z  55 days ago
+APP            ENVIRONMENT   LAST_SCAN    DAYS_AGO
+admin-portal   —             never        no completed scan
+auth-service   Development   2025-09-01   116
+payment-api    Staging       2025-11-20   55
 ```
+
+> **Precision:** `started` is a `YYYY-MM-DD` date once a scan is 4 weeks old, so
+> ages are within a day for any threshold of 28 days or more (a date counts from
+> midnight UTC, so an age can read up to one day high). Below that,
+> `Nw ago` is rounded down to whole weeks. `hawk op scan list` has no app UUID, so
+> the never-scanned check matches apps by name.
 
 ### Recommendation
 
 For each stale environment, present the following action:
 
-> **Action required:** App `<name>` (`<environmentName>`) has not been scanned in
+> **Action required:** App `<name>` (`<environment>`) has not been scanned in
 > `<N>` days. Run a HawkScan against this environment to refresh the security
 > posture data. See the `hawkscan` plugin for scan configuration and invocation
 > instructions.
@@ -249,47 +367,61 @@ For each stale environment, present the following action:
 
 **What it produces:** Two sections — "New findings" (alerts in the latest scan but
 not in the previous) and "Resolved findings" (alerts in the previous scan but not in
-the latest), diffed by `pluginId`.
+the latest), diffed by plugin ID across the two latest completed scans of one
+environment. `hawk op` returns at most 10 alert types per scan, so an alert type can
+look new or resolved only because it fell outside one scan's 10. Step 2 checks each
+one against the other scan and drops it if it is there.
 
 ### Step 1 — Get the two most recent scans and their alerts
 
 ```bash
-APP_NAME="<your-app-name>"
+APP_ID="<app-uuid>"     # scan list --app takes a UUID; get it from hawk op app list
+ENV_NAME="<env-name>"   # e.g. Production
 
-# List last 2 scans
-hawk op scan list --app "${APP_NAME}" --limit 2 --format json > /tmp/last2.json
+# Last 2 completed scans of this app + env, newest first
+hawk op scan list --app "${APP_ID}" --env "${ENV_NAME}" --status complete \
+    --sort-by started --sort-dir desc --limit 2 --format json > /tmp/last2.json
 
-SCAN_A=$(jq -r '.data[0].scanId' /tmp/last2.json)
-SCAN_B=$(jq -r '.data[1].scanId' /tmp/last2.json)
-TS_A=$(jq -r '.data[0].startedTimestamp' /tmp/last2.json)
-TS_B=$(jq -r '.data[1].startedTimestamp' /tmp/last2.json)
+SCAN_A=$(jq -r '.data[0].id // empty' /tmp/last2.json)
+SCAN_B=$(jq -r '.data[1].id // empty' /tmp/last2.json)
+TS_A=$(jq -r '.data[0].started // empty' /tmp/last2.json)
+TS_B=$(jq -r '.data[1].started // empty' /tmp/last2.json)
 
-echo "Latest scan : ${SCAN_A} (${TS_A})"
-echo "Previous scan: ${SCAN_B} (${TS_B})"
-
-# Guard: need at least 2 scans
-if [[ "${SCAN_A}" == "null" || "${SCAN_B}" == "null" ]]; then
+# Guard: need at least 2 completed scans
+if [[ -z "${SCAN_A}" || -z "${SCAN_B}" ]]; then
   echo "ERROR: Need at least 2 completed scans to compute a diff." >&2
   exit 1
 fi
 
-# Fetch alerts for each
-hawk op scan get "${SCAN_A}" --format json | jq '.alerts' > /tmp/alerts_a.json
-hawk op scan get "${SCAN_B}" --format json | jq '.alerts' > /tmp/alerts_b.json
+echo "Latest scan : ${SCAN_A} (${TS_A})"
+echo "Previous scan: ${SCAN_B} (${TS_B})"
+
+# Fetch the alert types for each (at most 10 per scan) and each scan's total
+for id in "${SCAN_A}" "${SCAN_B}"; do
+  hawk op scan get "${id}" --detail full --format json > "/tmp/detail_${id}.json" \
+    || { echo "ERROR: scan get failed for ${id}." >&2; exit 1; }
+  hawk op scan get "${id}" --format json > "/tmp/stats_${id}.json" \
+    || { echo "ERROR: scan get failed for ${id}." >&2; exit 1; }
+done
+jq '.findings // []' "/tmp/detail_${SCAN_A}.json" > /tmp/alerts_a.json
+jq '.findings // []' "/tmp/detail_${SCAN_B}.json" > /tmp/alerts_b.json
+TOTAL_A=$(jq '.severityStats | add // 0' "/tmp/stats_${SCAN_A}.json")
+TOTAL_B=$(jq '.severityStats | add // 0' "/tmp/stats_${SCAN_B}.json")
 ```
 
-### Step 2 — Diff the alert sets by pluginId
+### Step 2 — Diff the alert sets by plugin ID
 
 ```bash
 diff_result=$(jq -n \
   --slurpfile latest /tmp/alerts_a.json \
-  --slurpfile prev   /tmp/alerts_b.json '
+  --slurpfile prev   /tmp/alerts_b.json \
+  --argjson total_a "${TOTAL_A}" --argjson total_b "${TOTAL_B}" '
   ($latest[0]) as $l | ($prev[0]) as $p |
   {
-    latest_ids: ($l | map(.pluginId | tostring) | unique),
-    prev_ids:   ($p | map(.pluginId | tostring) | unique),
-    latest_map: ($l | map({((.pluginId | tostring)): .}) | add // {}),
-    prev_map:   ($p | map({((.pluginId | tostring)): .}) | add // {})
+    latest_ids: ($l | map(.plugin_id) | unique),
+    prev_ids:   ($p | map(.plugin_id) | unique),
+    latest_map: ($l | map({(.plugin_id): .}) | add // {}),
+    prev_map:   ($p | map({(.plugin_id): .}) | add // {})
   } as $data |
   {
     new_findings: (
@@ -304,16 +436,42 @@ diff_result=$(jq -n \
     ),
     unchanged_count: (
       [$data.latest_ids[], $data.prev_ids[]] | group_by(.) | map(select(length == 2)) | length
-    )
+    ),
+    # true when either scan has more than the 10 alert types hawk op returns
+    partial: (($l | length) < $total_a or ($p | length) < $total_b)
   }
 ')
+
+# Verify each candidate against the other scan. --plugin-id answers for any alert
+# type in the scan, including ones outside the 10 returned; an absent one returns {}.
+present_in() {
+  local alert
+  if ! alert=$(hawk op scan get "$1" --plugin-id "$2" --format json); then
+    echo "ERROR: could not check alert type $2 against scan $1." >&2
+    exit 1
+  fi
+  printf '%s' "${alert}" | jq -e '.alert.pluginId != null' >/dev/null
+}
+not_new=$(for pid in $(printf '%s' "${diff_result}" | jq -r '.new_findings[].plugin_id'); do
+  if present_in "${SCAN_B}" "${pid}"; then echo "${pid}"; fi
+done) || exit 1
+not_resolved=$(for pid in $(printf '%s' "${diff_result}" | jq -r '.resolved_findings[].plugin_id'); do
+  if present_in "${SCAN_A}" "${pid}"; then echo "${pid}"; fi
+done) || exit 1
+not_new=$(printf '%s' "${not_new}" | jq -R . | jq -s .)
+not_resolved=$(printf '%s' "${not_resolved}" | jq -R . | jq -s .)
+
+diff_result=$(printf '%s' "${diff_result}" | jq --argjson nn "${not_new}" --argjson nr "${not_resolved}" '
+  .new_findings |= map(select(.plugin_id as $id | $nn | index($id) | not))
+  | .resolved_findings |= map(select(.plugin_id as $id | $nr | index($id) | not))
+  | .unchanged_count += ($nn | length) + ($nr | length)')
 ```
 
 ### Step 3 — Present the diff
 
 ```bash
 echo "======================================================================"
-echo "SCAN DIFF: ${APP_NAME}"
+echo "SCAN DIFF: ${APP_ID} / ${ENV_NAME}"
 echo "  Latest:   ${SCAN_A}  (${TS_A})"
 echo "  Previous: ${SCAN_B}  (${TS_B})"
 echo "======================================================================"
@@ -323,13 +481,12 @@ echo "--- NEW FINDINGS (appeared in latest scan) ---"
 printf '%s' "${diff_result}" | jq -r '
   if (.new_findings | length) == 0 then "  (none)"
   else
-    ["SEVERITY", "PLUGIN_ID", "ALERT_NAME", "CWE", "AFFECTED_URIS"],
+    ["SEVERITY", "PLUGIN_ID", "ALERT_NAME", "CWE"],
     (.new_findings[] | [
       .severity,
-      (.pluginId | tostring),
-      .alertName,
-      (.cweId // "—"),
-      (.affectedUriCount | tostring)
+      .plugin_id,
+      .plugin_name,
+      (if .cwe_id then "CWE-\(.cwe_id)" else "—" end)
     ])
     | @tsv
   end
@@ -340,13 +497,12 @@ echo "--- RESOLVED FINDINGS (present in previous scan, gone in latest) ---"
 printf '%s' "${diff_result}" | jq -r '
   if (.resolved_findings | length) == 0 then "  (none)"
   else
-    ["SEVERITY", "PLUGIN_ID", "ALERT_NAME", "CWE", "AFFECTED_URIS_PREV"],
+    ["SEVERITY", "PLUGIN_ID", "ALERT_NAME", "CWE"],
     (.resolved_findings[] | [
       .severity,
-      (.pluginId | tostring),
-      .alertName,
-      (.cweId // "—"),
-      (.affectedUriCount | tostring)
+      .plugin_id,
+      .plugin_name,
+      (if .cwe_id then "CWE-\(.cwe_id)" else "—" end)
     ])
     | @tsv
   end
@@ -354,7 +510,8 @@ printf '%s' "${diff_result}" | jq -r '
 
 echo ""
 printf '%s' "${diff_result}" | jq -r \
-  '"Summary: \(.new_findings | length) new, \(.resolved_findings | length) resolved, \(.unchanged_count) unchanged"'
+  '"Summary: \(.new_findings | length) new, \(.resolved_findings | length) resolved, \(.unchanged_count) unchanged",
+   (if .partial then "WARNING: a scan has more than 10 alert types; hawk op returns only 10 (not necessarily the most severe; see severityStats for true counts). The changes listed were checked against the other scan, but changes among the alert types hawk op did not return are missing" else empty end)'
 
 echo ""
 echo "Platform links:"
@@ -366,19 +523,19 @@ echo "  Previous scan: https://app.stackhawk.com/scans/${SCAN_B}"
 
 ```
 ======================================================================
-SCAN DIFF: payment-api
-  Latest:   aaa-bbb-ccc  (2024-01-15T10:00:00Z)
-  Previous: ddd-eee-fff  (2024-01-10T09:00:00Z)
+SCAN DIFF: 0b3c… / Production
+  Latest:   aaa-bbb-ccc  (1d ago)
+  Previous: ddd-eee-fff  (2w ago)
 ======================================================================
 
 --- NEW FINDINGS (appeared in latest scan) ---
-SEVERITY  PLUGIN_ID  ALERT_NAME                        CWE     AFFECTED_URIS
-High      40012      Cross-Site Scripting (Reflected)  CWE-79  3
-Medium    10038      Content Security Policy (CSP)     —       8
+SEVERITY  PLUGIN_ID  ALERT_NAME                        CWE
+High      40012      Cross Site Scripting (Reflected)  CWE-79
+Medium    10038      Content Security Policy (CSP)     —
 
 --- RESOLVED FINDINGS (present in previous scan, gone in latest) ---
-SEVERITY  PLUGIN_ID  ALERT_NAME                        CWE     AFFECTED_URIS_PREV
-Medium    10021      X-Content-Type-Options Header      —       1
+SEVERITY  PLUGIN_ID  ALERT_NAME                        CWE
+Medium    10021      X-Content-Type-Options Header     —
 
 Summary: 2 new, 1 resolved, 4 unchanged
 
@@ -387,7 +544,7 @@ Platform links:
   Previous scan: https://app.stackhawk.com/scans/ddd-eee-fff
 ```
 
-> **Note:** The diff is based on `pluginId` (vulnerability type). An alert counted
+> **Note:** The diff is based on plugin ID (vulnerability type). An alert counted
 > as "resolved" means the scanner no longer detected that vulnerability class — it
 > does not guarantee the underlying issue was fixed in code. Always verify remediation
 > through the platform before closing findings.
