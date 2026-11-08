@@ -202,7 +202,8 @@ strategy, frontend-vs-backend scenarios, and config templates:
      or none. Use the chosen team's `id`.
    - **No team** (none listed, the user chose none, `hawk op` is unavailable, or the list
      fails) → tell the user the app will be visible to everyone in the org; create without
-     `-t` only if they agree.
+     `-t` only if they agree. If they decline, don't create the app; stop onboarding and tell
+     them a team must be chosen or created (an admin can create one).
    ```bash
    hawk create app --name "<repo-name>" --env <env-name> -t <team-id>   # omit -t only per the rules above
    ```
