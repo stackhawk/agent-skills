@@ -160,19 +160,25 @@ first pipeline run, or the scan will fail with a 401.
 
 ## Step 4: Pick the Execution Shape
 
-Three tiers, prefer highest the provider supports:
+Three tiers, take the first that fits:
 
 | Tier | Mechanism | When to use |
 |---|---|---|
-| 1. Native action | `stackhawk/hawkscan-action@v2` | GitHub Actions only |
-| 2. Docker image | `stackhawk/hawkscan:latest` | Anywhere with Docker (GitLab, Jenkins, CircleCI, Azure, Bitbucket, Buildkite, AWS CodeBuild) |
-| 3. Binary download | `hawk.manifest.json` → `download.stackhawk.com/hawk/<version>/<platform>/hawk` (self-contained binary) | Bare shell runners (Travis without sudo, some Spinnaker stages) |
+| 1. Native action | `stackhawk/hawkscan-action@v2` | GitHub Actions |
+| 2. hawk CLI via install script | `curl -fsSL https://download.stackhawk.com/hawk/install.sh \| HAWK_INSTALL_DIR="$HOME/.local/bin" sh` (Windows: `install.ps1`) — self-contained binary, no Java, no Docker | Every other provider (GitLab, Jenkins, CircleCI, Azure, Bitbucket, Buildkite, Travis, AWS CodeBuild, …) |
+| 3. Docker image | `stackhawk/hawkscan:latest` | Fallback only: the runner can't reach `download.stackhawk.com`, the runner is container-only, or the user asks for Docker |
+
+**CLI install rules (Tier 2):**
+- Always set `HAWK_INSTALL_DIR="$HOME/.local/bin"` explicitly — don't rely on the installer's default directory.
+- Make `hawk` reachable in the **same step** that runs it: call it by full path (`"$HOME/.local/bin/hawk" scan`) or `export PATH="$HOME/.local/bin:$PATH"` in that step. CI steps don't read shell-profile edits.
+- The CLI reads the API key from the `API_KEY` env var — map the secret to it (`API_KEY="$HAWK_API_KEY"`).
+- The CLI runs on the runner itself, so it reaches an app on `localhost` directly — no `--network host`.
 
 **Track the latest stable scanner:**
-- Image: use **`stackhawk/hawkscan:latest`** — HawkScan is a security scanner, so CI should run the newest stable build for the freshest checks.
+- CLI: the install script installs the newest stable release by default — HawkScan is a security scanner, so CI should run the newest build for the freshest checks.
 - Action: pin the major (`@v2`) — auto-receives the newest action within v2.
-- CLI: resolve the version + platform binary URL from the manifest (`download.stackhawk.com/hawkdocs/hawk.manifest.json` → `.latest.version` and asset `.url`); it's a single self-contained binary (no Java).
-- **Need fully reproducible builds?** Pin an explicit version (`stackhawk/hawkscan:<X.Y.Z>`, `@vX.Y.Z`, or an image digest) instead — see [`references/execution-shapes.md`](references/execution-shapes.md).
+- Image (fallback): use **`stackhawk/hawkscan:latest`**.
+- **Need fully reproducible builds?** Pin an explicit version (`HAWK_INSTALL_VERSION=<X.Y.Z>` for the install script, `@vX.Y.Z`, `stackhawk/hawkscan:<X.Y.Z>`, or an image digest) instead — see [`references/execution-shapes.md`](references/execution-shapes.md).
 
 See [`references/execution-shapes.md`](references/execution-shapes.md) for the full per-provider mapping.
 
@@ -303,7 +309,7 @@ Per provider:
 | Bitbucket | `artifacts:` block |
 
 Path: the location the invocation shape produces (typically
-`hawkscan-report/` for the action, or `$(pwd)/hawkscan/` for Docker).
+`hawkscan-report/` for the action, or `$(pwd)/hawkscan/` for the CLI and Docker).
 
 Full per-provider workflow examples live in
 [`references/execution-shapes.md`](references/execution-shapes.md).
@@ -331,7 +337,8 @@ After writing/patching the workflow file:
 
 - **Don't generate `stackhawk.yml`.** That's the `hawkscan` skill's surface. If the config is missing, hand off.
 - **Don't set `HAWK_AGENT`.** CI pipelines aren't agents; the `${HAWK_AGENT:none}` default resolves correctly without intervention.
-- **Use `stackhawk/hawkscan:latest` for the scanner image.** It's a security scanner — CI should run the newest stable build for the best detection. Pin an explicit version only when an org reproducibility mandate requires it.
+- **Don't default to Docker off GitHub Actions.** Install the hawk CLI with the install script; use `stackhawk/hawkscan:latest` only for the Tier 3 fallback cases.
+- **Track the latest scanner.** It's a security scanner — CI should run the newest stable build for the best detection. Pin an explicit version (`HAWK_INSTALL_VERSION`) only when an org reproducibility mandate requires it.
 - **Don't inline the API key.** Never, in any form. Always reference the provider's secret store or external secrets manager.
 - **Don't try to set the secret autonomously.** Prompt the user and tell them where to put it.
 - **Don't forget GitLab's key-split rule.** `HAWK_API_KEY` in the form `hawk.<id>.<secret>` triggers GitLab's variable-masking bug. Split into `HAWK_API_ID` + `HAWK_API_SECRET` and reassemble in the job.
