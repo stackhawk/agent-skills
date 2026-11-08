@@ -108,8 +108,9 @@ app with a fresh config. Do NOT run on every scan (0a/0b are idempotent; 0c is n
 
 **Phase 0a — Repo Linking (never blocks the scan):** Run **one** `hawk op repo link --repo
 <BARE_NAME> --app-id <APP_ID>` (bare name = last segment of the git origin split on `/` and `:`,
-`.git` stripped; never `owner/repo`) under a 60 s time box. On timeout or error, stop and tell the
-user how to link the repo in the StackHawk UI, then continue. **Never run `hawk op repo list`
+`.git` stripped; never `owner/repo`) under a 60 s time box (`timeout 60` if available, else your
+tool's 60 s command timeout). On timeout or error, report as status output (no prompt) how to link
+the repo in the StackHawk UI, then continue. **Never run `hawk op repo list`
 here** and never retry. A `git_origin` tag is only a breadcrumb; it does not link the repo.
 → Exact commands, time box, and result handling: [`references/repo-linking.md`](references/repo-linking.md)
 

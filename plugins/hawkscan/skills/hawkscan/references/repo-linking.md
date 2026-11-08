@@ -48,11 +48,14 @@ any `→ hawkop …` hint that `repo link` prints.
    trailing "/" and ".git" stripped
    (e.g. git@github.com:Org/My-Repo.git → My-Repo; https://github.com/org/api.git → api)
 3. Run ONCE, time-boxed to 60 s:
-     timeout 60 hawk op repo link --repo <BARE_NAME> --app-id <APP_ID>
-   (Without `timeout`, e.g. stock macOS or Windows, use your tool's own 60 s
-   command timeout.)
+     hawk op repo link --repo <BARE_NAME> --app-id <APP_ID>
+   Time box: if `command -v timeout` succeeds, prefix the command with
+   `timeout 60`; otherwise (e.g. stock macOS or Windows) run it as-is under
+   your tool's own 60 s command timeout. A missing `timeout` binary is not a
+   link failure.
 4. Exit 0 → Report: "Linked app <APP_NAME> to repo <BARE_NAME>"
-   Timeout, non-zero exit, or any error → stop and tell the user:
+   Timeout, non-zero exit, or any error → stop linking and report as status
+   output (never a prompt; do not pause the run):
      "Couldn't link app <APP_NAME> to repo <BARE_NAME> automatically
      (<reason>). To link it yourself: in StackHawk, open Attack Surface,
      find the repo <BARE_NAME>, and add the app <APP_NAME> to it."
