@@ -162,7 +162,9 @@ Resolve the current version first and key the cache on it — that tracks the la
 ```yaml
 - name: Resolve current hawk version
   id: hawk
-  run: echo "version=$(curl -fsSL https://api.stackhawk.com/hawkscan/version)" >> "$GITHUB_OUTPUT"
+  run: |
+    v=$(curl -fsSL https://api.stackhawk.com/hawkscan/version) && [ -n "$v" ] || exit 1
+    echo "version=$v" >> "$GITHUB_OUTPUT"
 - name: Cache hawk CLI
   uses: actions/cache@v4
   with:
