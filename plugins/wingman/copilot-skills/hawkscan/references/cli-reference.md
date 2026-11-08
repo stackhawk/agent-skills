@@ -196,11 +196,30 @@ hawk download log                        # download the scan log from the last s
 hawk create app
 
 # Non-interactive (agent/script use - required for autonomous operation)
-hawk create app --name "My App" --env Development
+hawk create app --name "My App" --env Development -t <team-id>
 ```
 
 **Important for agents:** Always use the non-interactive form. The interactive prompt
 blocks execution and cannot be answered programmatically.
+
+### Creating an app on a team
+
+`-t <team-id>` puts the new app on a team. Without it the app is unassigned: visible to
+everyone in the org, and a member can't move it onto a team later. Choose the team with
+`hawk op team list --format json` first (SKILL.md Step 1c substep 5).
+
+- **`-t` rejects a team ID that `hawk op team list` returned:** `hawk create app` checks
+  `-t` against only the first 10 teams it fetches. Create through `hawk op` instead, which
+  passes the team straight to the platform; its JSON output carries the new app's ID at
+  `.data.applicationId`:
+  ```bash
+  hawk op app create --name "<repo-name>" --env <env-name> --team-id <team-id> --format json
+  ```
+- **Create fails with a server error (5xx):** the platform may have created the app
+  without a team before rejecting the team ID. Run `hawk op app list --format json` and
+  look for the name before doing anything else. If the app is there, reuse it and tell the
+  user it has no team; never create a second copy.
+- Either way, don't retry the same command. If neither path works, tell the user.
 
 ---
 
