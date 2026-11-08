@@ -195,19 +195,21 @@ strategy, frontend-vs-backend scenarios, and config templates:
    `_` and `-` equivalent). Exactly one match → use its `applicationId`. Multiple matches →
    pick by host if established, else surface to user. No match → create it **on the user's
    team**. An app created without a team is visible to the whole org, and a member can't move
-   it onto a team later. First run `hawk op team list --format json` (teams are `data[]`
-   entries with `id` and `name`):
-   - **One team** → use its `id` without asking.
-   - **Several** → ask the user which team; never pick one yourself.
-   - **None** → tell the user the app will be visible to everyone in the org; create without `-t` only if they agree.
-   - **`hawk op` unavailable or the list fails** (e.g. the org lacks API access) → create
-     without `-t` as before, and tell the user the app is unassigned.
+   it onto a team later. First run `hawk op team list --format json`. It lists every team in
+   the org (`data[]` entries with `id` and `name`), not just the user's, so never pick one
+   yourself, even if there is only one:
+   - **Teams listed** → show their names and ask the user to choose a team they belong to,
+     or none. Use the chosen team's `id`.
+   - **No team** (none listed, the user chose none, `hawk op` is unavailable, or the list
+     fails) → tell the user the app will be visible to everyone in the org; create without
+     `-t` only if they agree.
    ```bash
    hawk create app --name "<repo-name>" --env <env-name> -t <team-id>   # omit -t only per the rules above
    ```
    If `-t` is rejected or the create fails, don't retry blindly: [`references/cli-reference.md`](references/cli-reference.md#creating-an-app-on-a-team).
    Resolve `<env-name>` with the Env Name Algorithm above. Announce it (Progress output):
-   `StackHawk | Created app <name> (<appId>) on team <team> - <url>`.
+   `StackHawk | Created app <name> (<appId>) on team <team> - <url>`, or for an app with no
+   team, `StackHawk | Created app <name> (<appId>) with no team - visible org-wide - <url>`.
 6. **Env exists?** Determine env name via Env Name Algorithm. Run
    `hawk op env list --app <APP_ID> --format json`. Reuse if exists; otherwise run
    `hawk op env create --app <APP_ID> --env <name> --host <url>`.

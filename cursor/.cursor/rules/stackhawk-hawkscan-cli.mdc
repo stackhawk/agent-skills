@@ -211,8 +211,9 @@ blocks execution and cannot be answered programmatically.
 ### Creating an app on a team
 
 `-t <team-id>` puts the new app on a team. Without it the app is unassigned: visible to
-everyone in the org, and a member can't move it onto a team later. Choose the team with
-`hawk op team list --format json` first (SKILL.md Step 1c substep 5).
+everyone in the org, and a member can't move it onto a team later. `hawk op team list
+--format json` lists the org's teams, not just the user's; the user picks one they belong
+to (SKILL.md Step 1c substep 5).
 
 - **`-t` rejects a team ID that `hawk op team list` returned:** `hawk create app` checks
   `-t` against only the first 10 teams it fetches. Create through `hawk op` instead, which
