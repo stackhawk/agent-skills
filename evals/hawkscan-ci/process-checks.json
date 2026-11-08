@@ -81,6 +81,7 @@
       "anti_patterns": [
         "stackhawk/hawkscan-action",
         "stackhawk/hawkscan:latest",
+        "download.stackhawk.com/hawk/install",
         "run: hawk scan",
         "- hawk scan",
         "hawk scan stackhawk.yml",
@@ -142,7 +143,7 @@
     {
       "id": "execution_shape_appropriate",
       "phase": "step_4",
-      "description": "The agent picks a sensible execution shape — the GHA action/image, or the docker image / CLI for other providers.",
+      "description": "The agent picks a sensible execution shape — the GHA action on GitHub Actions, the hawk CLI via the install script for other providers, or the docker image as a fallback.",
       "type": "output_contains",
       "signals": [
         "stackhawk/hawkscan-action",
@@ -152,7 +153,7 @@
       ],
       "applies_to": ["hci-01","hci-02","hci-03","hci-04","hci-05","hci-06","hci-07","hci-08","hci-09","hci-10","hci-13"],
       "severity": "warning",
-      "failure_guidance": "Tiered preference: GHA native action > docker image > CLI download."
+      "failure_guidance": "Tiered preference: GHA native action > hawk CLI via install script > docker image (fallback only)."
     },
     {
       "id": "exit_code_42_handled",
