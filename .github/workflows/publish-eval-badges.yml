@@ -39,7 +39,7 @@ jobs:
         with:
           fetch-depth: 0   # tags needed for the meta-artifact fallback below
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
 
       - name: Resolve source run
         id: run
