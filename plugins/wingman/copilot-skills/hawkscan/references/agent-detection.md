@@ -31,13 +31,13 @@ export BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
 # Skip detection if HAWK_AGENT or _STACKHAWK_AGENT is already set (allows CI/CD override).
 if [ -z "${HAWK_AGENT}" ] && [ -z "${_STACKHAWK_AGENT}" ]; then
   # Step 1: detect agent platform (the IDE / agentic tool)
-  if [ -n "${CLAUDE_CODE}" ] || [ -d ".claude" ]; then
+  if [ -n "${CLAUDECODE}" ] || [ -d ".claude" ]; then
     _HAWK_PLATFORM=claude-code
-  elif [ -n "${CURSOR_TRACE_ID}" ] || [ -d ".cursor" ]; then
+  elif [ -n "${CURSOR_AGENT}" ] || [ -n "${CURSOR_TRACE_ID}" ] || [ -d ".cursor" ]; then
     _HAWK_PLATFORM=cursor
   elif [ -f "GEMINI.md" ] || [ -n "${GEMINI_API_KEY}" ]; then
     _HAWK_PLATFORM=gemini
-  elif [ -d ".codex" ]; then
+  elif [ -n "${CODEX_THREAD_ID}" ] || [ -d ".codex" ]; then
     _HAWK_PLATFORM=codex
   elif [ -f ".github/copilot-instructions.md" ]; then
     _HAWK_PLATFORM=copilot
@@ -82,6 +82,19 @@ export _STACKHAWK_SKILL=hawkscan
 | `BRANCH_NAME` | current branch name | `_STACKHAWK_GIT_BRANCH` tag |
 | `HAWK_AGENT` | `<platform>:<model>` or `<platform>` | `_STACKHAWK_AGENT` tag in `stackhawk.yml` |
 | `_STACKHAWK_AGENT` | copy of `HAWK_AGENT` | Second channel — read directly by the CLI's agent-detection precedence |
+
+Platform signals the block reads (each agent sets these in the shells it runs commands in):
+
+| Platform | Variable | Source |
+|---|---|---|
+| Claude Code | `CLAUDECODE=1` (not `CLAUDE_CODE`) | [Claude Code environment variables](https://code.claude.com/docs/en/env-vars) |
+| Cursor | `CURSOR_AGENT` (agent shells); `CURSOR_TRACE_ID` (integrated terminal) | [Cursor agent terminal docs](https://cursor.com/docs/agent/terminal) |
+| Codex | `CODEX_THREAD_ID` | [`codex-rs/core/src/exec_env.rs`](https://github.com/openai/codex/blob/main/codex-rs/core/src/exec_env.rs) |
+| Copilot | none verified — detected by `.github/copilot-instructions.md` only | — |
+
+The model comes only from a provider variable the user set. Claude Code exports no variable
+naming its current model, and `ANTHROPIC_MODEL` is set only when the user sets it, so the model
+part is often empty — that is expected, not a detection failure.
 
 `HAWK_AGENT` format examples:
 - `claude-code:claude-sonnet-4-6` — Claude Code running Anthropic Sonnet

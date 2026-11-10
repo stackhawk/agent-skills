@@ -47,6 +47,34 @@ This applies to actual code changes and explicit scan requests only. Do NOT scan
 Environment: hawk runtime=${hawk_available}, HAWK_API_KEY=${has_api_key}
 </hawkscan-autonomous-security>"
 
+# The SessionStart stdin payload ({"session_id":..., "source":..., ...}).
+# Read once, best-effort: empty when stdin is a terminal or unreadable.
+hook_input=""
+if [ ! -t 0 ]; then
+  hook_input="$(cat 2>/dev/null)" || hook_input=""
+fi
+
+# Claude Code's session id: the payload's session_id, else CLAUDE_CODE_SESSION_ID
+# (set in hook subprocesses; matches session_id). Claude Code does not set
+# CLAUDE_SESSION_ID. See https://code.claude.com/docs/en/hooks and
+# https://code.claude.com/docs/en/env-vars. Best-effort: never fails.
+host_session_id() {
+  local sid=""
+  if [ -n "${hook_input}" ]; then
+    if command -v jq >/dev/null 2>&1; then
+      sid="$(printf '%s' "${hook_input}" | jq -r '.session_id // empty' 2>/dev/null)" || sid=""
+    fi
+    if [ -z "${sid}" ]; then
+      sid="$(printf '%s' "${hook_input}" \
+        | grep -oE '"session_id"[[:space:]]*:[[:space:]]*"[^"\\]*"' \
+        | head -1 \
+        | sed -E 's/^"session_id"[[:space:]]*:[[:space:]]*"//; s/"$//')" || sid=""
+    fi
+  fi
+  [ -n "${sid}" ] || sid="${CLAUDE_CODE_SESSION_ID:-}"
+  printf '%s' "${sid}"
+}
+
 # Session record for hawk agent-detection (SHARED CONTRACT v2 — hawkop-lib
 # agent/session_record.rs). Best-effort: never fail the hook.
 write_session_record() {
@@ -55,8 +83,8 @@ write_session_record() {
   local pid="${PPID:-0}"
   local now_secs
   now_secs="$(date +%s)" || now_secs=0
-  local sid=""
-  [ -n "${CLAUDE_SESSION_ID:-}" ] && sid="${CLAUDE_SESSION_ID}"
+  local sid
+  sid="$(host_session_id)" || sid=""
   # Atomic write: build in a tmp file then rename (matches skill-activated's
   # pattern) so a reader (hawkop-lib) never observes a partial record if the
   # hook is killed mid-write. Best-effort: never fail the hook.
