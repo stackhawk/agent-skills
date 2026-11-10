@@ -188,11 +188,8 @@ update_record_locked() {
 
   local new_json=""
   if command -v jq >/dev/null 2>&1; then
-    # Also fill an empty hostSessionId (records written before the hooks read
-    # the real session id); a non-empty one is kept.
-    new_json=$(printf '%s' "$existing" | jq --arg s "$skill_name" --arg sid "$HOOK_SESSION_ID" \
-      '.skillsActivated = ((.skillsActivated // []) + [$s] | unique)
-       | if ((.hostSessionId // "") == "") then .hostSessionId = $sid else . end' 2>/dev/null) || new_json=""
+    new_json=$(printf '%s' "$existing" | jq --arg s "$skill_name" \
+      '.skillsActivated = ((.skillsActivated // []) + [$s] | unique)' 2>/dev/null) || new_json=""
   fi
 
   if [ -z "$new_json" ]; then
@@ -204,7 +201,6 @@ update_record_locked() {
     created_at=$(extract_number_field "$existing" "createdAtSecs") || created_at=""
     writer=$(extract_string_field "$existing" "writer") || writer=""
     host_session_id=$(extract_string_field "$existing" "hostSessionId") || host_session_id=""
-    [ -n "$host_session_id" ] || host_session_id="$HOOK_SESSION_ID"
     [ -n "$schema_version" ] || schema_version=1
     [ -n "$pid_field" ] || pid_field="$pid"
     [ -n "$created_at" ] || created_at=0
@@ -324,7 +320,7 @@ record_skill_activation() {
   return 0
 }
 
-# Set by record_skill_activation from the hook payload; read by the record writers.
+# Set by record_skill_activation from the hook payload; read by create_missing_record.
 HOOK_SESSION_ID=""
 
 record_skill_activation || true

@@ -137,19 +137,6 @@ def test_skill_activated_backfill_falls_back_to_env(tmp_path):
 
 
 @pytest.mark.parametrize("jq", [True, False], ids=["jq", "no-jq"])
-def test_skill_activated_fills_empty_session_id(tmp_path, no_jq_path, jq):
-    # A record written before the fix carries an empty hostSessionId.
-    env = clean_env(tmp_path, None if jq else no_jq_path)
-    run_hook(SESSION_START, "", env)
-    assert read_record(tmp_path)["hostSessionId"] == ""
-    run_hook(SKILL_ACTIVATED, skill_payload("payload-id"), env)
-    record = read_record(tmp_path)
-    assert record["hostSessionId"] == "payload-id"
-    assert record["writer"] == "claude-hook"
-    assert record["skillsActivated"] == ["hawkscan:hawkscan"]
-
-
-@pytest.mark.parametrize("jq", [True, False], ids=["jq", "no-jq"])
 def test_skill_activated_keeps_existing_session_id(tmp_path, no_jq_path, jq):
     env = clean_env(tmp_path, None if jq else no_jq_path)
     run_hook(SESSION_START, session_start_payload("first-id"), env)
