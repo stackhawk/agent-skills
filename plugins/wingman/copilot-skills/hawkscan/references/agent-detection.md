@@ -88,7 +88,8 @@ Platform signals the block reads (each agent sets these in the shells it runs co
 | Platform | Variable | Source |
 |---|---|---|
 | Claude Code | `CLAUDECODE=1` (not `CLAUDE_CODE`) | [Claude Code environment variables](https://code.claude.com/docs/en/env-vars) |
-| Cursor | `CURSOR_AGENT` (agent shells); `CURSOR_TRACE_ID` (integrated terminal) | [Cursor agent terminal docs](https://cursor.com/docs/agent/terminal) |
+| Cursor | `CURSOR_AGENT` | [Cursor agent terminal docs](https://cursor.com/docs/agent/terminal) |
+| Cursor | `CURSOR_TRACE_ID` (kept from earlier releases; not in Cursor's docs) | third-party: [`is-ai-agent` crate](https://docs.rs/crate/is-ai-agent/0.2.0/source/src/lib.rs) |
 | Codex | `CODEX_THREAD_ID` | [`codex-rs/core/src/exec_env.rs`](https://github.com/openai/codex/blob/main/codex-rs/core/src/exec_env.rs) |
 | Copilot | none verified — detected by `.github/copilot-instructions.md` only | — |
 
