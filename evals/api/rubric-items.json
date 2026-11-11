@@ -29,7 +29,7 @@
     },
     {
       "id": "stale_apps_identified",
-      "description": "Apps with lastScanTimestamp older than 30 days were identified and flagged as stale in the posture output.",
+      "description": "Apps whose latest completed scan is older than 30 days, aged from the scan list `started` value, were identified and flagged as stale in the posture output.",
       "focus": "Step 3 posture summary — stale app detection"
     },
     {
