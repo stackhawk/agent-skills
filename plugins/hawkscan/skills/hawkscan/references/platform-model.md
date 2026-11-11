@@ -358,7 +358,7 @@ Is there an existing App for this codebase?
 │   │                               ├── One survives  ──► REUSE
 │   │                               └── Still ambiguous ──► Ask the user
 │   │
-│   └── No name match          ──► CREATE (`hawk create app`)
+│   └── No name match          ──► CREATE (team per SKILL.md Step 1c substep 5)
 │                                   Announce the details-settings URL for
 │                                   tech flag setup.
 ```
