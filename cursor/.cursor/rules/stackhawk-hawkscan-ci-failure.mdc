@@ -63,9 +63,13 @@ The exit code propagates; the job fails; the pipeline fails; the PR check turns 
 ```yaml
 - name: Run HawkScan (warn-only)
     # exit code handled explicitly below (do not use continue-on-error here)
+  env:
+    API_KEY: ${{ secrets.HAWK_API_KEY }}
+    COMMIT_SHA: ${{ github.sha }}
+    BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
   run: |
     set +e
-    docker run --rm ... stackhawk/hawkscan:latest
+    "$HOME/.local/bin/hawk" scan   # installed earlier via the install script
     EXIT_CODE=$?
     case $EXIT_CODE in
       0)  echo "HawkScan passed." ;;
@@ -115,7 +119,6 @@ jobs:
 
 **Retry exit 1 only on specific transient signals:**
 - HTTP 5xx from the platform during scan submission (rare; the scanner handles its own retries internally).
-- Container-pull failures (`Error response from daemon: ... timeout`).
 - Network blips during initial app health-check.
 
 Don't retry blindly. If retry succeeds, the original failure was a flake. If retry fails, the issue is real and needs investigation.
@@ -123,9 +126,14 @@ Don't retry blindly. If retry succeeds, the original failure was a flake. If ret
 ```yaml
 # GitHub Actions retry pattern (exit 1 only, max 2 attempts)
 - name: Run HawkScan (with retry on transient errors)
+  env:
+    API_KEY: ${{ secrets.HAWK_API_KEY }}
+    COMMIT_SHA: ${{ github.sha }}
+    BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
   run: |
+    set +e
     for attempt in 1 2; do
-      docker run --rm ... stackhawk/hawkscan:latest
+      "$HOME/.local/bin/hawk" scan
       EXIT=$?
       case $EXIT in
         0|42) exit $EXIT ;;
@@ -137,7 +145,7 @@ Don't retry blindly. If retry succeeds, the original failure was a flake. If ret
 
 ## Caching Strategy
 
-**Do cache:** the `hawk` CLI binary (when using Tier 3), the HawkScan Docker image layer (when the runner supports image caching).
+**Do cache:** the `hawk` CLI binary (Tier 2), the HawkScan Docker image layer (Tier 3 fallback, when the runner supports image caching).
 
 **Do NOT cache:**
 - Scan output / findings. Each scan must be independent — caching findings between runs defeats the purpose.
@@ -147,19 +155,16 @@ Don't retry blindly. If retry succeeds, the original failure was a flake. If ret
 
 GHA's `ubuntu-latest` runners cache popular images automatically. A `stackhawk/hawkscan:latest` pull is ~5 seconds on a warm cache, so an explicit image-cache step is rarely worth it.
 
-### Caching the CLI download (Tier 3)
+### Caching the CLI download (Tier 2)
 
-The CLI zip is version-numbered (there's no `hawk-latest.zip`), so resolve the current version first and key the cache on it — that tracks the latest CLI while keeping a stable cache key:
+Resolve the current version first and key the cache on it — that tracks the latest CLI while keeping a stable cache key — then run the install script only on a cache miss, pinned to that version:
 
 ```yaml
-- name: Resolve current hawk version + binary URL (from the manifest)
+- name: Resolve current hawk version
   id: hawk
   run: |
-    read -r version url < <(curl -fsSL https://download.stackhawk.com/hawkdocs/hawk.manifest.json \
-      | jq -r '.latest | "\(.version) \(.assets[] | select(.asset.group=="linux-x64" and (.url|endswith("/hawk"))) | .url)"')
-    [ -n "$url" ] || { echo "ERROR: no linux-x64 hawk binary in manifest"; exit 1; }
-    echo "version=$version" >> "$GITHUB_OUTPUT"
-    echo "url=$url" >> "$GITHUB_OUTPUT"
+    v=$(curl -fsSL https://api.stackhawk.com/hawkscan/version) && [ -n "$v" ] || exit 1
+    echo "version=$v" >> "$GITHUB_OUTPUT"
 - name: Cache hawk CLI
   uses: actions/cache@v4
   with:
@@ -167,10 +172,9 @@ The CLI zip is version-numbered (there's no `hawk-latest.zip`), so resolve the c
     key: hawk-cli-${{ steps.hawk.outputs.version }}
 - name: Install hawk if not cached
   run: |
-    if [ ! -x ~/.local/bin/hawk ]; then
-      mkdir -p ~/.local/bin
-      curl -fsSL "${{ steps.hawk.outputs.url }}" -o ~/.local/bin/hawk
-      chmod +x ~/.local/bin/hawk
+    if [ ! -x "$HOME/.local/bin/hawk" ]; then
+      curl -fsSL https://download.stackhawk.com/hawk/install.sh \
+        | HAWK_INSTALL_DIR="$HOME/.local/bin" HAWK_INSTALL_VERSION="${{ steps.hawk.outputs.version }}" sh
     fi
     echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 ```
