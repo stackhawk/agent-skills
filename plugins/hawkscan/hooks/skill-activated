@@ -147,8 +147,7 @@ create_missing_record() {
   mkdir -p "$dir" 2>/dev/null || return 0
   local now_secs
   now_secs="$(date +%s)" || now_secs=0
-  local sid=""
-  [ -n "${CLAUDE_SESSION_ID:-}" ] && sid="${CLAUDE_SESSION_ID}"
+  local sid="${HOOK_SESSION_ID}"
   local new_json=""
   new_json=$(cat <<EOF
 {
@@ -285,6 +284,18 @@ record_skill_activation() {
   fi
   [ -n "$skill_name" ] || return 0
 
+  # Claude Code's session id: the payload's session_id, else
+  # CLAUDE_CODE_SESSION_ID (set in hook subprocesses; matches session_id).
+  # Claude Code does not set CLAUDE_SESSION_ID. See
+  # https://code.claude.com/docs/en/hooks and https://code.claude.com/docs/en/env-vars.
+  if command -v jq >/dev/null 2>&1; then
+    HOOK_SESSION_ID=$(printf '%s' "$tool_input" | jq -r '.session_id // empty' 2>/dev/null) || HOOK_SESSION_ID=""
+  fi
+  if [ -z "$HOOK_SESSION_ID" ]; then
+    HOOK_SESSION_ID=$(extract_string_field "$tool_input" "session_id") || HOOK_SESSION_ID=""
+  fi
+  [ -n "$HOOK_SESSION_ID" ] || HOOK_SESSION_ID="${CLAUDE_CODE_SESSION_ID:-}"
+
   local dir="${HOME}/.stackhawk/agent/sessions"
   local pid="${PPID:-0}"
   local record="${dir}/${pid}.json"
@@ -308,6 +319,9 @@ record_skill_activation() {
   fi
   return 0
 }
+
+# Set by record_skill_activation from the hook payload; read by create_missing_record.
+HOOK_SESSION_ID=""
 
 record_skill_activation || true
 

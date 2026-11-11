@@ -220,7 +220,7 @@
       "signals": [
         "HAWK_AGENT",
         "_HAWK_PLATFORM",
-        "CLAUDE_CODE",
+        "CLAUDECODE",
         "CURSOR_TRACE_ID",
         "GEMINI_API_KEY"
       ],
