@@ -1,7 +1,7 @@
 {
   "schema": 2,
-  "tag": "v2.7.4",
-  "run_url": "https://github.com/stackhawk/agent-skills/actions/runs/42250710339",
+  "tag": "v2.7.5",
+  "run_url": "https://github.com/stackhawk/agent-skills/actions/runs/43042673876",
   "combos": [
     {
       "skill": "hawkscan",
@@ -43,9 +43,9 @@
       "skill": "hawkscan",
       "tool": "codex",
       "model": "o3",
-      "passed": 21,
+      "passed": 19,
       "total": 22,
-      "rate": 0.9545454545454546,
+      "rate": 0.8636363636363636,
       "status": "ok"
     },
     {
@@ -61,9 +61,9 @@
       "skill": "hawkscan",
       "tool": "cursor",
       "model": "default",
-      "passed": 20,
-      "total": 22,
-      "rate": 0.9090909090909091,
+      "passed": 19,
+      "total": 21,
+      "rate": 0.9047619047619048,
       "status": "ok"
     },
     {
@@ -79,8 +79,8 @@
       "skill": "api",
       "tool": "claude-code",
       "model": "claude-opus-4-7",
-      "passed": 9,
-      "total": 9,
+      "passed": 10,
+      "total": 10,
       "rate": 1.0,
       "status": "ok"
     },
@@ -106,9 +106,9 @@
       "skill": "api",
       "tool": "codex",
       "model": "o3",
-      "passed": 15,
+      "passed": 14,
       "total": 16,
-      "rate": 0.9375,
+      "rate": 0.875,
       "status": "ok"
     },
     {
@@ -143,16 +143,16 @@
       "tool": "claude-code",
       "model": "claude-opus-4-7",
       "passed": 9,
-      "total": 9,
-      "rate": 1.0,
+      "total": 10,
+      "rate": 0.9,
       "status": "ok"
     },
     {
       "skill": "stackhawk-data-seed",
       "tool": "claude-code",
       "model": "claude-sonnet-4-6",
-      "passed": 17,
-      "total": 17,
+      "passed": 16,
+      "total": 16,
       "rate": 1.0,
       "status": "ok"
     },
@@ -169,9 +169,9 @@
       "skill": "stackhawk-data-seed",
       "tool": "codex",
       "model": "o3",
-      "passed": 16,
+      "passed": 14,
       "total": 17,
-      "rate": 0.9411764705882353,
+      "rate": 0.8235294117647058,
       "status": "ok"
     },
     {
@@ -196,9 +196,9 @@
       "skill": "hawkscan-ci",
       "tool": "claude-code",
       "model": "claude-haiku-4-5-20251001",
-      "passed": 19,
+      "passed": 20,
       "total": 22,
-      "rate": 0.8636363636363636,
+      "rate": 0.9090909090909091,
       "status": "ok"
     },
     {
@@ -206,17 +206,17 @@
       "tool": "claude-code",
       "model": "claude-opus-4-7",
       "passed": 7,
-      "total": 8,
-      "rate": 0.875,
+      "total": 7,
+      "rate": 1.0,
       "status": "ok"
     },
     {
       "skill": "hawkscan-ci",
       "tool": "claude-code",
       "model": "claude-sonnet-4-6",
-      "passed": 22,
+      "passed": 21,
       "total": 22,
-      "rate": 1.0,
+      "rate": 0.9545454545454546,
       "status": "ok"
     },
     {
@@ -232,9 +232,9 @@
       "skill": "hawkscan-ci",
       "tool": "codex",
       "model": "o3",
-      "passed": 20,
+      "passed": 19,
       "total": 22,
-      "rate": 0.9090909090909091,
+      "rate": 0.8636363636363636,
       "status": "ok"
     },
     {
@@ -250,9 +250,9 @@
       "skill": "hawkscan-ci",
       "tool": "cursor",
       "model": "default",
-      "passed": 20,
+      "passed": 19,
       "total": 22,
-      "rate": 0.9090909090909091,
+      "rate": 0.8636363636363636,
       "status": "ok"
     },
     {
