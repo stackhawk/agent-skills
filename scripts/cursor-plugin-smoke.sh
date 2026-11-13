@@ -22,6 +22,8 @@ if [ ! -f "${plugin_dir}/.cursor-plugin/plugin.json" ]; then
   echo "FAIL: ${plugin_dir} has no .cursor-plugin/plugin.json" >&2
   exit 1
 fi
+# The CLI runs inside the workspace, so a relative plugin path would not resolve there.
+plugin_dir="$(cd "$plugin_dir" && pwd)"
 cli="$(command -v cursor-agent || true)"
 if [ -z "$cli" ]; then
   echo "SKIP: cursor-agent is not installed (curl https://cursor.com/install -fsS | bash)"

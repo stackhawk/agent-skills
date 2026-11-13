@@ -357,7 +357,7 @@ jobs:
             rc=0
             bash scripts/cursor-plugin-smoke.sh "$plugin" "$RUNNER_TEMP/smoke-$(basename "$plugin")" || rc=$?
             if [ "$rc" = 77 ]; then
-              echo "::notice::Cursor plugin smoke skipped for $plugin: no CURSOR_API_KEY"
+              echo "::notice::Cursor plugin smoke skipped for $plugin: no Cursor CLI or no CURSOR_API_KEY (see the log)"
             elif [ "$rc" != 0 ]; then
               exit "$rc"
             fi

@@ -104,12 +104,18 @@ def hooks(dot_cursor):
         return json.load(f)
 
 
+# A rule that an older release generated and today's generator no longer writes.
+OLD_RELEASE_RULE = "stackhawk-api-hawkop.mdc"
+
+
 def write_legacy_install(dot_cursor):
-    """The layout the old installer left: 28 rules, five skills, a stop.sh hook."""
+    """The rules and hook the old installer left: today's 28 rules, one rule from an
+    older release, and a stop.sh hook with its hooks.json entry."""
     rules = dot_cursor / "rules"
     rules.mkdir(parents=True, exist_ok=True)
     for name in os.listdir(LEGACY_RULES_DIR):
         shutil.copy(os.path.join(LEGACY_RULES_DIR, name), rules / name)
+    (rules / OLD_RELEASE_RULE).write_text("---\nalwaysApply: false\n---\nhawkop\n")
     (dot_cursor / "hooks").mkdir(exist_ok=True)
     (dot_cursor / "hooks" / "stop.sh").write_text(f"#!/usr/bin/env bash\n{LEGACY_STOP_MARKER}\nexit 0\n")
     (dot_cursor / "hooks.json").write_text(json.dumps(
@@ -203,7 +209,7 @@ def test_upgrade_removes_the_legacy_install_only(kind, project, home):
     assert not (dot_cursor / "hooks" / "stop.sh").exists()
     assert hooks(dot_cursor)["hooks"]["stop"] == [PROJECT_ENTRY]
     assert "deprecated" in (proc.stdout + proc.stderr).lower()
-    assert "28" in proc.stdout + proc.stderr
+    assert "Removed 29 legacy" in proc.stdout + proc.stderr
 
 
 @pytest.mark.parametrize("kind", INSTALLERS)
@@ -227,6 +233,20 @@ def test_invalid_hooks_json_stops_the_install_before_any_change(kind, project, h
     assert "hooks.json" in proc.stdout + proc.stderr
     assert (dot_cursor / "hooks.json").read_text() == "{not json"
     assert files_under(dot_cursor) == {"hooks.json"}
+
+
+@pytest.mark.parametrize("kind", INSTALLERS)
+@pytest.mark.parametrize("rule", RULES)
+def test_a_users_own_rule_with_our_name_is_not_replaced(kind, rule, project, home):
+    rules = project / ".cursor" / "rules"
+    rules.mkdir(parents=True)
+    mine = "---\ndescription: Our team policy for StackHawk findings.\nalwaysApply: true\n---\nOur rules.\n"
+    (rules / rule).write_text(mine)
+    proc = install(kind, project, home, check=False)
+    assert proc.returncode != 0
+    assert rule in proc.stdout + proc.stderr
+    assert (rules / rule).read_text() == mine
+    assert files_under(project / ".cursor") == {f"rules/{rule}"}
 
 
 @pytest.mark.parametrize("kind", INSTALLERS)
@@ -296,12 +316,22 @@ def test_user_level_install(kind, project, home):
     assert "followup_message" in json.loads(out)
 
 
-def test_user_level_is_detected_through_a_symlinked_target(project, home, tmp_path):
-    link = tmp_path / "home-link"
-    os.symlink(home, link)
-    install("sh", link, home)
-    assert hooks(home / ".cursor")["hooks"]["stop"] == [USER_ENTRY]
-    assert not (home / ".cursor" / "rules").exists()
+@pytest.mark.parametrize("kind", INSTALLERS)
+@pytest.mark.parametrize("link", ["target", "home-parent"])
+def test_user_level_is_detected_through_symlinks(kind, link, tmp_path):
+    real_home = tmp_path / "real" / "home"
+    real_home.mkdir(parents=True)
+    if link == "target":
+        # The target is a link to the home directory.
+        home, target = real_home, tmp_path / "home-link"
+        os.symlink(real_home, target)
+    else:
+        # HOME is reached through a linked parent folder (like /tmp -> /private/tmp).
+        os.symlink(tmp_path / "real", tmp_path / "linked")
+        home, target = tmp_path / "linked" / "home", real_home
+    install(kind, target, home)
+    assert hooks(real_home / ".cursor")["hooks"]["stop"] == [USER_ENTRY]
+    assert not (real_home / ".cursor" / "rules").exists()
 
 
 @pytest.mark.skipif("ps1" not in INSTALLERS, reason="pwsh not installed")

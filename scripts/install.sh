@@ -110,8 +110,13 @@ cursor_is_stackhawk_skill() {
   [ "$found" = "$name" ] && grep -qi 'stackhawk\|hawkscan' "${dir}/SKILL.md"
 }
 
+# A rule file is ours when its frontmatter description starts with "StackHawk".
+cursor_is_stackhawk_rule() {
+  grep -m1 '^description:' "$1" 2>/dev/null | grep -q '^description:[[:space:]]*StackHawk'
+}
+
 cursor_preflight() {
-  local dot_cursor="$1" entry name
+  local dot_cursor="$1" scope="$2" entry name rule
   for entry in "${CURSOR_SKILLS[@]}"; do
     name="${entry%%|*}"
     if [ -e "${dot_cursor}/skills/${name}" ] && ! cursor_is_stackhawk_skill "${dot_cursor}/skills/${name}" "$name"; then
@@ -120,6 +125,16 @@ cursor_preflight() {
       exit 1
     fi
   done
+  if [ "$scope" = "project" ]; then
+    for rule in "${CURSOR_RULES_SOURCE}"/*.mdc; do
+      name="${rule##*/}"
+      if [ -e "${dot_cursor}/rules/${name}" ] && ! cursor_is_stackhawk_rule "${dot_cursor}/rules/${name}"; then
+        echo "ERROR: ${dot_cursor}/rules/${name} exists and is not a StackHawk rule." >&2
+        echo "Nothing was installed. Rename that rule, then run the installer again." >&2
+        exit 1
+      fi
+    done
+  fi
   cursor_validate_hooks_json "${dot_cursor}/hooks.json"
 }
 
@@ -254,7 +269,7 @@ install_cursor() {
     fi
   done
 
-  cursor_preflight "$dot_cursor"
+  cursor_preflight "$dot_cursor" "$scope"
   echo "Installing StackHawk for Cursor (${scope} level) into ${dot_cursor}/"
   echo ""
   cursor_install_skills "$dot_cursor"

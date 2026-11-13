@@ -70,8 +70,12 @@ fi
 code_extensions="\.(java|kt|py|js|ts|tsx|jsx|go|rs|rb|php|cs|c|cpp|h|swift|scala|groovy|clj)$"
 
 # Uncommitted changes only: a commit is not evidence of a change made in this turn.
-modified_code="$( { git diff --name-only HEAD 2>/dev/null || true; git diff --cached --name-only 2>/dev/null || true; } |
-  grep -E "$code_extensions" | sort -u || true)"
+# New files count too (untracked and not ignored), so a turn that only adds code fires.
+modified_code="$( {
+    git diff --name-only HEAD 2>/dev/null || true
+    git diff --cached --name-only 2>/dev/null || true
+    git ls-files --others --exclude-standard 2>/dev/null || true
+  } | grep -E "$code_extensions" | sort -u || true)"
 if [ -z "$modified_code" ]; then
   exit 0
 fi

@@ -28,17 +28,25 @@ function Write-Utf8NoBom([string]$Path, [string]$Text) {
     [System.IO.File]::WriteAllText($Path, $Text, (New-Object System.Text.UTF8Encoding $false))
 }
 
-# The full path with symbolic links resolved, so that a linked home directory is still home.
+# The full path with every symbolic link and junction resolved, in each part of the path,
+# so that a home directory reached through a linked folder is still home (like pwd -P).
 function Get-PhysicalPath([string]$Path) {
-    $item = Get-Item -LiteralPath $Path -Force
-    if ($item.LinkType -and $item.Target) {
-        $linkTarget = @($item.Target)[0]
-        if (-not [System.IO.Path]::IsPathRooted($linkTarget)) {
-            $linkTarget = Join-Path (Split-Path -Parent $item.FullName) $linkTarget
+    $full = [System.IO.Path]::GetFullPath($Path)
+    $root = [System.IO.Path]::GetPathRoot($full)
+    $current = $root
+    $parts = $full.Substring($root.Length).Split([char[]]@('\', '/'), [System.StringSplitOptions]::RemoveEmptyEntries)
+    foreach ($part in $parts) {
+        $current = Join-Path $current $part
+        $item = Get-Item -LiteralPath $current -Force -ErrorAction SilentlyContinue
+        if ($item -and $item.LinkType -and $item.Target) {
+            $linkTarget = @($item.Target)[0]
+            if (-not [System.IO.Path]::IsPathRooted($linkTarget)) {
+                $linkTarget = Join-Path (Split-Path -Parent $current) $linkTarget
+            }
+            $current = Get-PhysicalPath $linkTarget
         }
-        return Get-PhysicalPath $linkTarget
     }
-    return [System.IO.Path]::GetFullPath($item.FullName).TrimEnd('\', '/')
+    return $current.TrimEnd('\', '/')
 }
 
 if (-not (Test-Path -LiteralPath $Target -PathType Container)) {
@@ -74,7 +82,7 @@ $CursorUserCmd      = "./hooks/$CursorHookScript"
 function Test-StackHawkSkill([string]$Dir, [string]$Name) {
     $skillMd = Join-Path $Dir "SKILL.md"
     if (-not (Test-Path -LiteralPath $skillMd -PathType Leaf)) { return $false }
-    $text = Get-Content -Raw -LiteralPath $skillMd
+    $text = Get-Content -Raw -Encoding UTF8 -LiteralPath $skillMd
     $nameLine = ($text -split "`n" | Where-Object { $_ -match '^name:' } | Select-Object -First 1)
     if ($null -eq $nameLine) { return $false }
     $found = ($nameLine -replace '^name:\s*', '').Trim()
@@ -83,7 +91,9 @@ function Test-StackHawkSkill([string]$Dir, [string]$Name) {
 
 function Read-HooksJson([string]$Path) {
     try {
-        $data = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
+        # -Encoding UTF8: Windows PowerShell 5.1 reads a file without a BOM as ANSI otherwise,
+        # and the merge would write other hooks' non-ASCII paths back double-encoded.
+        $data = Get-Content -Raw -Encoding UTF8 -LiteralPath $Path | ConvertFrom-Json
     } catch {
         Fail "$Path cannot be updated: it is not valid JSON ($($_.Exception.Message)). Nothing was installed. Fix the file, then run the installer again."
     }
@@ -103,11 +113,25 @@ function Read-HooksJson([string]$Path) {
     return $data
 }
 
-function Invoke-CursorPreflight([string]$DotCursor) {
+# A rule file is ours when its frontmatter description starts with "StackHawk".
+function Test-StackHawkRule([string]$File) {
+    $text = Get-Content -Raw -Encoding UTF8 -LiteralPath $File
+    return $text -match '(?m)^description:[ \t]*StackHawk'
+}
+
+function Invoke-CursorPreflight([string]$DotCursor, [string]$Scope) {
     foreach ($skill in $CursorSkills) {
         $dir = Join-Path (Join-Path $DotCursor "skills") $skill.Name
         if ((Test-Path -LiteralPath $dir) -and -not (Test-StackHawkSkill $dir $skill.Name)) {
             Fail "$dir exists and is not the StackHawk $($skill.Name) skill. Nothing was installed. Move that folder away, then run the installer again."
+        }
+    }
+    if ($Scope -eq "project") {
+        foreach ($rule in Get-ChildItem -LiteralPath $CursorRulesSource -Filter "*.mdc") {
+            $existing = Join-Path (Join-Path $DotCursor "rules") $rule.Name
+            if ((Test-Path -LiteralPath $existing) -and -not (Test-StackHawkRule $existing)) {
+                Fail "$existing exists and is not a StackHawk rule. Nothing was installed. Rename that rule, then run the installer again."
+            }
         }
     }
     $hooksJson = Join-Path $DotCursor "hooks.json"
@@ -130,7 +154,7 @@ function Install-CursorSkills([string]$DotCursor) {
 function Remove-CursorLegacyRules([string]$RulesDir) {
     $removed = 0
     if (-not (Test-Path -LiteralPath $RulesDir -PathType Container)) { return $removed }
-    foreach ($line in Get-Content -LiteralPath $CursorLegacyRules) {
+    foreach ($line in Get-Content -Encoding UTF8 -LiteralPath $CursorLegacyRules) {
         $name = $line.Trim()
         if ($name -eq "" -or $name.StartsWith("#")) { continue }
         $file = Join-Path $RulesDir $name
@@ -174,7 +198,7 @@ function Test-OurStopEntry($Item, [bool]$DropLegacy) {
 
 function Merge-CursorHooksJson([string]$Path, [string]$Command, [bool]$DropLegacy) {
     $data = Read-HooksJson $Path
-    $template = Get-Content -Raw -LiteralPath (Join-Path $CursorHooksSource "hooks.json") | ConvertFrom-Json
+    $template = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $CursorHooksSource "hooks.json") | ConvertFrom-Json
     $entry = [ordered]@{}
     foreach ($p in $template.hooks.stop[0].PSObject.Properties) { $entry[$p.Name] = $p.Value }
     $entry["command"] = $Command
@@ -210,7 +234,7 @@ function Install-CursorHook([string]$DotCursor, [string]$Scope) {
     if (Test-Path -LiteralPath $hooksJson) {
         Merge-CursorHooksJson $hooksJson $command $dropLegacy
     } else {
-        $text = (Get-Content -Raw -LiteralPath (Join-Path $CursorHooksSource "hooks.json")).Replace($CursorProjectCmd, $command)
+        $text = (Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $CursorHooksSource "hooks.json")).Replace($CursorProjectCmd, $command)
         Write-Utf8NoBom $hooksJson $text
     }
     if ($dropLegacy) {
@@ -233,7 +257,7 @@ function Install-Cursor {
             Fail "$file not found. Is the repository fully checked out?"
         }
     }
-    Invoke-CursorPreflight $dotCursor
+    Invoke-CursorPreflight $dotCursor $scope
     Write-Host "Installing StackHawk for Cursor ($scope level) into $dotCursor/"
     Write-Host ""
     Install-CursorSkills $dotCursor

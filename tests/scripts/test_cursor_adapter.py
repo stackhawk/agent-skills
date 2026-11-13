@@ -336,16 +336,20 @@ def test_canonical_skills_carry_no_cursor_keys(name):
 # ---------------------------------------------------------------- legacy rules
 
 
-def test_legacy_rule_list_matches_the_deprecated_generator():
-    """Installers delete exactly these names; the list must outlive cursor/ itself."""
+def test_legacy_rule_list_covers_the_deprecated_generator():
+    """Installers delete exactly these names; the list must outlive cursor/ itself.
+
+    It holds every name the old generator ever wrote (45, from git history), not only the
+    28 it writes today: an install from an older release still carries the others.
+    """
     with open(LEGACY_LIST) as f:
         listed = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+    assert len(listed) == len(set(listed)) == 45
     generated = re.findall(r'^\s+"[^|]+\|([a-z0-9-]+)\|', read("scripts/generate-cursor-rules.sh"), re.MULTILINE)
-    assert sorted(listed) == sorted(f"{n}.mdc" for n in generated)
-    assert len(listed) == 28
+    assert {f"{n}.mdc" for n in generated} <= set(listed)
+    assert set(os.listdir(path("cursor/.cursor/rules"))) <= set(listed)
+    assert all(re.fullmatch(r"stackhawk-[a-z0-9-]+\.mdc", name) for name in listed)
     assert not set(listed) & set(RULE_NAMES)
-    on_disk = sorted(os.listdir(path("cursor/.cursor/rules")))
-    assert on_disk == sorted(listed)
 
 
 # ---------------------------------------------------------------- measurement

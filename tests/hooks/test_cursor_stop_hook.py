@@ -84,6 +84,18 @@ def make_repo(path, state):
             f.write("# old change\n")
         git(path, "commit", "-q", "-am", "old change", age_seconds=7200)
         return
+    if state in ("untracked", "ignored"):
+        # A turn that only adds a file: untracked counts, ignored does not.
+        if state == "ignored":
+            with open(os.path.join(path, ".gitignore"), "w") as f:
+                f.write("build/\n")
+            git(path, "add", ".gitignore")
+            git(path, "commit", "-q", "-m", "ignore build", age_seconds=7200)
+        folder = "build" if state == "ignored" else "src"
+        os.makedirs(os.path.join(path, folder), exist_ok=True)
+        with open(os.path.join(path, folder, "new_endpoint.py"), "w") as f:
+            f.write("def new():\n    return 1\n")
+        return
     with open(os.path.join(path, "src/app.py"), "a") as f:
         f.write("# edit\n")
     if state == "staged":
@@ -123,7 +135,7 @@ def followup(out):
 
 
 @pytest.mark.parametrize("use_jq", [True, False], ids=["jq", "no-jq"])
-@pytest.mark.parametrize("state", ["clean", "old-commit", "modified", "staged", "evidence"])
+@pytest.mark.parametrize("state", ["clean", "old-commit", "modified", "staged", "untracked", "ignored", "evidence"])
 @pytest.mark.parametrize("loop_count", LOOP_COUNTS)
 @pytest.mark.parametrize("status", STATUSES)
 def test_payload_matrix(tmp_path, status, loop_count, state, use_jq):
@@ -132,7 +144,7 @@ def test_payload_matrix(tmp_path, status, loop_count, state, use_jq):
     repo = tmp_path / "proj"
     make_repo(str(repo), state)
     out = run(HOOK, payload(status, loop_count), cwd=str(repo), path=None if use_jq else no_jq_path(tmp_path))
-    should_fire = status == "completed" and loop_count == 0 and state in ("modified", "staged")
+    should_fire = status == "completed" and loop_count == 0 and state in ("modified", "staged", "untracked")
     if should_fire:
         message = followup(out)
         assert "hawkscan skill" in message
