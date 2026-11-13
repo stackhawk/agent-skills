@@ -21,7 +21,8 @@ def _setup_skill(target_dir: str) -> str | None:
 
     Runs `scripts/install.sh --platform cursor`: the five skills in .cursor/skills/,
     the router and stackhawk.yml pointer rules in .cursor/rules/, and the stop hook.
-    The workspace is not a git repository, so the stop hook stays silent.
+    The stop hook stays silent: the Cursor CLI runs stop hooks only in interactive
+    sessions, not with -p, and the workspace is not a git repository.
     Returns an error message, or None on success.
     """
     proc = subprocess.run(

@@ -28,8 +28,9 @@ uv run evals --harness cursor --skill hawkscan --rubric
 When the skill is loaded, each run gets a fresh workspace with the layout users
 install: `scripts/install.sh --platform cursor` writes the five skills to
 `.cursor/skills/`, the router and `stackhawk.yml` pointer rules to `.cursor/rules/`,
-and the stop hook. The workspace is not a git repository, so the stop hook stays
-silent during a run.
+and the stop hook. The stop hook stays silent during a run: the Cursor CLI runs
+stop hooks only in interactive sessions, not with `-p`, and the workspace is not a git
+repository. The matrix therefore measures the skills and rules, not the hook.
 
 The published Cursor baseline was measured with the deprecated generated rules
 (`cursor/.cursor/rules/`) only: no skills and no hook. Run the Cursor matrix again
