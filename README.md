@@ -168,7 +168,7 @@ Installs `hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, and 
 
 #### Cursor
 
-Cursor reads the five skills as Agent Skills and loads a skill body only when the skill applies. StackHawk adds three small Cursor-only parts: an always-applied router rule (about 1.2 KB) that names the skills and when each applies, a rule that applies while `stackhawk.yml` is in context, and a stop hook. When a turn ends normally after a code change with no scan, the stop hook asks the agent once to run the hawkscan skill. It stays silent after you press stop, after an error, and after its own follow-up turn.
+Cursor reads the five skills as Agent Skills and loads a skill body only when the skill applies. StackHawk adds three small Cursor-only parts: an always-applied router rule (about 1.2 KB) that names the skills and when each applies, a rule that applies while `stackhawk.yml` is in context, and a stop hook. When a turn ends normally after a code change with no scan, the stop hook asks the agent to run the hawkscan skill, once per conversation. It stays silent after you press stop, after an error, and after its own follow-up turn.
 
 **Project install** (recommended; Cursor Cloud Agents and automations read only the repository's `.cursor/`):
 
@@ -184,7 +184,7 @@ git clone https://github.com/stackhawk/agent-skills.git
 .\agent-skills\scripts\install.ps1 -Platform cursor -Target .
 ```
 
-This installs the skills into `.cursor/skills/`, `stackhawk.mdc` and `stackhawk-config.mdc` into `.cursor/rules/`, and `.cursor/hooks/stackhawk-stop.sh` with one entry merged into `.cursor/hooks.json`. Your other rules, skills and hooks stay. To upgrade, run the installer again: it replaces only StackHawk files, and it removes the 28 rules and the `.cursor/hooks/stop.sh` hook that older versions installed.
+This installs the skills into `.cursor/skills/`, `stackhawk.mdc` and `stackhawk-config.mdc` into `.cursor/rules/`, and `.cursor/hooks/stackhawk-stop.sh` with one entry merged into `.cursor/hooks.json`. Your other rules, skills and hooks stay. To upgrade, run the installer again: it replaces only StackHawk files, and it removes the generated rules and the `.cursor/hooks/stop.sh` hook that older versions installed.
 
 **User-level install** (every project on this machine): give your home directory as the target (`--target ~`; on Windows, leave out `-Target`). This installs the skills into `~/.cursor/skills/` and the stop hook into `~/.cursor/hooks.json`. Cursor has no file-based user rules, so for the router rule use a project install or the plugin.
 

@@ -54,7 +54,7 @@ This repository ships the Cursor adapter: a `.cursor-plugin/plugin.json` in ever
 
 1. `prepare_catalogs` in `scripts/sync-agent-skills.py` writes `.cursor-plugin/marketplace.json`, with `./plugins/<name>` sources and `./bundles/wingman` for wingman. Only the bundle keeps `copilot-skills/`, which the wingman Cursor manifest loads.
 2. `stamp_versions` stamps `.cursor-plugin/plugin.json` with the other manifests.
-3. `split_bundle` removes `.cursor-plugin/`, `rules/` and `hooks/cursor/` from the Claude-listed `plugins/wingman` and keeps them in `bundles/wingman`. Cursor imports Claude Code plugins by default, so a Claude Code user with `wingman` would otherwise get the router rule and the stop hook twice: once from `hawkscan` and once from `wingman`.
+3. `split_bundle` removes `.cursor-plugin/`, `rules/` and `hooks/cursor/` from the Claude-listed `plugins/wingman` and keeps them in `bundles/wingman`. **Ship this item before the first release that contains the Cursor adapter**, not only with the Cursor catalog: the Claude snapshot of `wingman` carries those files from that release on. The Cursor desktop app imports Claude Code plugins by default (`importPluginsFromClaudeOnBoot`), so a Claude Code user with `wingman` would get the router rule and the stop hook twice, once from `hawkscan` and once from `wingman`. This is inferred from the Cursor 3.9.16 code, not observed.
 4. `install()` adds `.cursor-plugin/marketplace.json` to its paths, and the `git add` list of the `update-marketplace` job in `release.yml` adds the same path. Without it the "changes outside the staged paths" check fails the release.
 5. The marketplace tests cover the Cursor catalog, and the marketplace README describes the Cursor install.
 

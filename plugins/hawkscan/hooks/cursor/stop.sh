@@ -6,9 +6,15 @@
 # It stays silent unless all of these are true:
 #   - the payload status is "completed" (not "aborted" or "error")
 #   - loop_count is 0 (this turn is not itself a hook follow-up)
-#   - the working tree or the index holds a code change
+#   - the working tree or the index holds a code change (new untracked files count)
 #   - there is no scan evidence
+#   - it has not already asked in this conversation
 # Unreadable input means silence. The hook entry also sets "loop_limit": 1.
+#
+# Cursor resets loop_count to 0 on every user message, so the hook records each
+# conversation it asked in (a hash of conversation_id, one line each, in
+# $(git rev-parse --git-path stackhawk/cursor-stop-asked); not in git status) and asks
+# once per conversation. Without a conversation_id it does not record anything.
 #
 # Cursor runs user-level hooks from ~/.cursor/ and plugin stop hooks from the workspace
 # root, so the project directory comes from CURSOR_PROJECT_DIR, then from the payload's
@@ -36,6 +42,7 @@ field() {
   case "$name" in
     status) printf '%s' "$flat" | sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([a-z_]*\)".*/\1/p' ;;
     loop_count) printf '%s' "$flat" | sed -n 's/.*"loop_count"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' ;;
+    conversation_id) printf '%s' "$flat" | sed -n 's/.*"conversation_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' ;;
   esac
 }
 
@@ -86,6 +93,24 @@ if [ -f "findings.json" ] || [ -f "hawk_scan_output.json" ]; then
 fi
 if git log --since="1 hour ago" --oneline 2>/dev/null | grep -i "scan\|hawkscan\|security fix\|vulnerability\|resolve CWE" >/dev/null 2>&1; then
   exit 0
+fi
+
+# One follow-up per conversation. Record before printing; a failed write still prints.
+conversation_id="$(field conversation_id)"
+if [ -n "$conversation_id" ]; then
+  key="$(printf '%s' "$conversation_id" | git hash-object --stdin 2>/dev/null || true)"
+  record="$(git rev-parse --git-path stackhawk/cursor-stop-asked 2>/dev/null || true)"
+  if [ -n "$key" ] && [ -n "$record" ]; then
+    if [ -f "$record" ] && grep -Fxq "$key" "$record" 2>/dev/null; then
+      exit 0
+    fi
+    {
+      mkdir -p "$(dirname "$record")" &&
+        printf '%s\n' "$key" >> "$record" &&
+        tail -n 200 "$record" > "${record}.tmp" &&
+        mv "${record}.tmp" "$record"
+    } 2>/dev/null || true
+  fi
 fi
 
 file_count=$(printf '%s\n' "$modified_code" | wc -l | tr -d ' ')

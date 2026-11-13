@@ -242,7 +242,7 @@ function Install-CursorHook([string]$DotCursor, [string]$Scope) {
         Write-Host "Removed the old StackHawk hook $legacy and its hooks.json entry."
     }
     Write-Host "Installed the Cursor stop hook to $DotCursor/"
-    Write-Host "  hooks/$CursorHookScript  - asks for one scan after a turn that changed code without one"
+    Write-Host "  hooks/$CursorHookScript  - asks for a scan when a turn changed code without one (once per conversation)"
     Write-Host "  hooks.json               - one stop entry ($command); other entries are kept"
 }
 

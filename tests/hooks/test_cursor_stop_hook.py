@@ -6,8 +6,10 @@ scan after the user pressed stop, after an error, after its own follow-up turn, 
 any repository with a code commit from the last hour, even with a clean tree.
 
 The hook must print a follow-up only when all of these are true: the payload `status`
-is `completed`, `loop_count` is 0, the working tree or index holds a code change, and
-there is no scan evidence. User-level hooks run from `~/.cursor/` and stop hooks of a
+is `completed`, `loop_count` is 0, the working tree or index holds a code change, there
+is no scan evidence, and it has not already asked in this conversation. Cursor resets
+`loop_count` to 0 on every user message (desktop 3.9.16: `stopHookLoopCount`), so without
+that record it would ask for a full scan again after every later turn. User-level hooks run from `~/.cursor/` and stop hooks of a
 plugin run from the workspace root, so the hook finds the project from
 `CURSOR_PROJECT_DIR` (or `workspace_roots[0]`), not from its working directory.
 
@@ -28,7 +30,7 @@ HOOK = os.path.join(HOOK_DIR, "stop.sh")
 WINGMAN_HOOK = os.path.join(REPO_ROOT, "plugins/wingman/hooks/cursor/stop.sh")
 
 # Tools the hook shells out to; a PATH holding only these has no jq.
-NO_JQ_TOOLS = ["git", "grep", "sed", "tr", "cat", "head", "sort", "wc", "bash", "env", "printf", "dirname"]
+NO_JQ_TOOLS = ["git", "grep", "sed", "tr", "cat", "head", "tail", "sort", "wc", "bash", "env", "printf", "dirname", "mkdir", "mv"]
 
 STATUSES = ["completed", "aborted", "error"]
 LOOP_COUNTS = [0, 1]
@@ -185,8 +187,59 @@ def test_workspace_roots_is_the_fallback_project_dir(tmp_path):
     make_repo(str(repo), "modified")
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
-    followup(run(HOOK, payload(roots=[str(repo)]), cwd=str(elsewhere)))
-    followup(run(HOOK, payload(roots=[str(repo)]), cwd=str(elsewhere), path=no_jq_path(tmp_path)))
+    followup(run(HOOK, payload(roots=[str(repo)], conversation_id="c-jq"), cwd=str(elsewhere)))
+    followup(run(HOOK, payload(roots=[str(repo)], conversation_id="c-nojq"), cwd=str(elsewhere),
+                 path=no_jq_path(tmp_path)))
+
+
+@pytest.mark.parametrize("use_jq", [True, False], ids=["jq", "no-jq"])
+def test_one_follow_up_per_conversation(tmp_path, use_jq):
+    if use_jq and not shutil.which("jq"):
+        pytest.skip("jq not installed")
+    repo = tmp_path / "proj"
+    make_repo(str(repo), "modified")
+    path = None if use_jq else no_jq_path(tmp_path)
+    status_before = subprocess.run(["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True).stdout
+    followup(run(HOOK, payload(conversation_id="conv/../A b"), cwd=str(repo), path=path))
+    # The user sends another message in the same conversation; the tree is still dirty.
+    assert run(HOOK, payload(conversation_id="conv/../A b"), cwd=str(repo), path=path) == ""
+    followup(run(HOOK, payload(conversation_id="conv-B"), cwd=str(repo), path=path))
+    status_after = subprocess.run(["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True).stdout
+    assert status_after == status_before, "the record must not show up in git status"
+
+
+def test_without_a_conversation_id_every_completed_turn_may_ask(tmp_path):
+    repo = tmp_path / "proj"
+    make_repo(str(repo), "modified")
+    followup(run(HOOK, payload(conversation_id=""), cwd=str(repo)))
+    followup(run(HOOK, payload(conversation_id=""), cwd=str(repo)))
+
+
+def test_the_record_stays_bounded(tmp_path):
+    repo = tmp_path / "proj"
+    make_repo(str(repo), "modified")
+    record = subprocess.run(["git", "rev-parse", "--git-path", "stackhawk/cursor-stop-asked"], cwd=repo,
+                            capture_output=True, text=True, check=True).stdout.strip()
+    record = os.path.join(repo, record)
+    os.makedirs(os.path.dirname(record))
+    with open(record, "w") as f:
+        f.writelines(f"{i:040x}\n" for i in range(500))
+    followup(run(HOOK, payload(conversation_id="fresh"), cwd=str(repo)))
+    with open(record) as f:
+        lines = f.read().splitlines()
+    assert len(lines) <= 200
+    assert run(HOOK, payload(conversation_id="fresh"), cwd=str(repo)) == ""
+
+
+def test_an_unwritable_record_does_not_block_the_follow_up(tmp_path):
+    repo = tmp_path / "proj"
+    make_repo(str(repo), "modified")
+    # A file where the record directory should be: the record cannot be written.
+    blocker = subprocess.run(["git", "rev-parse", "--git-path", "stackhawk"], cwd=repo,
+                             capture_output=True, text=True, check=True).stdout.strip()
+    with open(os.path.join(repo, blocker), "w") as f:
+        f.write("not a directory")
+    followup(run(HOOK, payload(), cwd=str(repo)))
 
 
 def test_outside_a_git_repo_stays_silent(tmp_path):

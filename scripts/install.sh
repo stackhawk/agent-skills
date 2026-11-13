@@ -51,7 +51,7 @@ fi
 # the hook command there is ./hooks/stackhawk-stop.sh.
 # The installer replaces only files it owns: the five StackHawk skill folders, the two
 # rules, the hook script, and its own hooks.json entry. It also removes what older
-# versions installed: the 28 rules in scripts/cursor-legacy-rules.txt and a
+# versions installed: the rules named in scripts/cursor-legacy-rules.txt and a
 # .cursor/hooks/stop.sh that it wrote. Other rules, skills and hooks stay.
 
 CURSOR_SKILLS=(
@@ -250,7 +250,7 @@ cursor_install_hook() {
     echo "Removed the old StackHawk hook ${legacy} and its hooks.json entry."
   fi
   echo "Installed the Cursor stop hook to ${dot_cursor}/"
-  echo "  hooks/${CURSOR_HOOK_SCRIPT}  - asks for one scan after a turn that changed code without one"
+  echo "  hooks/${CURSOR_HOOK_SCRIPT}  - asks for a scan when a turn changed code without one (once per conversation)"
   echo "  hooks.json               - one stop entry (${command}); other entries are kept"
 }
 
