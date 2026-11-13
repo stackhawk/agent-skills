@@ -337,8 +337,11 @@ jobs:
   # official marketplace), and the released marketplace has no Cursor catalog yet (see
   # RELEASING.md, "Cursor distribution prerequisites"). So this job checks the plugin folders
   # this repository ships: scripts/cursor-plugin-smoke.sh loads each one with
-  # `cursor-agent --plugin-dir` and asks, read-only, which skills and rules the agent has.
-  # Without the CURSOR_API_KEY secret the script skips (exit 77) and the job leaves a notice.
+  # `cursor-agent --plugin-dir` and asks, read-only, which skills the agent has, with and
+  # without the plugin. It does not check rules or hooks: the CLI does not give plugin rules
+  # to a headless agent and runs stop hooks only in interactive sessions. Without the
+  # CURSOR_API_KEY secret, or when the account already has every skill of the plugin (for
+  # example from a team marketplace), the script skips (exit 77) and the job leaves a notice.
   cursor:
     name: cursor
     if: ${{ inputs.tool == 'all' || inputs.tool == 'cursor' }}
@@ -357,7 +360,7 @@ jobs:
             rc=0
             bash scripts/cursor-plugin-smoke.sh "$plugin" "$RUNNER_TEMP/smoke-$(basename "$plugin")" || rc=$?
             if [ "$rc" = 77 ]; then
-              echo "::notice::Cursor plugin smoke skipped for $plugin: no Cursor CLI or no CURSOR_API_KEY (see the log)"
+              echo "::notice::Cursor plugin smoke skipped for $plugin: no Cursor CLI, no CURSOR_API_KEY, or an inconclusive control (see the log)"
             elif [ "$rc" != 0 ]; then
               exit "$rc"
             fi

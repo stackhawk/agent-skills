@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
 # Live smoke test of a Cursor plugin folder with the Cursor CLI.
 #
-# Loads the plugin with `cursor-agent --plugin-dir` into an empty git workspace and asks,
-# read-only (--mode ask), which skills and always-applied rules the agent has. It passes
-# when the agent names the hawkscan skill and quotes the router rule heading.
+# Asks the agent, read-only (--mode ask), which skills it can use: once with the plugin
+# (`cursor-agent --plugin-dir`) and once without it, as a control, in an empty git workspace.
+# It passes when the agent lists every skill that the plugin ships and the control does not
+# list at least one of them. An account can already have StackHawk skills (for example from
+# a Cursor team marketplace); when the control lists all of them, the result is inconclusive.
+#
+# It does not check rules or hooks. Cursor CLI 2026.11.11 loads the skills of a plugin but
+# does not put plugin rules in the context of a headless prompt, and it runs stop hooks only
+# in interactive sessions.
 #
 # Usage: scripts/cursor-plugin-smoke.sh [plugin-dir] [out-dir]
 #   plugin-dir  default: plugins/hawkscan of this checkout
-#   out-dir     where the raw stream is kept (default: a temporary directory)
+#   out-dir     where the raw streams are kept (default: a temporary directory)
 #
 # Needs CURSOR_API_KEY in the environment (never on the command line) or a CLI login that
-# can run headless prompts. Exit codes: 0 pass, 1 fail, 77 skipped (no CLI or no auth).
+# can run headless prompts. Exit codes: 0 pass, 1 fail, 77 skipped (no CLI, no auth, or a
+# control that already lists every skill of the plugin).
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -30,6 +37,24 @@ if [ -z "$cli" ]; then
   exit 77
 fi
 
+# The skill names the plugin ships: the `name:` of each SKILL.md under the manifest's
+# `skills` path (default: skills/).
+expected="$(python3 - "$plugin_dir" <<'PY'
+import json, pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+paths = json.loads((root / ".cursor-plugin" / "plugin.json").read_text()).get("skills", "./skills/")
+for path in paths if isinstance(paths, list) else [paths]:
+    for skill in sorted((root / path).glob("*/SKILL.md")):
+        match = re.search(r"^name:\s*['\"]?([^'\"\s]+)", skill.read_text(), re.M)
+        if match:
+            print(match.group(1))
+PY
+)"
+if [ -z "$expected" ]; then
+  echo "FAIL: ${plugin_dir} ships no skill with a name" >&2
+  exit 1
+fi
+
 workspace="${out_dir}/workspace"
 rm -rf "$workspace"
 mkdir -p "${workspace}/src"
@@ -39,25 +64,26 @@ git -C "$workspace" -c user.name=smoke -c user.email=smoke@example.invalid add -
 git -C "$workspace" -c user.name=smoke -c user.email=smoke@example.invalid commit -q -m init
 
 prompt='Do not run any tool and do not read any file. Answer from your instructions only.
-1) List the name of every skill you can use.
-2) For every rule whose full text is already in your context, quote its first heading line.'
+List the name of every skill you can use, one per line, in the form "SKILL: <name>". Write nothing else.'
 
-stream="${out_dir}/inventory.jsonl"
-( cd "$workspace" && "$cli" -p "$prompt" --plugin-dir "$plugin_dir" --output-format stream-json \
-    --mode ask --trust ) > "$stream" 2> "${out_dir}/inventory.stderr"
-status=$?
-
-if grep -qi "authentication required" "${out_dir}/inventory.stderr" "$stream" 2>/dev/null; then
-  echo "SKIP: the Cursor CLI needs CURSOR_API_KEY or a login that can run headless prompts"
-  exit 77
-fi
-if [ "$status" -ne 0 ]; then
-  echo "FAIL: cursor-agent exited ${status}; see ${out_dir}/inventory.stderr" >&2
-  exit 1
-fi
-
-answer="$(python3 - "$stream" <<'PY'
-import json, sys
+# ask <label> [cli args...]: runs the prompt and writes the skill names to <label>.txt.
+# Returns 77 when the CLI has no usable authentication, 1 when it fails.
+ask() {
+  local label="$1"
+  shift
+  local stream="${out_dir}/${label}.jsonl"
+  ( cd "$workspace" && "$cli" -p "$prompt" "$@" --output-format stream-json --mode ask --trust ) \
+    > "$stream" 2> "${out_dir}/${label}.stderr"
+  local status=$?
+  if grep -qi "authentication required" "${out_dir}/${label}.stderr" "$stream" 2>/dev/null; then
+    return 77
+  fi
+  if [ "$status" -ne 0 ]; then
+    echo "FAIL: cursor-agent exited ${status} (${label}); see ${out_dir}/${label}.stderr" >&2
+    return 1
+  fi
+  python3 - "$stream" > "${out_dir}/${label}.txt" <<'PY'
+import json, re, sys
 text = []
 for line in open(sys.argv[1]):
     try:
@@ -66,23 +92,41 @@ for line in open(sys.argv[1]):
         continue
     if event.get("type") == "assistant":
         text += [b.get("text", "") for b in event.get("message", {}).get("content", []) if b.get("type") == "text"]
-print("".join(text))
+for match in re.finditer(r"SKILL:\s*`?([^`\s]+)", "".join(text)):
+    print(match.group(1).split(":")[-1].lower())
 PY
-)"
-printf '%s\n' "$answer" > "${out_dir}/inventory.txt"
-echo "Agent answer (${out_dir}/inventory.txt):"
-printf '%s\n' "$answer" | sed 's/^/  /'
+}
 
-failures=0
-if ! printf '%s' "$answer" | grep -qi "hawkscan"; then
-  echo "FAIL: the agent did not list the hawkscan skill" >&2
-  failures=$((failures + 1))
-fi
-if ! printf '%s' "$answer" | grep -qi "StackHawk skills"; then
-  echo "FAIL: the agent did not quote the always-applied router rule (# StackHawk skills)" >&2
-  failures=$((failures + 1))
-fi
-if [ "$failures" -gt 0 ]; then
+stop_unless_ok() {
+  if [ "$1" -eq 77 ]; then
+    echo "SKIP: the Cursor CLI needs CURSOR_API_KEY or a login that can run headless prompts"
+    exit 77
+  elif [ "$1" -ne 0 ]; then
+    exit 1
+  fi
+}
+ask plugin --plugin-dir "$plugin_dir"
+stop_unless_ok $?
+ask control
+stop_unless_ok $?
+
+echo "Skills the plugin ships: $(echo "$expected" | tr '\n' ' ')"
+echo "Listed with the plugin:  $(tr '\n' ' ' < "${out_dir}/plugin.txt")"
+echo "Listed without it:       $(tr '\n' ' ' < "${out_dir}/control.txt")"
+
+missing="" proven=""
+for name in $expected; do
+  lower="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
+  grep -qxF "$lower" "${out_dir}/plugin.txt" || missing="${missing} ${name}"
+  grep -qxF "$lower" "${out_dir}/control.txt" || proven="${proven} ${name}"
+done
+if [ -n "$missing" ]; then
+  echo "FAIL: the agent did not list these skills of the plugin:${missing}" >&2
   exit 1
 fi
-echo "PASS: Cursor loaded the skill and the router rule from ${plugin_dir}"
+if [ -z "$proven" ]; then
+  echo "SKIP: the control already lists every skill of the plugin, so the plugin's part cannot be shown." \
+    "Use an account without StackHawk plugins (for example from a team marketplace)."
+  exit 77
+fi
+echo "PASS: Cursor loaded the plugin's skills from ${plugin_dir} (absent without it:${proven})"
