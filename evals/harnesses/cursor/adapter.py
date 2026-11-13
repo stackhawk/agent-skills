@@ -13,17 +13,30 @@ from evals.lib.observe import observe_suffix
 
 # adapter.py -> cursor -> harnesses -> evals -> repo root
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-# cursor/.cursor/rules/ holds the alwaysApply .mdc skill rules (pre-shim path).
-CURSOR_RULES_DIR = REPO_ROOT / "cursor" / ".cursor" / "rules"
+INSTALL_SH = REPO_ROOT / "scripts" / "install.sh"
 
 
-def _setup_skill(target_dir: str) -> None:
-    """Copy cursor/.cursor/rules/*.mdc into the run's workspace so alwaysApply
-    rules load. Mirrors the pre-shim run-evals.py _setup_workspace()."""
-    dst = Path(target_dir) / ".cursor" / "rules"
-    dst.mkdir(parents=True, exist_ok=True)
-    for mdc in CURSOR_RULES_DIR.glob("*.mdc"):
-        shutil.copy2(mdc, dst / mdc.name)
+def _setup_skill(target_dir: str) -> str | None:
+    """Install StackHawk into the run's workspace exactly as a user does.
+
+    Runs `scripts/install.sh --platform cursor`: the five skills in .cursor/skills/,
+    the router and stackhawk.yml pointer rules in .cursor/rules/, and the stop hook.
+    The workspace is not a git repository, so the stop hook stays silent.
+    Returns an error message, or None on success.
+    """
+    proc = subprocess.run(
+        ["bash", str(INSTALL_SH), "--platform", "cursor", "--target", target_dir],
+        capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=120,
+    )
+    if proc.returncode != 0:
+        return f"cursor install failed: {(proc.stderr or proc.stdout)[-300:].strip()}"
+    return None
+
+
+def _agent_binary() -> str:
+    """The Cursor CLI. `cursor-agent` is unambiguous; `agent` can be another tool's CLI."""
+    return "cursor-agent" if shutil.which("cursor-agent") else "agent"
+
 
 # CLI signals — checked against bash_commands only.
 # Cursor goes directly into execution, so CLI signals are the primary trigger
@@ -219,15 +232,17 @@ class CursorAdapter:
             return ParsedRun(error="discovery (target_repo) cells run only on the claude-code harness")
         tmpdir = tempfile.mkdtemp(prefix=f"hawkeval_{run_id}_")
         try:
-            # With/without-skill switch: only install the cursor rules when the
-            # skill should be loaded (pre-shim always installed them).
+            # With/without-skill switch: only install StackHawk when the skill
+            # should be loaded.
             if load_skill:
-                _setup_skill(tmpdir)
+                setup_error = _setup_skill(tmpdir)
+                if setup_error:
+                    return ParsedRun(error=setup_error)
             # Observe mode: append the per-skill walkthrough suffix. Full-auto /
             # extended runs against a real target use the bare prompt.
             effective_prompt = prompt if full_auto else prompt + observe_suffix(skill)
             cmd = [
-                "agent", "-p", effective_prompt,
+                _agent_binary(), "-p", effective_prompt,
                 "--output-format", "stream-json",
                 "--print",
                 "--trust",

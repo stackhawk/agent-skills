@@ -4,7 +4,8 @@ SKILL.md once said both "Repeat until exit 0" (unbounded) and "Max one fix-resca
 cycle" (capped, with no rescan required after the last fix). An autonomous run could
 satisfy both by fixing the first rescan's findings and stopping, leaving the fixes
 unverified. These checks cover every shipped copy: the source skill, the generated
-wingman/Copilot bundle and the generated Cursor rules.
+wingman/Copilot bundle and the deprecated generated Cursor rules (cursor/, kept for one
+release; drop the CURSOR rows when it is removed).
 
 This is a phrase lock on vocabulary, not a test of loop semantics. A deliberate
 rewording of the rule should update it. It is not run in PR CI.
@@ -22,8 +23,8 @@ SKILL_DIRS = [
 ]
 CURSOR = "cursor/.cursor/rules"
 
-# Each SKILL.md copy. Cursor rule-only installs get SKILL.md but not
-# autonomous-loop.md, so SKILL.md must carry the whole rule itself.
+# Each SKILL.md copy. A platform can load SKILL.md without reading autonomous-loop.md,
+# so SKILL.md must carry the whole rule itself.
 SKILL_MD = [f"{d}/SKILL.md" for d in SKILL_DIRS] + [f"{CURSOR}/stackhawk-hawkscan.mdc"]
 AUTONOMOUS_LOOP = [f"{d}/references/autonomous-loop.md" for d in SKILL_DIRS]
 CROSS_REFS = (

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Generates plugins/wingman/copilot-skills/ - bundled copies of wingman's four
-# dependency skills, so GitHub Copilot and Codex (neither installs plugin
+# dependency skills, so GitHub Copilot, Codex and Cursor (none installs plugin
 # dependencies) get the full skill set from one wingman install. It also points
 # the Codex manifest's "skills" field at that directory.
 #
@@ -77,9 +77,10 @@ Produced by `scripts/generate-wingman-skills.sh`. Edit the source skills under
 `plugins/*/skills/*/` and regenerate.
 
 These are bundled copies of wingman's four dependency skills, present so GitHub
-Copilot and Codex get the full set from one wingman install. Neither installs
-plugin dependencies, so both manifests point their `skills` field here. Claude
-Code resolves wingman's `dependencies` field and ignores this directory.
+Copilot, Codex and Cursor get the full set from one wingman install. None of
+them installs plugin dependencies, so their manifests point their `skills` field
+here. Claude Code resolves wingman's `dependencies` field and ignores this
+directory.
 
 This directory is intentionally NOT named `skills/`: Claude Code always scans a
 plugin's `skills/` directory, which would load every skill twice.

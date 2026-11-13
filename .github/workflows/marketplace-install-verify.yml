@@ -333,31 +333,35 @@ jobs:
           echo "OK: agy imported stackhawk skills"
 
   # ── Cursor ───────────────────────────────────────────────────────────────────
+  # Cursor installs marketplace plugins from its dashboard (team marketplace import or the
+  # official marketplace), and the released marketplace has no Cursor catalog yet (see
+  # RELEASING.md, "Cursor distribution prerequisites"). So this job checks the plugin folders
+  # this repository ships: scripts/cursor-plugin-smoke.sh loads each one with
+  # `cursor-agent --plugin-dir` and asks, read-only, which skills and rules the agent has.
+  # Without the CURSOR_API_KEY secret the script skips (exit 77) and the job leaves a notice.
   cursor:
     name: cursor
     if: ${{ inputs.tool == 'all' || inputs.tool == 'cursor' }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
       - name: Install Cursor CLI
-        continue-on-error: true
         run: |
           curl https://cursor.com/install -fsS | bash
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Discover CLI surface (diagnostic)
-        # Cursor's marketplace is editor/dashboard-driven; whether the `agent` CLI can
-        # install a marketplace plugin headlessly is unknown. v1 maps the surface so we
-        # design the real test (or accept editor-only) from this.
-        continue-on-error: true
+      - name: Load the hawkscan and wingman plugins with --plugin-dir
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
         run: |
-          set -x
-          agent --version || true
-          agent --help || true
-          agent plugin --help 2>/dev/null || true
-          agent marketplace --help 2>/dev/null || true
-      - name: Note
-        run: |
-          echo "Cursor verification is exploratory — see diagnostic output above."
-          echo "Cursor marketplace install is editor/dashboard-driven; CLI surface TBD."
+          for plugin in plugins/hawkscan plugins/wingman; do
+            rc=0
+            bash scripts/cursor-plugin-smoke.sh "$plugin" "$RUNNER_TEMP/smoke-$(basename "$plugin")" || rc=$?
+            if [ "$rc" = 77 ]; then
+              echo "::notice::Cursor plugin smoke skipped for $plugin: no CURSOR_API_KEY"
+            elif [ "$rc" != 0 ]; then
+              exit "$rc"
+            fi
+          done
 
   # ── skills CLI (npx skills) ──────────────────────────────────────────────────
   # `npx skills add <source>` discovers SKILL.md files only and ignores every

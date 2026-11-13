@@ -168,6 +168,10 @@ Installs `hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, and 
 
 #### Cursor
 
+Cursor reads the five skills as Agent Skills and loads a skill body only when the skill applies. StackHawk adds three small Cursor-only parts: an always-applied router rule (about 1.2 KB) that names the skills and when each applies, a rule that applies while `stackhawk.yml` is in context, and a stop hook. When a turn ends normally after a code change with no scan, the stop hook asks the agent once to run the hawkscan skill. It stays silent after you press stop, after an error, and after its own follow-up turn.
+
+**Project install** (recommended; Cursor Cloud Agents and automations read only the repository's `.cursor/`):
+
 ```bash
 # macOS / Linux
 git clone https://github.com/stackhawk/agent-skills.git
@@ -177,10 +181,16 @@ bash agent-skills/scripts/install.sh --platform cursor --target .
 ```powershell
 # Windows
 git clone https://github.com/stackhawk/agent-skills.git
-.\agent-skills\scripts\install.ps1 -Platform cursor
+.\agent-skills\scripts\install.ps1 -Platform cursor -Target .
 ```
 
-Installs Cursor rules (`.cursor/rules/`), skills (`.cursor/skills/`), and the stop hook that auto-triggers a scan when you finish coding.
+This installs the skills into `.cursor/skills/`, `stackhawk.mdc` and `stackhawk-config.mdc` into `.cursor/rules/`, and `.cursor/hooks/stackhawk-stop.sh` with one entry merged into `.cursor/hooks.json`. Your other rules, skills and hooks stay. To upgrade, run the installer again: it replaces only StackHawk files, and it removes the 28 rules and the `.cursor/hooks/stop.sh` hook that older versions installed.
+
+**User-level install** (every project on this machine): give your home directory as the target (`--target ~`; on Windows, leave out `-Target`). This installs the skills into `~/.cursor/skills/` and the stop hook into `~/.cursor/hooks.json`. Cursor has no file-based user rules, so for the router rule use a project install or the plugin.
+
+**Cursor plugins:** every plugin folder carries a `.cursor-plugin/plugin.json`, and the repository root carries `.cursor-plugin/marketplace.json`. To try a plugin from a clone: `cursor-agent --plugin-dir agent-skills/plugins/hawkscan`. A released install through a Cursor team marketplace needs a Cursor catalog in [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace), which does not exist yet (see [RELEASING.md](RELEASING.md#cursor-distribution-prerequisites)). Install `wingman` or the separate plugins, not both: `hawkscan` and `wingman` each carry the router rule and the stop hook.
+
+The stop hook is a bash script. On Windows, Cursor needs bash (for example Git for Windows) to run it. These installs copy from your clone, which is unreleased `main`; for released skills without the rules and the hook, use the skills CLI below. The generated rules in `cursor/.cursor/rules/` are deprecated: the installers no longer copy them, and `cursor/` will be removed in the next major release.
 
 #### skills CLI (npx)
 
@@ -289,7 +299,9 @@ plugins/
     └── skills/stackhawk-data-seed/
         └── SKILL.md             hawk perch seed workflow
 skills/                          Symlinks for Gemini/Copilot discovery
-cursor/                          Generated Cursor .mdc rules
+cursor/                          Generated Cursor .mdc rules (deprecated; not installed)
+scripts/generate-cursor-adapter.py  Builds the Cursor plugin manifests and wingman copies
+scripts/measure-cursor-context.py   Measures the Cursor context load of an install
 scripts/install.sh               Installer for Cursor and Copilot (macOS/Linux)
 scripts/install.ps1              Installer for Cursor and Copilot (Windows)
 scripts/generate-marketplace-catalogs.py   Builds local install verification catalogs
@@ -308,7 +320,7 @@ Released plugins and skills are published through [stackhawk/agent-skills-market
 | Gemini CLI | `gemini extensions install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 | GitHub Copilot | `copilot plugin install wingman@stackhawk` (or per-plugin) | hawkscan, stackhawk-api, stackhawk-data-seed, stackhawk-optimize (+ hawkscan-ci via per-plugin install) |
 | OpenCode | Copy to `.opencode/skills/` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
-| Cursor | `install.sh --platform cursor` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
+| Cursor | `install.sh --platform cursor` (or a Cursor plugin) | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 
 ---
 

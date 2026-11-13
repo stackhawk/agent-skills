@@ -3,7 +3,7 @@ name: skill-authoring
 version: 1.1.0
 description: >
   Guides authoring and maintaining agent skills in this repository — enforcing
-  Anthropic best practices, release-version rules, regenerating Cursor rules, and
+  Anthropic best practices, release-version rules, keeping the Cursor adapter current, and
   keeping the plugin structure consistent. Use when editing SKILL.md files,
   reference files, or plugin manifests; creating a new plugin; or reviewing a
   skill for compliance with authoring standards. Do NOT trigger for general
@@ -167,15 +167,16 @@ cd .opencode/skills/ && ln -s ../../plugins/<name>/skills/<name> <name>
 cd .cursor/skills/ && ln -s ../../plugins/<name>/skills/<name> <name>
 ```
 
-**5. Add Cursor mapping** in `scripts/generate-cursor-rules.sh` MAPPINGS array:
-```
-"<name>/skills/<name>/SKILL.md|stackhawk-<name>|<cursor description>|<globs>|<alwaysApply>"
-```
+**5. Name the skill in the Cursor router rule** `plugins/hawkscan/rules/stackhawk.mdc`: one
+bullet with the skill name and when it applies. The router is always applied in Cursor, so keep
+it under its 2,000-byte budget. Do not add a `scripts/generate-cursor-rules.sh` MAPPINGS entry:
+those generated rules are deprecated and no longer installed.
 
 **6. Add to `.version-bump.json`** — add the Codex manifest (`stamp_only`) and the SKILL.md under
 `files`, and the Claude manifest under `unversioned`:
 ```json
 { "path": "plugins/<name>/.codex-plugin/plugin.json", "field": "version", "type": "json", "stamp_only": true },
+{ "path": "plugins/<name>/.cursor-plugin/plugin.json", "field": "version", "type": "json", "stamp_only": true },
 { "path": "plugins/<name>/skills/<name>/SKILL.md", "field": "version", "type": "yaml-frontmatter" }
 ```
 
@@ -185,15 +186,16 @@ PR description; never bump a version in the PR):
 bash scripts/bump-version.sh --placeholder && bash scripts/check-version.sh
 ```
 
-**8. Regenerate Cursor rules:**
+**8. Generate the Cursor adapter** (the plugin's `.cursor-plugin/plugin.json`, its entry in
+`.cursor-plugin/marketplace.json`, and the router check):
 ```bash
-bash scripts/generate-cursor-rules.sh
+python3 scripts/generate-cursor-adapter.py
 ```
 
 **9. Verify idempotency:**
 ```bash
-bash scripts/generate-cursor-rules.sh && git diff cursor/
-# → no diff means rules are in sync
+python3 scripts/generate-cursor-adapter.py --check
+# → "up to date" means the Cursor adapter is in sync
 ```
 
 ---
@@ -213,9 +215,11 @@ After any edit to `SKILL.md` or `references/*.md`:
    # Any hit means a reference file is linking to another file — remove it
    ```
 
-3. **Regenerate Cursor rules:**
+3. **Regenerate the deprecated Cursor rules** (CI checks them until `cursor/` is removed) and
+   check the Cursor adapter:
    ```bash
    bash scripts/generate-cursor-rules.sh && git diff cursor/
+   python3 scripts/generate-cursor-adapter.py --check
    ```
 
 4. **Choose the release size** — do not bump anything. A merge releases the next patch
@@ -246,12 +250,15 @@ into the snapshot. Never edit version numbers manually in individual files.
 `generate-and-validate.yml` runs on every PR and checks:
 
 - Version placeholder consistency across all manifests (`scripts/check-version.sh`)
-- Cursor rules are up to date (no diff after running `generate-cursor-rules.sh`)
+- The Cursor adapter is up to date and within its context budgets
+  (`generate-cursor-adapter.py --check`, `measure-cursor-context.py --check`)
+- The deprecated Cursor rules are up to date (no diff after running `generate-cursor-rules.sh`)
 - SKILL.md frontmatter has `name:`, `version:`, `description:`
 
 The PR will be blocked if any check fails. Fix by running:
 ```bash
 bash scripts/bump-version.sh --placeholder
 bash scripts/generate-cursor-rules.sh
-git add plugins/ cursor/ scripts/ && git commit --amend --no-edit
+python3 scripts/generate-cursor-adapter.py
+git add plugins/ cursor/ scripts/ .cursor-plugin/ && git commit --amend --no-edit
 ```

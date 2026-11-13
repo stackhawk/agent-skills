@@ -14,14 +14,14 @@ Every merge to `main` is a release. Releases follow [Semantic Versioning](https:
 `.github/workflows/release.yml` runs on every push to `main`, one run at a time, never cancelled:
 
 1. **resolve** the version from the remote's tags.
-2. **validate** it on a scratch copy: `scripts/bump-version.sh <version>` stamps every version-bearing file in `.version-bump.json`, the wingman Copilot bundle is regenerated, and `scripts/check-version.sh <version>` and `scripts/test-wingman-skills.sh` check the result, as do the Cursor rules. Nothing is committed.
+2. **validate** it on a scratch copy: `scripts/bump-version.sh <version>` stamps every version-bearing file in `.version-bump.json`, the wingman Copilot bundle is regenerated, and `scripts/check-version.sh <version>` and `scripts/test-wingman-skills.sh` check the result, as do the Cursor adapter (`scripts/generate-cursor-adapter.py --check`) and the deprecated Cursor rules. Nothing is committed.
 3. **claim** the number (`claim/vX.Y.Z`), then draft the GitHub Release (notes are generated from the merged pull requests).
 4. **tag** the merged commit `vX.Y.Z` and delete the claim. The tagged tree carries the placeholder version.
 5. **publish** the GitHub Release, **sync the marketplace** and dispatch **Capture Eval Baseline** for the tag. The baseline dispatch only warns when it fails; run `Capture Eval Baseline` by hand with the tag.
 
 Every release job runs on the `agent-skills-amd-4cpu` runner, because the `biodome-ci-*` runners do not serve public repositories. Its image has no `gh`, so the jobs that need it install the pinned, checksum-verified build from `scripts/ci/install-gh.sh`.
 
-The tree keeps one placeholder (`0.0.0-dev`, set in `.version-bump.json`) in every version-bearing file, and the manifests whose format allows it carry no `version` (the Claude plugin manifests, `.claude-plugin/marketplace.json`, every Codex `plugin.json`, the wingman Copilot manifest and the root `plugin.json`), so clients that install from the repository track the commit. `gemini-extension.json` requires a version and keeps the placeholder. A stamp adds the version to the `stamp_only` manifests and `--placeholder` removes it again. `scripts/check-version.sh` (run by `generate-and-validate.yml` on every PR) keeps it that way.
+The tree keeps one placeholder (`0.0.0-dev`, set in `.version-bump.json`) in every version-bearing file, and the manifests whose format allows it carry no `version` (the Claude plugin manifests, `.claude-plugin/marketplace.json`, every Codex and Cursor `plugin.json`, `.cursor-plugin/marketplace.json`, the wingman Copilot manifest and the root `plugin.json`), so clients that install from the repository track the commit. `gemini-extension.json` requires a version and keeps the placeholder. A stamp adds the version to the `stamp_only` manifests and `--placeholder` removes it again. `scripts/check-version.sh` (run by `generate-and-validate.yml` on every PR) keeps it that way.
 
 ## When a release fails
 
@@ -47,3 +47,15 @@ The sync script owns all marketplace release outputs:
 Review the resulting commit on marketplace `main` after the job succeeds. In its checkout, run `claude plugin validate --strict .`, validate each `plugins/<name>` folder, and run `python3 -m unittest discover -s tests`. The release job runs the marketplace tests before pushing. The separate `Marketplace Install Verify` workflow in this repository tests catalog compatibility and standalone skill discovery from local fixtures.
 
 If the workflow fails, inspect the job logs, fix the cause, and re-run the failed jobs of the release run. Do not hand-edit generated catalogs, plugin snapshots, or standalone skills.
+
+## Cursor distribution prerequisites
+
+This repository ships the Cursor adapter: a `.cursor-plugin/plugin.json` in every plugin folder, `.cursor-plugin/marketplace.json` at the root, the rules in `plugins/hawkscan/rules/`, and the Cursor hooks in `plugins/hawkscan/hooks/cursor/` (`scripts/generate-cursor-adapter.py` writes the manifests and the wingman copies). The marketplace sync already copies every file in a plugin folder into the released snapshot. A released Cursor install through a team marketplace import of [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace) also needs these changes in that repository. Until they ship, Cursor users install from a clone of this repository (`scripts/install.sh`, or `cursor-agent --plugin-dir`).
+
+1. `prepare_catalogs` in `scripts/sync-agent-skills.py` writes `.cursor-plugin/marketplace.json`, with `./plugins/<name>` sources and `./bundles/wingman` for wingman. Only the bundle keeps `copilot-skills/`, which the wingman Cursor manifest loads.
+2. `stamp_versions` stamps `.cursor-plugin/plugin.json` with the other manifests.
+3. `split_bundle` removes `.cursor-plugin/`, `rules/` and `hooks/cursor/` from the Claude-listed `plugins/wingman` and keeps them in `bundles/wingman`. Cursor imports Claude Code plugins by default, so a Claude Code user with `wingman` would otherwise get the router rule and the stop hook twice: once from `hawkscan` and once from `wingman`.
+4. `install()` adds `.cursor-plugin/marketplace.json` to its paths, and the `git add` list of the `update-marketplace` job in `release.yml` adds the same path. Without it the "changes outside the staged paths" check fails the release.
+5. The marketplace tests cover the Cursor catalog, and the marketplace README describes the Cursor install.
+
+`scripts/install.sh` still copies from the checkout it runs in, normally a clone of `main`, so it installs unreleased skills that carry the placeholder version. It can install a released snapshot only after the steps above have shipped and one release has synced the Cursor files into the marketplace. It also needs two changes then: the sync must copy `scripts/install.sh`, `scripts/install.ps1` and `scripts/cursor-legacy-rules.txt` into the snapshot, and the installers must find each skill by its catalog plugin name, because the snapshot names plugin folders by that name (`plugins/stackhawk-api/skills/api`, not `plugins/api/skills/api`). Test it against a local sync of a release tag before the README points Cursor users at the marketplace repository.

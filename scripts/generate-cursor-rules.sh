@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ─── Cursor Rule Generation Script ───
+# ─── Cursor Rule Generation Script (DEPRECATED) ───
 # Transforms canonical SKILL.md + references/*.md into Cursor .mdc format.
 # Run from repo root: bash scripts/generate-cursor-rules.sh
+#
+# Deprecated: the installers no longer copy these rules (see cursor/README.md). Cursor reads
+# the skills directly; scripts/generate-cursor-adapter.py builds the Cursor plugin files. This
+# script, its MAPPINGS and cursor/ will be removed in the next major release.
 #
 # Each entry in MAPPINGS defines:
 #   source_file|output_name|cursor_description|globs (comma-separated, or empty)|alwaysApply (true or false, default false)
@@ -107,3 +111,4 @@ if [[ ${error_count} -gt 0 ]]; then
 fi
 
 echo "Done. Generated $(ls "${OUTPUT_DIR}"/*.mdc 2>/dev/null | wc -l | tr -d ' ') Cursor rules in ${OUTPUT_DIR}/"
+echo "NOTE: these rules are deprecated and no longer installed; cursor/ will be removed in the next major release."

@@ -41,7 +41,7 @@ jobs:
 
       - name: Validate JSON manifests
         run: |
-          for f in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json plugins/*/.github/plugin/plugin.json .claude-plugin/marketplace.json .codex-plugin/marketplace.json gemini-extension.json; do
+          for f in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json plugins/*/.cursor-plugin/plugin.json plugins/*/.github/plugin/plugin.json plugins/*/hooks/cursor/*.json .claude-plugin/marketplace.json .codex-plugin/marketplace.json .cursor-plugin/marketplace.json gemini-extension.json; do
             if [ -f "$f" ]; then
               python3 -m json.tool "$f" > /dev/null
               echo "OK: $f"
@@ -190,6 +190,32 @@ jobs:
             echo "Best practice: add a '## Contents' section at the top so Claude can navigate large files."
           fi
 
+  # The Cursor adapter: generated .cursor-plugin manifests, the router and stackhawk.yml
+  # pointer rules, the plugin stop hook, and the installers. The measure step fails when a
+  # change makes the default Cursor context heavier than its budget.
+  cursor-adapter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
+
+      - name: Verify the Cursor adapter is up to date and within budget
+        run: python3 scripts/generate-cursor-adapter.py --check
+
+      - name: Measure a project install and the plugin layouts
+        run: |
+          project="$(mktemp -d)"
+          bash scripts/install.sh --platform cursor --target "$project"
+          python3 scripts/measure-cursor-context.py --check "$project/.cursor"
+          python3 scripts/measure-cursor-context.py --check plugins/hawkscan
+          python3 scripts/measure-cursor-context.py --check plugins/wingman
+
+      - name: Cursor regression tests (installers under bash and pwsh, stop hook, adapter)
+        run: |
+          uv run pytest -q tests/scripts/test_cursor_adapter.py tests/scripts/test_install_cursor.py \
+            tests/hooks/test_cursor_stop_hook.py tests/lib/test_cursor_eval_setup.py
+
+  # Deprecated: cursor/.cursor/rules stays for one release. The installers no longer copy it.
   generate-cursor-rules:
     runs-on: ubuntu-latest
     steps:
@@ -246,7 +272,7 @@ jobs:
 
   ci-result:
     if: always()
-    needs: [validate, generate-cursor-rules]
+    needs: [validate, cursor-adapter, generate-cursor-rules]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any required job failed or was cancelled

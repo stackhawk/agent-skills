@@ -84,6 +84,42 @@
       "path": "plugins/optimize/skills/optimize/SKILL.md",
       "field": "version",
       "type": "yaml-frontmatter"
+    },
+    {
+      "path": "plugins/hawkscan/.cursor-plugin/plugin.json",
+      "field": "version",
+      "type": "json",
+      "stamp_only": true
+    },
+    {
+      "path": "plugins/api/.cursor-plugin/plugin.json",
+      "field": "version",
+      "type": "json",
+      "stamp_only": true
+    },
+    {
+      "path": "plugins/hawkscan-ci/.cursor-plugin/plugin.json",
+      "field": "version",
+      "type": "json",
+      "stamp_only": true
+    },
+    {
+      "path": "plugins/stackhawk-data-seed/.cursor-plugin/plugin.json",
+      "field": "version",
+      "type": "json",
+      "stamp_only": true
+    },
+    {
+      "path": "plugins/optimize/.cursor-plugin/plugin.json",
+      "field": "version",
+      "type": "json",
+      "stamp_only": true
+    },
+    {
+      "path": "plugins/wingman/.cursor-plugin/plugin.json",
+      "field": "version",
+      "type": "json",
+      "stamp_only": true
     }
   ],
   "unversioned": [
@@ -93,7 +129,8 @@
     "plugins/optimize/.claude-plugin/plugin.json",
     "plugins/stackhawk-data-seed/.claude-plugin/plugin.json",
     "plugins/wingman/.claude-plugin/plugin.json",
-    ".claude-plugin/marketplace.json"
+    ".claude-plugin/marketplace.json",
+    ".cursor-plugin/marketplace.json"
   ],
   "audit": {
     "exclude": [

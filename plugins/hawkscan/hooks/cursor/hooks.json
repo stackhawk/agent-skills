@@ -3,7 +3,8 @@
   "hooks": {
     "stop": [
       {
-        "command": ".cursor/hooks/stop.sh"
+        "command": ".cursor/hooks/stackhawk-stop.sh",
+        "loop_limit": 1
       }
     ]
   }

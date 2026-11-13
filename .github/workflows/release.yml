@@ -78,6 +78,9 @@ jobs:
         run: |
           bash scripts/check-version.sh "$RELEASE_VERSION"
           bash scripts/test-wingman-skills.sh
+      - name: Verify the Cursor adapter is up to date
+        # The stamp adds a version to each .cursor-plugin/plugin.json; the generator keeps it.
+        run: python3 scripts/generate-cursor-adapter.py --check
       - name: Verify Cursor rules are up to date
         run: |
           bash scripts/generate-cursor-rules.sh
