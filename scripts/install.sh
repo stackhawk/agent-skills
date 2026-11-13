@@ -179,7 +179,7 @@ cursor_install_rules() {
     echo "  stackhawk-config.mdc     - applies while stackhawk.yml is in context"
   else
     echo "No rules installed: Cursor has no file-based user rules. For the router rule, run a"
-    echo "project install or install the hawkscan plugin."
+    echo "project install."
   fi
   if [ "$removed" -gt 0 ]; then
     echo ""

@@ -177,7 +177,7 @@ function Install-CursorRules([string]$DotCursor, [string]$Scope) {
         Write-Host "  stackhawk-config.mdc     - applies while stackhawk.yml is in context"
     } else {
         Write-Host "No rules installed: Cursor has no file-based user rules. For the router rule, run a"
-        Write-Host "project install or install the hawkscan plugin."
+        Write-Host "project install."
     }
     if ($removed -gt 0) {
         Write-Host ""
