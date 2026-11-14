@@ -30,7 +30,7 @@ This skill graduates a working *local* HawkScan setup (`stackhawk.yml` exists an
 
 ```bash
 # Add the StackHawk marketplace
-/plugin marketplace add stackhawk/agent-skills
+/plugin marketplace add stackhawk/agent-skills-marketplace
 
 # Install the CI skill
 /plugin install hawkscan-ci@stackhawk

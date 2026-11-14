@@ -10,6 +10,6 @@ Install the StackHawk `hawk` CLI with `hawk perch seed validate` and `hawk perch
 
 ## Install and use
 
-In Claude Code, add the [StackHawk agent skills marketplace](https://github.com/stackhawk/agent-skills) and install `stackhawk-data-seed@stackhawk`. Ask Claude to "set up data for HawkScan" or "seed this repo for scanning". The skill runs only when you explicitly request it.
+In Claude Code, add the [StackHawk agent skills marketplace](https://github.com/stackhawk/agent-skills-marketplace) and install `stackhawk-data-seed@stackhawk`. Ask Claude to "set up data for HawkScan" or "seed this repo for scanning". The skill runs only when you explicitly request it.
 
 See [the skill instructions](skills/stackhawk-data-seed/SKILL.md) for the complete workflow. This plugin is released under the MIT license.
