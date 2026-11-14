@@ -447,9 +447,12 @@ def test_the_layout_of_the_previous_release_fails(scratch):
                  "+ Cursor catalog install of hawkscan (cursor-plugins/hawkscan): 2 router rules", "2 stop hooks act")
 
 
-@pytest.mark.parametrize("hook, event", [("stop", "stop"), ("session-start", "sessionStart")])
+@pytest.mark.parametrize("hook, event", [("stop", "stop"), ("session-start", "sessionStart"),
+                                         ("post-commit-scan", "postToolUse"), ("skill-activated", "postToolUse")])
 def test_a_claude_hook_that_acts_in_cursor_fails(scratch, hook, event):
-    """Without its first line (the Cursor guard), a Claude hook acts when Cursor runs it."""
+    """Without its first line (the Cursor guard), a Claude hook acts when Cursor runs it. The
+    probe also runs it with the Claude Code payloads and in the project, so a hook that keys on
+    Claude field names or on its working folder cannot look silent."""
     script = scratch / "plugins" / "hawkscan" / "hooks" / hook
     text = script.read_text()
     guard = '. "$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/skip-under-cursor"\n'
@@ -464,7 +467,22 @@ def test_a_claude_hook_that_acts_in_cursor_fails(scratch, hook, event):
 def test_a_claude_hook_that_fails_in_cursor_counts_as_acting(scratch):
     """Without the guard file each Claude hook exits with an error; that is not doing nothing."""
     (scratch / "plugins" / "hawkscan" / "hooks" / "skip-under-cursor").unlink()
-    assert_error(errors_of(scratch), "plugins/hawkscan/hooks/hooks.json registers a stop hook that acts", "(exit 1)")
+    assert_error(errors_of(scratch), "plugins/hawkscan/hooks/hooks.json registers a stop hook that acts",
+                 "(Cursor run: exit 1)")
+
+
+@pytest.mark.parametrize("body", ["exit 1\n", "cat > /dev/null\nexit 0\n"], ids=["fails", "silent"])
+def test_a_native_stop_hook_that_does_not_work_in_cursor_fails(scratch, body):
+    """A failing stop hook counts as acting, so the count alone would pass a broken one as the
+    one stop hook of each native install."""
+    for folder in ("cursor-plugins/hawkscan", "bundles/wingman"):
+        script = scratch / folder / "hooks" / "cursor" / "stop.sh"
+        script.write_text("#!/usr/bin/env bash\n" + body)
+        assert os.access(script, os.X_OK)
+    errors = errors_of(scratch)
+    for label in ("Cursor install of hawkscan (cursor-plugins/hawkscan)", "Cursor install of wingman (bundles/wingman)",
+                  "project install", "user-level install"):
+        assert_error(errors, f"{label}: the stop hook", "does not work when Cursor runs it")
 
 
 def test_a_stray_router_rule_in_claude_wingman_fails(scratch):

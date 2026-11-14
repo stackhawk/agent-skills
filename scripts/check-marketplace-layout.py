@@ -276,18 +276,36 @@ def load_plugin(layout, folder, prefer_cursor):
     return layout._loaded[key]
 
 
-def hook_acts(layout, plugin, hook):
-    """True when the hook prints, writes a file or fails when Cursor runs it
-    (scripts/cursor-hook-probe.py). A hook that cannot run at all counts as acting, and is an error."""
-    key = (plugin.folder, hook)
+def probe(layout, plugin, hook, faithful_only=False):
+    """The Result of running the hook as Cursor runs it (scripts/cursor-hook-probe.py): in every
+    variant, or with faithful_only in the Cursor run alone. A hook that cannot run at all counts
+    as acting and failing, and is an error."""
+    key = (plugin.folder, hook, faithful_only)
     if key not in layout._probed:
         try:
-            layout._probed[key] = PROBE.probe(layout.full(plugin.folder), hook.event, hook.command)
+            layout._probed[key] = PROBE.probe(layout.full(plugin.folder), hook.event, hook.command, faithful_only)
         except (OSError, subprocess.SubprocessError) as problem:
             layout.error(f"{hook.path}: cannot run its {hook.event} hook as Cursor runs it ({problem}); "
                          "the check needs /bin/sh and git")
-            layout._probed[key] = PROBE.Result(True, None, "", [])
-    return layout._probed[key].acts
+            layout._probed[key] = PROBE.Result(True, None, "", [], "cannot run")
+    return layout._probed[key]
+
+
+def hook_acts(layout, plugin, hook):
+    """True when the hook prints, writes a file or fails in any run of the probe."""
+    return probe(layout, plugin, hook).acts
+
+
+def check_native_stop_hooks(layout, label, plugin):
+    """The stop hook of a native Cursor install works when Cursor runs it after a code change:
+    it exits 0 and asks for the scan with a followup_message. A failing hook counts as acting,
+    so without this check a broken stop hook would pass as the one stop hook of the install."""
+    for hook in stop_hooks(plugin):
+        result = probe(layout, plugin, hook, faithful_only=True)
+        if result.exit != 0 or PROBE.followup_message(result) is None:
+            detail = (result.stdout[:80] or f"exit {result.exit}").replace("\n", " ")
+            layout.error(f"{label}: the stop hook {hook.path} does not work when Cursor runs it ({detail}); "
+                         "after a code change it must exit 0 with a followup_message")
 
 
 def acting_stop_hooks(layout, plugins):
@@ -365,6 +383,7 @@ def check_cursor_install(layout, name, folder):
         layout.error(f"{label}: carries the {ROUTER_SKILL} skill with {len(routers)} router rules and "
                      f"{len(hooks)} stop hooks that act; expected exactly one of each")
     check_plugin_hook_commands(layout, plugin)
+    check_native_stop_hooks(layout, label, plugin)
 
 
 # ─── The Claude plugins ───
@@ -475,11 +494,11 @@ def check_claude_listed_folders(layout, plugins, cursor_folders):
 def check_imported_hooks(layout, plugin, label):
     """Every hook that a Claude-listed folder registers in Cursor does nothing there."""
     for hook in plugin.hooks:
-        if hook_acts(layout, plugin, hook):
-            result = layout._probed[(plugin.folder, hook)]
+        result = probe(layout, plugin, hook)
+        if result.acts:
             detail = (result.stdout[:80] or ", ".join(result.written)[:80] or f"exit {result.exit}").replace("\n", " ")
             layout.error(f"{label}: {hook.path} registers a {hook.event} hook that acts when Cursor runs it "
-                         f"({detail}); a Claude Code hook must do nothing in Cursor "
+                         f"({result.variant}: {detail}); a Claude Code hook must do nothing in Cursor "
                          "(plugins/hawkscan/hooks/skip-under-cursor)")
 
 
@@ -517,7 +536,7 @@ def project_install(layout):
     rules = [Rule(f"{PROJECT_INSTALL}: .cursor/rules/{os.path.basename(f)}",
                   always_applied(layout.frontmatter(f).get("alwaysApply"))) for f in rule_files([rules_dir])]
     entries = [hook for hook in hooks_in(layout, [layout.full(hooks_rel)]) if hook.event == "stop"]
-    stop_script = f"{CURSOR_ROOT_VAR}/hooks/cursor/stop.sh"  # the installers copy it into .cursor/hooks/
+    stop_script = f'"{CURSOR_ROOT_VAR}/hooks/cursor/stop.sh"'  # the installers copy it into .cursor/hooks/
     hooks = [Hook(f"{PROJECT_INSTALL}: .cursor/hooks.json", "stop", stop_script) for _ in entries]
     return Loaded(CURSOR_HAWKSCAN, PROJECT_INSTALL, rules, hooks, [Skill(ROUTER_SKILL, PROJECT_INSTALL)])
 
@@ -684,6 +703,9 @@ def check(root, version=None, require_installers=True, run_installers=False):
     installs = claude_installs(layout, plugins)
     check_claude_imports(layout, plugins, installs)
     check_combined(layout, plugins, installs, cursor_entries)
+    for label, native in ((PROJECT_INSTALL, project_install(layout)), (USER_INSTALL, user_install(layout))):
+        if native is not None:
+            check_native_stop_hooks(layout, label, native)
     if require_installers:
         check_installers(layout)
     if run_installers:
