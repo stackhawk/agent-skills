@@ -94,12 +94,13 @@ jobs:
           python3 scripts/export-marketplace.py --ref HEAD --version "$RELEASE_VERSION" \
             --dest "$RUNNER_TEMP/marketplace-export"
       # The marketplace is public, so this clone needs no token, and nothing here is pushed. The sync
-      # resolves the release commit from the tag, so a local tag is forced onto HEAD; it is never
-      # pushed (claim and tag make the real one).
+      # resolves the release commit from the tag, so a local tag is forced onto HEAD for this step and
+      # deleted when it ends; it is never pushed (claim and tag make the real one).
       - name: Dry-run the marketplace sync
         run: |
           tag="v${RELEASE_VERSION}"
           git tag -f "$tag" HEAD
+          trap 'git tag -d "$tag" >/dev/null' EXIT
           git clone --quiet --depth 1 --branch main \
             https://github.com/stackhawk/agent-skills-marketplace.git "$RUNNER_TEMP/marketplace"
           python3 "$RUNNER_TEMP/marketplace/scripts/sync-agent-skills.py" \
