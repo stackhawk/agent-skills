@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the Cursor adapter from the canonical plugins.
+"""Generate the Cursor adapter from the canonical plugins and cursor-src/.
 
 Cursor reads the canonical skills (plugins/*/skills/) as Agent Skills. This script writes
 only what Cursor needs beyond them, and never copies a skill body into a rule:
@@ -7,24 +7,35 @@ only what Cursor needs beyond them, and never copies a skill body into a rule:
   <folder>/.cursor-plugin/plugin.json   one per plugin in .claude-plugin/marketplace.json, in
                                          the folder that the Cursor catalog installs it from
   .cursor-plugin/marketplace.json        the catalog for a Cursor team marketplace import
-  cursor-plugins/wingman/                the rest of the Cursor-only wingman plugin: copies of
-                                         hawkscan's rules and Cursor plugin hooks, and README.md
+  cursor-plugins/<name>/                 the rest of each Cursor-only plugin (hawkscan,
+                                         wingman): copies of the rules and the Cursor hooks of
+                                         cursor-src/, and README.md
 
-Every plugin but the umbrella wingman serves Claude Code and Cursor from one folder under
-plugins/. Wingman cannot. Claude Code installs its dependencies, and the hawkscan dependency
-carries the router rule and the stop hook. The Cursor app imports Claude Code plugins, and
-Cursor has no plugin dependencies. So the Claude catalog lists plugins/wingman, which must
-carry no Cursor file (.cursor-plugin/, rules/, hooks/cursor/), and the Cursor catalog lists
-cursor-plugins/wingman, which no Claude or Codex catalog may list. Its skills/ holds copies
-of the four bundled skills: scripts/generate-wingman-skills.sh writes them in the same run as
-plugins/wingman/copilot-skills/, and this script checks that the two are identical. This
-script owns every other file under cursor-plugins/. --check fails on a missing, changed
-(CRLF line endings included), stale or wrongly executable file and on a symlink there; a write
+The hand-written sources are cursor-src/rules/*.mdc (the router rule and the stackhawk.yml
+rule) and cursor-src/hooks/ (the Cursor stop hook, its plugin hooks file, and the hooks.json
+of a project install). No catalog lists cursor-src/.
+
+The router rule and the stop hook live only in folders that no Claude or Codex catalog lists.
+The Cursor app and the Cursor CLI import Claude Code plugins, so a Cursor rule or hook in a
+Claude-listed folder would load next to the ones of the user's native Cursor install. So:
+  - no Claude-listed folder carries a Cursor rule (rules/, any .mdc) or Cursor hook
+    (hooks/cursor/); the Claude hooks of plugins/hawkscan do nothing when Cursor runs them
+    (plugins/hawkscan/hooks/skip-under-cursor);
+  - the plugins that carry the router rule and the stop hook (hawkscan, and the umbrella
+    wingman, which bundles hawkscan) are Cursor-only in Cursor: the Cursor catalog lists
+    cursor-plugins/<name>, their Claude-listed folder carries no Cursor file at all, and no
+    Claude or Codex catalog lists cursor-plugins/ or cursor-src/;
+  - the other plugins serve Claude Code and Cursor from one folder under plugins/, with a
+    Cursor manifest that names no rule and no hook.
+A Cursor-only plugin carries its own skill copies in skills/ (Cursor installs the folder
+alone): scripts/generate-wingman-skills.sh writes them, in the same run as
+plugins/wingman/copilot-skills/, and this script checks that they equal their sources. This
+script owns every other file under cursor-plugins/. --check fails on a missing, changed (CRLF
+line endings included), stale or wrongly executable file and on a symlink there; a write
 removes stale files. .gitattributes keeps these copies and their sources LF in every checkout.
 The executable bit is compared only where git tracks it: with core.fileMode=false (a FAT or
 /mnt/c checkout, where every file shows as executable) git ignores it, and so does --check.
 
-The hand-written sources are plugins/hawkscan/rules/*.mdc and plugins/hawkscan/hooks/cursor/.
 The script also enforces the rule budgets: every rule is always-applied or glob-scoped,
 always-applied bodies total at most 2,000 bytes and 40 lines each, a glob rule is at most
 1,200 bytes, the always-applied router names every public skill and no other, and no rule
@@ -50,22 +61,37 @@ ROUTER_MAX_BYTES = 2000
 RULE_MAX_LINES = 40
 GLOB_RULE_MAX_BYTES = 1200
 
-RULES_SOURCE = "plugins/hawkscan/rules"
-HOOKS_SOURCE = "plugins/hawkscan/hooks/cursor"
+# The hand-written sources of the rules and the Cursor hooks. No catalog lists cursor-src/.
+SOURCE_ROOT = "cursor-src"
+RULES_SOURCE = f"{SOURCE_ROOT}/rules"
+HOOKS_SOURCE = f"{SOURCE_ROOT}/hooks"
 PLUGIN_HOOKS = "plugin-hooks.json"
 HOOK_SCRIPT = "stop.sh"
+PROJECT_HOOKS = "hooks.json"  # the hooks.json of a project install; the installers read it
 
-# Cursor-only plugins: catalog name -> the folder the Cursor catalog installs it from. Only
-# the Cursor catalog may list a folder under CURSOR_ONLY_ROOT.
+# Cursor-only plugins: catalog name -> the folder the Cursor catalog installs it from. They are
+# the plugins that carry the router rule and the stop hook. Only the Cursor catalog may list a
+# folder under CURSOR_ONLY_ROOT.
 CURSOR_ONLY_ROOT = "cursor-plugins"
-CURSOR_ONLY = {"wingman": f"{CURSOR_ONLY_ROOT}/wingman"}
+CURSOR_ONLY = {"hawkscan": f"{CURSOR_ONLY_ROOT}/hawkscan", "wingman": f"{CURSOR_ONLY_ROOT}/wingman"}
+# The Cursor hooks each Cursor-only plugin carries in hooks/cursor/. The installers read the
+# Cursor parts of cursor-plugins/hawkscan, the same path in this repository and in the
+# marketplace, so it also carries the hooks.json of a project install.
+CURSOR_ONLY_HOOKS = {
+    "hawkscan": (PLUGIN_HOOKS, HOOK_SCRIPT, PROJECT_HOOKS),
+    "wingman": (PLUGIN_HOOKS, HOOK_SCRIPT),
+}
 # What Cursor reads from a plugin folder beyond its skills. The Claude-listed folder of a
 # Cursor-only plugin carries none of it.
 CURSOR_PARTS = (".cursor-plugin", "rules", "hooks/cursor")
-# The skill copies of a Cursor-only plugin, and the Claude-listed copies that they equal.
+# Cursor rules and hooks: no Claude-listed folder carries them.
+CURSOR_RULES_AND_HOOKS = ("rules", "hooks/cursor")
+# The skill copies of a Cursor-only plugin, and the Claude-listed folder that they equal: the
+# bundled copies of an umbrella (with a README beside them), the skills/ of any other plugin.
 CURSOR_ONLY_SKILLS = "skills"
 BUNDLED_SKILLS = "copilot-skills"
 BUNDLED_SKILLS_README = "README.md"
+UMBRELLAS = ("wingman",)
 WINGMAN_BUNDLED_SKILLS = f"plugins/wingman/{BUNDLED_SKILLS}"
 
 # Cursor component paths per catalog plugin. Plugins not listed use Cursor's default
@@ -90,22 +116,26 @@ CURSOR_ONLY_README = """\
 # GENERATED - do not edit
 
 The Cursor-only `{name}` plugin. Only the Cursor catalog (`.cursor-plugin/marketplace.json`)
-lists this folder. The Claude and Codex catalogs list `{claude}`.
+lists this folder. The Claude and Codex catalogs list `{claude}`, which carries no Cursor file.
 
-Claude Code installs the dependencies of `{name}`, and the `hawkscan` dependency carries the
-router rule and the stop hook. The Cursor app imports Claude Code plugins, so `{claude}` must
-carry no Cursor file: Cursor would load the router rule and the stop hook a second time.
-Cursor has no plugin dependencies, so this folder carries its own copies of the bundled
-skills, the router rule, the `stackhawk.yml` rule and the stop hook.
+The Cursor app and the Cursor CLI import Claude Code plugins. So the router rule and the stop
+hook live only in folders that no Claude or Codex catalog lists, and the Claude hooks of
+`plugins/hawkscan` do nothing when Cursor runs them. A Claude Code install then adds no second
+router rule and no second stop hook to the native Cursor install of `{name}`. Cursor installs
+this folder alone, so it carries its own copies of {skills_what}, the router rule, the
+`stackhawk.yml` rule and the stop hook.
 
-- `skills/`: from `scripts/generate-wingman-skills.sh`, identical to `{claude}/{bundled}/`.
+- `skills/`: from `scripts/generate-wingman-skills.sh`, identical to `{skills_source}/`.
 - Everything else: from `scripts/generate-cursor-adapter.py`, which copies the rules and the
-  Cursor hooks of `plugins/hawkscan/`.
+  Cursor hooks of `cursor-src/`.
 
 Edit the sources and run both scripts. Never list this folder in a Claude or Codex catalog.
-Released builds come from `stackhawk/agent-skills-marketplace`: its `bundles/{name}/` holds
-the Cursor files of this plugin next to the Copilot and Codex ones.
+Released builds come from `stackhawk/agent-skills-marketplace`: {released}
 """
+CURSOR_ONLY_RELEASED = {
+    "hawkscan": "its `cursor-plugins/hawkscan/`\nis this folder, and its installers read the rules and hooks there.",
+    "wingman": "its `bundles/wingman/` holds\nthe Cursor files of this plugin next to the Copilot and Codex ones.",
+}
 
 
 def load_measure_module():
@@ -256,43 +286,65 @@ def other_catalog_folders(tree):
     return listed
 
 
+def cursor_files_in(tree, base, parts):
+    """The Cursor parts that a folder carries, and every .mdc rule in it, relative to it."""
+    found = [part for part in parts if os.path.lexists(tree.path(f"{base}/{part}"))]
+    for dirpath, _, names in sorted(os.walk(tree.path(base))):
+        found += [tree.rel(os.path.join(dirpath, n)).removeprefix(f"{base}/") for n in sorted(names)
+                  if n.endswith(".mdc")]
+    return list(dict.fromkeys(found))
+
+
 def check_platform_boundary(tree, claude_catalog):
-    """The Claude-listed folder of a Cursor-only plugin carries no Cursor file, and no Claude
-    or Codex catalog lists a Cursor-only folder. Either would let Cursor load wingman's router
-    rule and stop hook next to the ones of its hawkscan dependency."""
+    """No Claude-listed folder carries a Cursor rule or Cursor hook, the Claude-listed folder of
+    a Cursor-only plugin carries no Cursor file at all, and no Claude or Codex catalog lists a
+    Cursor-only folder or the sources. Each would let Cursor, which imports Claude Code plugins,
+    load a second router rule or stop hook next to the native Cursor install."""
     entries = {e["name"]: e for e in claude_catalog["plugins"]}
-    for name, folder in sorted(CURSOR_ONLY.items()):
-        if name not in entries:
-            tree.errors.append(f".claude-plugin/marketplace.json: lists no {name}; {folder} has no Claude plugin")
+    for name in sorted(set(CURSOR_ONLY) - set(entries)):
+        tree.errors.append(f".claude-plugin/marketplace.json: lists no {name}; {CURSOR_ONLY[name]} has no Claude plugin")
+    for name, entry in sorted(entries.items()):
+        base = claude_folder(entry)
+        if name in CURSOR_ONLY:
+            for part in cursor_files_in(tree, base, CURSOR_PARTS):
+                tree.errors.append(f"{base}/{part}: the Claude catalog lists {base}, so it must carry no "
+                                   f"Cursor file; the Cursor files of {name} belong in {CURSOR_ONLY[name]}")
             continue
-        base = claude_folder(entries[name])
-        found = [part for part in CURSOR_PARTS if os.path.lexists(tree.path(f"{base}/{part}"))]
-        for dirpath, _, names in sorted(os.walk(tree.path(base))):
-            found += [tree.rel(os.path.join(dirpath, n)).removeprefix(f"{base}/") for n in sorted(names)
-                      if n.endswith(".mdc")]
-        for part in dict.fromkeys(found):
-            tree.errors.append(f"{base}/{part}: the Claude catalog lists {base}, so it must carry no "
-                               f"Cursor file; the Cursor files of {name} belong in {folder}")
+        for part in cursor_files_in(tree, base, CURSOR_RULES_AND_HOOKS):
+            tree.errors.append(f"{base}/{part}: the Claude catalog lists {base}, so it must carry no Cursor "
+                               f"rule or hook; they belong in {SOURCE_ROOT}/, copied into {CURSOR_ONLY_ROOT}/")
+    for name, folder in sorted(CURSOR_ONLY.items()):
         if os.path.lexists(tree.path(f"{folder}/.claude-plugin")):
             tree.errors.append(f"{folder}/.claude-plugin: a Cursor-only plugin carries no Claude manifest")
     for catalog_rel, path in other_catalog_folders(tree):
-        if path == CURSOR_ONLY_ROOT or path.startswith(CURSOR_ONLY_ROOT + "/"):
-            tree.errors.append(f"{catalog_rel}: lists {path}; only the Cursor catalog may list {CURSOR_ONLY_ROOT}/")
+        for root in (CURSOR_ONLY_ROOT, SOURCE_ROOT):
+            if path == root or path.startswith(root + "/"):
+                tree.errors.append(f"{catalog_rel}: lists {path}; only the Cursor catalog may list {CURSOR_ONLY_ROOT}/, "
+                                   f"and no catalog lists {SOURCE_ROOT}/")
+
+
+def skill_copy_source(name, claude):
+    """The Claude-listed folder that the skills/ of a Cursor-only plugin copies, and the file
+    in it that the copy leaves out."""
+    if name in UMBRELLAS:
+        return f"{claude}/{BUNDLED_SKILLS}", BUNDLED_SKILLS_README
+    return f"{claude}/{CURSOR_ONLY_SKILLS}", None
 
 
 def check_bundled_skill_copies(tree, claude_catalog):
-    """The skills of a Cursor-only plugin are the bundled copies of its Claude-listed folder,
-    byte for byte. scripts/generate-wingman-skills.sh writes both in one run."""
+    """The skills of a Cursor-only plugin are the skills of its Claude-listed folder (the
+    bundled copies of an umbrella), byte for byte. scripts/generate-wingman-skills.sh writes
+    them in one run."""
     entries = {e["name"]: e for e in claude_catalog["plugins"]}
     for name, folder in sorted(CURSOR_ONLY.items()):
         if name not in entries:
             continue
-        source = f"{claude_folder(entries[name])}/{BUNDLED_SKILLS}"
+        source, left_out = skill_copy_source(name, claude_folder(entries[name]))
         target = f"{folder}/{CURSOR_ONLY_SKILLS}"
-        expected = {rel: v for rel, v in files_under(tree, source).items() if rel != BUNDLED_SKILLS_README}
+        expected = {rel: v for rel, v in files_under(tree, source).items() if rel != left_out}
         found = files_under(tree, target)
         if not expected:
-            tree.errors.append(f"{source}: no bundled skills; run 'bash scripts/generate-wingman-skills.sh'")
+            tree.errors.append(f"{source}: no skills; run 'bash scripts/generate-wingman-skills.sh'")
         for rel in sorted(set(expected) | set(found)):
             problem = copy_problem(found.get(rel), expected.get(rel), f"{source}/{rel}")
             if problem:
@@ -404,16 +456,24 @@ def generate(tree):
     for name, folder in sorted(CURSOR_ONLY.items()):
         for rule in rules:
             tree.put(f"{folder}/rules/{rule}", tree.read(f"{RULES_SOURCE}/{rule}"))
-        for hook in (PLUGIN_HOOKS, HOOK_SCRIPT):
+        for hook in CURSOR_ONLY_HOOKS[name]:
+            if not os.path.isfile(tree.path(f"{HOOKS_SOURCE}/{hook}")):
+                tree.errors.append(f"{HOOKS_SOURCE}/{hook}: missing")
+                continue
             with open(tree.path(f"{HOOKS_SOURCE}/{hook}"), "rb") as f:
                 tree.put(f"{folder}/hooks/cursor/{hook}", f.read(), executable=hook.endswith(".sh"))
         if name in entries:
+            claude = claude_folder(entries[name])
+            source, _ = skill_copy_source(name, claude)
+            what = "the bundled skills" if name in UMBRELLAS else "its skills"
             tree.put(f"{folder}/README.md", CURSOR_ONLY_README.format(
-                name=name, claude=claude_folder(entries[name]), bundled=BUNDLED_SKILLS))
+                name=name, claude=claude, skills_what=what, skills_source=source,
+                released=CURSOR_ONLY_RELEASED[name]))
     check_bundled_skill_copies(tree, claude_catalog)
 
 
-def owned_by_wingman_generator(rel):
+def owned_by_skill_generator(rel):
+    """The skill copies of the Cursor-only plugins: scripts/generate-wingman-skills.sh writes them."""
     return any(rel.startswith(f"{folder}/{CURSOR_ONLY_SKILLS}/") for folder in CURSOR_ONLY.values())
 
 
@@ -422,7 +482,7 @@ def stale_files(tree):
     found = files_under(tree, CURSOR_ONLY_ROOT)
     return [f"{CURSOR_ONLY_ROOT}/{rel}" for rel in sorted(found)
             if f"{CURSOR_ONLY_ROOT}/{rel}" not in tree.outputs
-            and not owned_by_wingman_generator(f"{CURSOR_ONLY_ROOT}/{rel}")]
+            and not owned_by_skill_generator(f"{CURSOR_ONLY_ROOT}/{rel}")]
 
 
 def drift(tree):

@@ -3,10 +3,11 @@
 Cursor reads the canonical skills as Agent Skills. The adapter adds only what Cursor needs
 beyond them: a `.cursor-plugin/plugin.json` per plugin, a root `.cursor-plugin/marketplace.json`,
 an always-applied router rule, a `stackhawk.yml` pointer rule, and the plugin stop hook.
-`scripts/generate-cursor-adapter.py` writes the manifests and the Cursor-only wingman plugin
-(`cursor-plugins/wingman/`) and checks the rule budgets. The Claude catalog lists
-`plugins/wingman`, which carries no Cursor file, because the Cursor app imports Claude Code
-plugins; only the Cursor catalog lists `cursor-plugins/wingman`.
+`scripts/generate-cursor-adapter.py` writes the manifests and the Cursor-only hawkscan and wingman
+plugins (`cursor-plugins/hawkscan/`, `cursor-plugins/wingman/`) from the hand-written rules and
+hooks in `cursor-src/`, and checks the rule budgets. The Claude catalog lists `plugins/hawkscan`
+and `plugins/wingman`, which carry no Cursor file, because the Cursor app and the Cursor CLI
+import Claude Code plugins; only the Cursor catalog lists `cursor-plugins/`.
 
 The schema checks mirror the plugin manifest schema in the Cursor CLI bundle
 (cursor-agent 2026.06.15): only those keys, kebab-case names, `{name, email}` authors,
@@ -28,9 +29,11 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 GENERATOR = os.path.join(REPO_ROOT, "scripts", "generate-cursor-adapter.py")
 MEASURE = os.path.join(REPO_ROOT, "scripts", "measure-cursor-context.py")
 LEGACY_LIST = os.path.join(REPO_ROOT, "scripts", "cursor-legacy-rules.txt")
-ROUTER = "plugins/hawkscan/rules/stackhawk.mdc"
-POINTER = "plugins/hawkscan/rules/stackhawk-config.mdc"
+SOURCES = "cursor-src"
+ROUTER = f"{SOURCES}/rules/stackhawk.mdc"
+POINTER = f"{SOURCES}/rules/stackhawk-config.mdc"
 RULE_NAMES = ["stackhawk.mdc", "stackhawk-config.mdc"]
+CURSOR_HAWKSCAN = "cursor-plugins/hawkscan"
 CURSOR_WINGMAN = "cursor-plugins/wingman"
 CURSOR_PARTS = (".cursor-plugin", "rules", "hooks/cursor")
 SHARED_PHRASE = "right after you complete a code change (feature, bugfix, refactor)"
@@ -176,13 +179,13 @@ def test_release_stamp_round_trip(tmp_path):
     # The order of the validate job in release.yml.
     sh("scripts/bump-version.sh", "9.8.7")
     sh("scripts/generate-wingman-skills.sh")
-    for folder in ("plugins/hawkscan", CURSOR_WINGMAN):
+    for folder in (CURSOR_HAWKSCAN, CURSOR_WINGMAN):
         with open(os.path.join(root, folder, ".cursor-plugin/plugin.json")) as f:
             stamped = json.load(f)
         assert stamped["version"] == "9.8.7"
         assert list(stamped)[:2] == ["name", "version"]
-    with open(os.path.join(root, CURSOR_WINGMAN, "skills/hawkscan/SKILL.md")) as f:
-        assert re.search(r"^version: 9\.8\.7$", f.read(), re.MULTILINE)
+        with open(os.path.join(root, folder, "skills/hawkscan/SKILL.md")) as f:
+            assert re.search(r"^version: 9\.8\.7$", f.read(), re.MULTILINE)
     assert run_generator("--check", root=root).returncode == 0
     sh("scripts/check-version.sh", "9.8.7")
     sh("scripts/bump-version.sh", "--placeholder")
@@ -211,8 +214,8 @@ def test_router_naming_an_unknown_skill_fails_the_generator(tmp_path):
 
 # ---------------------------------------------------------------- the Cursor-only folder
 # Every file under cursor-plugins/ is generated: the skill copies by generate-wingman-skills.sh,
-# the rest by generate-cursor-adapter.py. --check must fail closed on each way the folder can
-# go wrong, and on any Cursor file that reaches the Claude-listed plugins/wingman.
+# the rest by generate-cursor-adapter.py. --check must fail closed on each way the folders can
+# go wrong, and on any Cursor file that reaches a Claude-listed folder.
 
 
 def check_output(root):
@@ -231,7 +234,7 @@ def test_wingman_generator_is_idempotent(tmp_path):
 
 
 @pytest.mark.parametrize("rel", [f"{CURSOR_WINGMAN}/notes.md", f"{CURSOR_WINGMAN}/rules/extra.mdc",
-                                 "cursor-plugins/other/README.md"])
+                                 f"{CURSOR_HAWKSCAN}/hooks/cursor/extra.sh", "cursor-plugins/other/README.md"])
 def test_check_rejects_an_unexpected_path(tmp_path, rel):
     root = copy_repo(str(tmp_path / "repo"))
     os.makedirs(os.path.dirname(os.path.join(root, rel)), exist_ok=True)
@@ -282,6 +285,9 @@ def test_check_rejects_crlf_line_endings(tmp_path, rel, needle):
     (f"{CURSOR_WINGMAN}/.cursor-plugin/plugin.json", "(missing)"),
     (f"{CURSOR_WINGMAN}/README.md", "(missing)"),
     (f"{CURSOR_WINGMAN}/skills/stackhawk-api/SKILL.md", "(missing)"),
+    (f"{CURSOR_HAWKSCAN}/hooks/cursor/hooks.json", "(missing)"),
+    (f"{CURSOR_HAWKSCAN}/rules/stackhawk.mdc", "(missing)"),
+    (f"{CURSOR_HAWKSCAN}/skills/hawkscan/SKILL.md", "(missing)"),
 ])
 def test_check_rejects_a_missing_file(tmp_path, rel, needle):
     root = copy_repo(str(tmp_path / "repo"))
@@ -293,6 +299,9 @@ def test_check_rejects_a_missing_file(tmp_path, rel, needle):
 @pytest.mark.parametrize("rel, needle", [
     (f"{CURSOR_WINGMAN}/hooks/cursor/plugin-hooks.json", "(content)"),
     (f"{CURSOR_WINGMAN}/skills/hawkscan/SKILL.md", "differs from plugins/wingman/copilot-skills/hawkscan/SKILL.md"),
+    (f"{CURSOR_HAWKSCAN}/skills/hawkscan/references/scan-policy.md",
+     "differs from plugins/hawkscan/skills/hawkscan/references/scan-policy.md"),
+    (f"{CURSOR_HAWKSCAN}/hooks/cursor/stop.sh", "(content)"),
 ])
 def test_check_rejects_a_modified_file(tmp_path, rel, needle):
     root = copy_repo(str(tmp_path / "repo"))
@@ -332,46 +341,67 @@ def test_check_follows_git_when_it_ignores_the_executable_bit(tmp_path):
     assert code == 0, output
 
 
+@pytest.mark.parametrize("plugin", ["wingman", "hawkscan"])
 @pytest.mark.parametrize("part, reported", [
     (".cursor-plugin/plugin.json", ".cursor-plugin"),
     ("rules/stackhawk.mdc", "rules"),
     ("hooks/cursor/stop.sh", "hooks/cursor"),
     ("notes/pointer.mdc", "notes/pointer.mdc"),
 ])
-def test_a_cursor_file_in_the_claude_wingman_fails_and_is_never_deleted(tmp_path, part, reported):
+def test_a_cursor_file_in_the_claude_folder_of_a_cursor_only_plugin_fails_and_is_never_deleted(
+        tmp_path, plugin, part, reported):
     """The generator refuses, in both modes, rather than delete a file it did not write."""
     root = copy_repo(str(tmp_path / "repo"))
-    target = os.path.join(root, "plugins/wingman", part)
+    target = os.path.join(root, f"plugins/{plugin}", part)
     os.makedirs(os.path.dirname(target), exist_ok=True)
     shutil.copy2(os.path.join(root, CURSOR_WINGMAN, "rules/stackhawk-config.mdc"), target)
     for args in (("--check",), ()):
         proc = run_generator(*args, root=root)
         assert proc.returncode != 0
-        assert f"plugins/wingman/{reported}: the Claude catalog lists plugins/wingman" in proc.stderr
+        assert f"plugins/{plugin}/{reported}: the Claude catalog lists plugins/{plugin}" in proc.stderr
         assert "must carry no Cursor file" in proc.stderr
     assert os.path.isfile(target)
 
 
+@pytest.mark.parametrize("part, reported", [
+    ("rules/stackhawk.mdc", "rules"),
+    ("hooks/cursor/stop.sh", "hooks/cursor"),
+    ("skills/api/pointer.mdc", "skills/api/pointer.mdc"),
+])
+def test_a_cursor_rule_or_hook_in_a_shared_plugin_folder_fails(tmp_path, part, reported):
+    """plugins/api serves Claude Code and Cursor; its Cursor manifest is fine, a rule or hook is not."""
+    root = copy_repo(str(tmp_path / "repo"))
+    target = os.path.join(root, "plugins/api", part)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    shutil.copy2(os.path.join(root, CURSOR_WINGMAN, "rules/stackhawk-config.mdc"), target)
+    proc = run_generator("--check", root=root)
+    assert proc.returncode != 0
+    assert f"plugins/api/{reported}: the Claude catalog lists plugins/api, so it must carry no Cursor rule or hook" \
+        in proc.stderr
+
+
+@pytest.mark.parametrize("folder", [CURSOR_WINGMAN, CURSOR_HAWKSCAN, SOURCES])
 @pytest.mark.parametrize("catalog", [".claude-plugin/marketplace.json", ".codex-plugin/marketplace.json"])
-def test_a_claude_or_codex_catalog_that_lists_the_cursor_only_folder_fails(tmp_path, catalog):
+def test_a_claude_or_codex_catalog_that_lists_a_cursor_only_folder_or_the_sources_fails(tmp_path, catalog, folder):
     root = copy_repo(str(tmp_path / "repo"))
     full = os.path.join(root, catalog)
     with open(full) as f:
         data = json.load(f)
     entry = dict(data["plugins"][0], name="cursor-copy")
-    entry["source"] = ({**entry["source"], "path": f"./{CURSOR_WINGMAN}"} if isinstance(entry["source"], dict)
-                       else f"./{CURSOR_WINGMAN}")
+    entry["source"] = ({**entry["source"], "path": f"./{folder}"} if isinstance(entry["source"], dict)
+                       else f"./{folder}")
     data["plugins"].append(entry)
     with open(full, "w") as f:
         json.dump(data, f)
     proc = run_generator("--check", root=root)
     assert proc.returncode != 0
-    assert f"{catalog}: lists {CURSOR_WINGMAN}; only the Cursor catalog may list cursor-plugins/" in proc.stderr
+    assert f"{catalog}: lists {folder}; only the Cursor catalog may list cursor-plugins/" in proc.stderr
 
 
-def test_a_claude_manifest_in_the_cursor_only_folder_fails(tmp_path):
+@pytest.mark.parametrize("folder", [CURSOR_WINGMAN, CURSOR_HAWKSCAN])
+def test_a_claude_manifest_in_a_cursor_only_folder_fails(tmp_path, folder):
     root = copy_repo(str(tmp_path / "repo"))
-    shutil.copytree(path("plugins/wingman/.claude-plugin"), os.path.join(root, CURSOR_WINGMAN, ".claude-plugin"))
+    shutil.copytree(path("plugins/wingman/.claude-plugin"), os.path.join(root, folder, ".claude-plugin"))
     proc = run_generator("--check", root=root)
     assert proc.returncode != 0
     assert "a Cursor-only plugin carries no Claude manifest" in proc.stderr
@@ -411,14 +441,19 @@ def test_only_hawkscan_and_wingman_carry_rules_and_hooks():
     assert wingman["skills"] == "./skills/"
     assert wingman["rules"] == "./rules/"
     assert wingman["hooks"] == "./hooks/cursor/plugin-hooks.json"
+    hawkscan = load_json(f"{CURSOR_HAWKSCAN}/.cursor-plugin/plugin.json")
+    assert "skills" not in hawkscan  # Cursor's default, skills/
+    assert hawkscan["rules"] == "./rules/"
+    assert hawkscan["hooks"] == "./hooks/cursor/plugin-hooks.json"
 
 
-def test_only_wingman_has_a_cursor_only_folder():
-    """Every other plugin serves Claude Code and Cursor from its one plugins/ folder."""
+def test_only_hawkscan_and_wingman_have_a_cursor_only_folder():
+    """They carry the router rule and the stop hook. Every other plugin serves Claude Code and
+    Cursor from its one plugins/ folder."""
     claude = {e["name"]: plugin_dir(e) for e in catalog_plugins()}
     differs = {name: folder for name, folder in cursor_dirs().items() if folder != claude[name]}
-    assert differs == {"wingman": CURSOR_WINGMAN}
-    assert sorted(os.listdir(path("cursor-plugins"))) == ["wingman"]
+    assert differs == {"hawkscan": CURSOR_HAWKSCAN, "wingman": CURSOR_WINGMAN}
+    assert sorted(os.listdir(path("cursor-plugins"))) == ["hawkscan", "wingman"]
 
 
 def test_marketplace_catalog():
@@ -430,7 +465,8 @@ def test_marketplace_catalog():
     assert [p["name"] for p in cursor["plugins"]] == [p["name"] for p in claude["plugins"]]
     for entry, claude_entry in zip(cursor["plugins"], claude["plugins"]):
         assert set(entry) <= ENTRY_KEYS
-        expected = f"./{CURSOR_WINGMAN}" if entry["name"] == "wingman" else claude_entry["source"]
+        expected = f"./cursor-plugins/{entry['name']}" if entry["name"] in ("hawkscan", "wingman") \
+            else claude_entry["source"]
         assert entry["source"] == expected
         assert {k: v for k, v in entry.items() if k not in ("source", "description")} == {
             k: v for k, v in claude_entry.items() if k in ENTRY_KEYS - {"source", "description"}}
@@ -445,7 +481,7 @@ def test_version_bump_lists_the_cursor_manifests():
     for folder in cursor_dirs().values():
         assert f"{folder}/.cursor-plugin/plugin.json" in stamp_only
     assert ".cursor-plugin/marketplace.json" in bump["unversioned"]
-    assert not [p for p in stamp_only if p.startswith("plugins/wingman/.cursor-plugin")]
+    assert not [p for p in stamp_only if p.startswith(("plugins/wingman/.cursor-plugin", "plugins/hawkscan/.cursor-plugin"))]
 
 
 # ---------------------------------------------------------------- rules
@@ -491,7 +527,7 @@ def test_pointer_budget_mode_and_references():
 
 
 def test_rules_have_no_links_or_reference_paths():
-    for folder in ("plugins/hawkscan", CURSOR_WINGMAN):
+    for folder in (SOURCES, CURSOR_HAWKSCAN, CURSOR_WINGMAN):
         rules = sorted(os.listdir(path(f"{folder}/rules")))
         assert rules == sorted(RULE_NAMES)
         for name in rules:
@@ -500,15 +536,17 @@ def test_rules_have_no_links_or_reference_paths():
             assert "references/" not in text, f"{folder}/{name} names a path that does not resolve"
 
 
-def test_wingman_copies_are_identical():
-    pairs = [(f"plugins/hawkscan/rules/{n}", f"{CURSOR_WINGMAN}/rules/{n}") for n in RULE_NAMES] + [
-        ("plugins/hawkscan/hooks/cursor/stop.sh", f"{CURSOR_WINGMAN}/hooks/cursor/stop.sh"),
-        ("plugins/hawkscan/hooks/cursor/plugin-hooks.json", f"{CURSOR_WINGMAN}/hooks/cursor/plugin-hooks.json"),
-    ]
+@pytest.mark.parametrize("folder, hooks, skills", [
+    (CURSOR_WINGMAN, ["plugin-hooks.json", "stop.sh"], "plugins/wingman/copilot-skills"),
+    (CURSOR_HAWKSCAN, ["hooks.json", "plugin-hooks.json", "stop.sh"], "plugins/hawkscan/skills"),
+], ids=["wingman", "hawkscan"])
+def test_cursor_only_copies_are_identical(folder, hooks, skills):
+    pairs = [(f"{SOURCES}/rules/{n}", f"{folder}/rules/{n}") for n in RULE_NAMES] + [
+        (f"{SOURCES}/hooks/{n}", f"{folder}/hooks/cursor/{n}") for n in hooks]
     for src, dst in pairs:
         assert filecmp.cmp(path(src), path(dst), shallow=False), dst
-    comparison = filecmp.dircmp(path("plugins/wingman/copilot-skills"), path(f"{CURSOR_WINGMAN}/skills"),
-                                ignore=["README.md"])
+    assert sorted(os.listdir(path(f"{folder}/hooks/cursor"))) == hooks
+    comparison = filecmp.dircmp(path(skills), path(f"{folder}/skills"), ignore=["README.md"])
     assert_same_tree(comparison)
 
 
@@ -532,7 +570,21 @@ def test_claude_wingman_carries_no_cursor_file():
     assert sorted(os.listdir(path(f"{CURSOR_WINGMAN}/hooks"))) == ["cursor"]
 
 
-@pytest.mark.parametrize("rel", ["plugins/hawkscan/hooks/cursor/stop.sh", f"{CURSOR_WINGMAN}/hooks/cursor/stop.sh"])
+def test_claude_hawkscan_carries_no_cursor_file():
+    """The Claude catalog lists plugins/hawkscan; its Claude hooks stay, its Cursor files moved
+    to cursor-src/ (sources) and cursor-plugins/hawkscan (the Cursor-only plugin)."""
+    for part in CURSOR_PARTS:
+        assert not os.path.lexists(path(f"plugins/hawkscan/{part}")), part
+    for dirpath, _, names in os.walk(path("plugins/hawkscan")):
+        assert not [n for n in names if n.endswith(".mdc")], dirpath
+    assert os.path.isfile(path("plugins/hawkscan/hooks/hooks.json"))
+    assert not os.path.lexists(path(f"{CURSOR_HAWKSCAN}/.claude-plugin"))
+    assert not os.path.lexists(path(f"{CURSOR_HAWKSCAN}/hooks/hooks.json"))
+    assert sorted(os.listdir(path(f"{CURSOR_HAWKSCAN}/hooks"))) == ["cursor"]
+
+
+@pytest.mark.parametrize("rel", [f"{SOURCES}/hooks/stop.sh", f"{CURSOR_HAWKSCAN}/hooks/cursor/stop.sh",
+                                 f"{CURSOR_WINGMAN}/hooks/cursor/stop.sh"])
 def test_hook_scripts_are_executable_in_git(rel):
     assert os.access(path(rel), os.X_OK)
     staged = subprocess.run(["git", "ls-files", "-s", rel], cwd=REPO_ROOT, capture_output=True, text=True, check=False).stdout
@@ -570,7 +622,7 @@ def test_legacy_rule_list_covers_the_deprecated_generator():
 
 def test_plugin_layout_meets_the_context_budgets():
     proc = subprocess.run(
-        [sys.executable, MEASURE, "--check", "--json", path("plugins/hawkscan")], capture_output=True, text=True, check=False
+        [sys.executable, MEASURE, "--check", "--json", path(CURSOR_HAWKSCAN)], capture_output=True, text=True, check=False
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     report = json.loads(proc.stdout)

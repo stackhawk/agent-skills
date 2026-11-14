@@ -10,7 +10,7 @@ set -euo pipefail
 
 repo="${1:?usage: stage-marketplace-sync.sh <marketplace checkout>}"
 PUBLISHED=(
-  plugins bundles skills install sources.json
+  plugins bundles cursor-plugins skills install sources.json
   .claude-plugin/marketplace.json .github/plugin/marketplace.json
   .agents/plugins/marketplace.json .codex-plugin/marketplace.json
   .cursor-plugin/marketplace.json

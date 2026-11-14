@@ -64,15 +64,15 @@ def run(tmp_path, plugin_arg, answer, control=BUILT_IN, auth_fail=False, with_cl
 
 
 def test_relative_plugin_path_reaches_the_cli_as_an_absolute_path(tmp_path):
-    proc = run(tmp_path, "plugins/hawkscan", answer=BUILT_IN + "\\n" + skills("hawkscan"))
+    proc = run(tmp_path, "cursor-plugins/hawkscan", answer=BUILT_IN + "\\n" + skills("hawkscan"))
     assert proc.returncode == 0, proc.stdout + proc.stderr
     received = (tmp_path / "plugin-dir.txt").read_text().strip()
-    assert received == os.path.join(REPO_ROOT, "plugins/hawkscan")
+    assert received == os.path.join(REPO_ROOT, "cursor-plugins/hawkscan")
     assert "PASS" in proc.stdout
 
 
 def test_a_skill_of_the_plugin_that_is_not_listed_fails(tmp_path):
-    proc = run(tmp_path, "plugins/hawkscan", answer=BUILT_IN)
+    proc = run(tmp_path, "cursor-plugins/hawkscan", answer=BUILT_IN)
     assert proc.returncode == 1
     assert "did not list these skills of the plugin: hawkscan" in proc.stderr
 
@@ -86,12 +86,12 @@ def test_wingman_needs_the_four_bundled_skills_from_its_manifest_path(tmp_path):
 
 
 def test_names_match_without_case_backticks_or_a_namespace(tmp_path):
-    proc = run(tmp_path, "plugins/hawkscan", answer="SKILL: `hawkscan:HawkScan`")
+    proc = run(tmp_path, "cursor-plugins/hawkscan", answer="SKILL: `hawkscan:HawkScan`")
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
 def test_a_control_that_already_lists_every_skill_is_inconclusive(tmp_path):
-    proc = run(tmp_path, "plugins/hawkscan", answer=skills("hawkscan"),
+    proc = run(tmp_path, "cursor-plugins/hawkscan", answer=skills("hawkscan"),
                control=BUILT_IN + "\\n" + skills("hawkscan", "api"))
     assert proc.returncode == 77, proc.stdout + proc.stderr
     assert "control already lists every skill" in proc.stdout
@@ -106,7 +106,7 @@ def test_one_skill_absent_from_the_control_is_enough(tmp_path):
 
 @pytest.mark.parametrize("case", ["no-auth", "no-cli"])
 def test_skips_without_the_cli_or_authentication(tmp_path, case):
-    proc = run(tmp_path, "plugins/hawkscan", answer=skills("hawkscan"),
+    proc = run(tmp_path, "cursor-plugins/hawkscan", answer=skills("hawkscan"),
                auth_fail=case == "no-auth", with_cli=case == "no-auth")
     assert proc.returncode == 77, proc.stdout + proc.stderr
     assert "SKIP" in proc.stdout

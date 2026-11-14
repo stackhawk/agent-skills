@@ -13,9 +13,11 @@ set -euo pipefail
 # From a clone of stackhawk/agent-skills, scripts/install.sh installs the unreleased
 # development build the same way. The two name some plugin folders differently (plugins/api
 # in a clone, plugins/stackhawk-api in a snapshot), so each skill is found by its catalog
-# plugin name first, then by its source folder. Both install the canonical skills, rules and
-# stop hook of plugins/, never the bundled wingman copies (plugins/wingman/copilot-skills/,
-# cursor-plugins/wingman/ or bundles/wingman/).
+# plugin name first, then by its source folder. Both install the canonical skills of plugins/,
+# never the bundled wingman copies (plugins/wingman/copilot-skills/, cursor-plugins/wingman/
+# or bundles/wingman/). The rules and the stop hook come from cursor-plugins/hawkscan/, the
+# Cursor-only hawkscan plugin: the same folder in both clones (in agent-skills, a generated
+# copy of cursor-src/).
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -70,8 +72,8 @@ CURSOR_SKILLS=(
   "stackhawk-data-seed|stackhawk-data-seed|stackhawk-data-seed|Data seed skill"
   "optimize|stackhawk-optimize|optimize|Scan optimization skill"
 )
-CURSOR_RULES_SOURCE="${REPO_ROOT}/plugins/hawkscan/rules"
-CURSOR_HOOKS_SOURCE="${REPO_ROOT}/plugins/hawkscan/hooks/cursor"
+CURSOR_RULES_SOURCE="${REPO_ROOT}/cursor-plugins/hawkscan/rules"
+CURSOR_HOOKS_SOURCE="${REPO_ROOT}/cursor-plugins/hawkscan/hooks/cursor"
 CURSOR_LEGACY_RULES="${SCRIPT_DIR}/cursor-legacy-rules.txt"
 CURSOR_HOOK_SCRIPT="stackhawk-stop.sh"
 CURSOR_LEGACY_HOOK_MARKER="# Cursor stop hook for hawkscan plugin"

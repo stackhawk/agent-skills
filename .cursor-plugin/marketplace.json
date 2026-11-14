@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "hawkscan",
-      "source": "./plugins/hawkscan",
+      "source": "./cursor-plugins/hawkscan",
       "description": "Configure, run, and interpret HawkScan DAST results. Generates stackhawk.yml configs, runs scans via CLI or Docker, and transforms security findings into prioritized fix tasks for your coding agent.",
       "category": "security",
       "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/hawkscan"

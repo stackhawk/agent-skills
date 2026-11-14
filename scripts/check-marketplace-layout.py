@@ -2,21 +2,31 @@
 """Check a marketplace tree before it is published.
 
 The release runs this on the payload that scripts/export-marketplace.py writes and on the
-synced stackhawk/agent-skills-marketplace checkout, before the push. It fails when:
+synced stackhawk/agent-skills-marketplace checkout, before the push. CI runs it on this
+repository (--no-installers). It fails when:
 
   - an install makes Cursor load more than one always-applied (router) rule, more than one
-    stop hook, or one rule file or skill twice. It counts each plugin of the Cursor catalog
-    installed alone, and each Claude Code install (a plugin with its dependencies, and every
-    plugin together) that Cursor imports. The Cursor app imports Claude Code plugins by
-    default (importPluginsFromClaudeOnBoot), and which manifest it reads for them is not
-    documented, so a Claude Code install is counted with each manifest. A component path
-    that a manifest names replaces the default folder (rules/, hooks/hooks.json, skills/);
-    without one, the default folder counts.
+    stop hook that acts, or one rule file or skill twice. It counts each plugin of the Cursor
+    catalog installed alone, and each Claude Code install (a plugin with its dependencies, and
+    every plugin together) that Cursor imports. The Cursor app and the Cursor CLI import
+    Claude Code plugins. Cursor 3.9.16 reads .cursor-plugin/plugin.json and else
+    .claude-plugin/plugin.json; a Claude Code install is counted with each manifest, so the
+    check does not depend on that order. A component path that a manifest names replaces the
+    default folder (rules/, hooks/hooks.json, skills/); without one, the default counts;
+  - a hook that a Claude-listed folder registers in Cursor acts when Cursor runs it (prints,
+    writes a file or exits with an error; scripts/cursor-hook-probe.py runs it with the
+    environment Cursor gives it). Cursor maps the Claude events (Stop to stop, SessionStart to sessionStart, ...), so
+    such a hook would add a second scan reminder or context block to the native install;
+  - a Claude Code install that Cursor imports, next to one native Cursor install (one Cursor
+    catalog plugin, or a project install), loads more than one router rule or more than one
+    stop hook that acts, or, when the native install carries the hawkscan skill, not exactly
+    the router rule and the stop hook of the native install. The skills of the two load side
+    by side (Cursor lists both); the check does not count that;
   - a Cursor install that carries the hawkscan skill lacks its router rule or its stop hook,
     or a Cursor install loads no skill;
-  - a folder that the Claude catalog lists and the Cursor catalog does not (the Claude
-    wingman) carries a Cursor file: .cursor-plugin/, rules/, hooks/cursor/ or any .mdc rule,
-    named by a manifest or not;
+  - a Claude-listed folder carries a Cursor rule (rules/ or any .mdc) or a Cursor hook
+    (hooks/cursor/), or a Cursor manifest that names rules or hooks; a folder that the Claude
+    catalog lists and the Cursor catalog does not carries a .cursor-plugin/ either;
   - a file of the Cursor distribution is missing: the Cursor catalog, a plugin's Cursor
     manifest or a path it names, a hook script, the installers or the legacy rule list;
   - the Claude Code packaging is broken: a manifest name differs from its catalog name, a
@@ -29,15 +39,16 @@ synced stackhawk/agent-skills-marketplace checkout, before the push. It fails wh
     hooks.json stop entry.
 
 The Claude plugins are the entries of .claude-plugin/marketplace.json; a tree without that
-catalog (the export) lists them as the plugins/*/ folders.
+catalog (the export) lists them as the plugins/*/ folders. A project install is modeled from
+the files the installers copy (the rules and the stop hook of cursor-plugins/hawkscan/).
 
-What the counts assume about Cursor, from its documentation and the code of its 3.9.16 app
-and 2026.11.11 CLI, not from a live run of every case:
+What the counts assume about Cursor, from its documentation, the code of its 3.9.16 app and
+live runs of its 2026.11.13 CLI, not from a live run of every case:
   - a component path that a manifest names replaces the default folder of that component;
   - any alwaysApply value that is not clearly false (false, no, off, 0) makes a router rule.
-It does not count installs that combine channels or catalog entries: hawkscan and wingman
-from the Cursor catalog, or a Cursor catalog install next to an imported Claude Code
-install. Each loads the router twice; the README tells users to pick one.
+It does not count two native Cursor installs together (two Cursor catalog plugins that carry
+the router, or a Cursor catalog plugin and a project install): each loads the router twice,
+and the README tells users to pick one.
 
 Usage:
   check-marketplace-layout.py [--version X.Y.Z] [--no-installers] [--run-installers] ROOT
@@ -60,6 +71,19 @@ CURSOR_MANIFEST = ".cursor-plugin/plugin.json"
 CLAUDE_MANIFEST = ".claude-plugin/plugin.json"
 # What Cursor reads from a plugin folder beyond its skills.
 CURSOR_PARTS = (".cursor-plugin", "rules", "hooks/cursor")
+# Cursor rules and hooks: no Claude-listed folder carries them.
+CURSOR_RULES_AND_HOOKS = ("rules", "hooks/cursor")
+# The Cursor-only hawkscan plugin: the installers copy its rules and stop hook into a project.
+CURSOR_HAWKSCAN = "cursor-plugins/hawkscan"
+CURSOR_HAWKSCAN_RULES = f"{CURSOR_HAWKSCAN}/rules"
+CURSOR_HAWKSCAN_HOOKS = f"{CURSOR_HAWKSCAN}/hooks/cursor"
+PROJECT_INSTALL = "project install"
+# Claude hook events and the Cursor events they run as (Cursor 3.9.16, claude-code-types.ts).
+CLAUDE_EVENTS = {
+    "PreToolUse": "preToolUse", "PostToolUse": "postToolUse", "UserPromptSubmit": "beforeSubmitPrompt",
+    "Stop": "stop", "SubagentStop": "subagentStop", "SessionStart": "sessionStart",
+    "SessionEnd": "sessionEnd", "PreCompact": "preCompact",
+}
 CURSOR_ROOT_VAR = "${CURSOR_PLUGIN_ROOT}"
 CLAUDE_ROOT_VAR = "${CLAUDE_PLUGIN_ROOT}"
 FALSE_VALUES = {"false", "no", "off", "0", ""}
@@ -75,12 +99,21 @@ def load_measure_module():
     return module
 
 
+def load_probe_module():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cursor-hook-probe.py")
+    spec = importlib.util.spec_from_file_location("cursor_hook_probe", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 MEASURE = load_measure_module()
+PROBE = load_probe_module()
 
 Rule = collections.namedtuple("Rule", "path always")
-Hook = collections.namedtuple("Hook", "path command")
+Hook = collections.namedtuple("Hook", "path event command")
 Skill = collections.namedtuple("Skill", "name path")
-Loaded = collections.namedtuple("Loaded", "folder manifest rules stop_hooks skills")
+Loaded = collections.namedtuple("Loaded", "folder manifest rules hooks skills")
 
 
 class Layout:
@@ -90,6 +123,7 @@ class Layout:
         self.root = os.path.abspath(root)
         self.errors = []
         self._loaded = {}
+        self._probed = {}
 
     def error(self, message):
         if message not in self.errors:
@@ -184,17 +218,29 @@ def rule_files(paths):
     return files
 
 
-def stop_hooks(layout, hook_files):
+def hooks_in(layout, hook_files):
+    """Every hook of the hooks files, with the Cursor event it runs on: the Cursor format
+    ({"hooks": {"stop": [{"command": ...}]}}) and the Claude format ({"hooks": {"Stop":
+    [{"hooks": [{"command": ...}]}]}}), whose events Cursor maps to its own."""
     hooks = []
     for full in hook_files:
         data = layout.read_json(layout.rel(full)) if os.path.isfile(full) else None
         events = data.get("hooks", {}) if isinstance(data, dict) else {}
-        for item in events.get("stop", []) if isinstance(events, dict) else []:
-            hooks.append(Hook(layout.rel(full), str(item.get("command", "")) if isinstance(item, dict) else ""))
-        for group in events.get("Stop", []) if isinstance(events, dict) else []:
-            for item in group.get("hooks", []) if isinstance(group, dict) else []:
-                hooks.append(Hook(layout.rel(full), str(item.get("command", ""))))
+        for key, items in events.items() if isinstance(events, dict) else []:
+            for item in items if isinstance(items, list) else []:
+                if not isinstance(item, dict):
+                    continue
+                if key in CLAUDE_EVENTS:
+                    for hook in item.get("hooks", []) if isinstance(item.get("hooks"), list) else []:
+                        if isinstance(hook, dict):
+                            hooks.append(Hook(layout.rel(full), CLAUDE_EVENTS[key], str(hook.get("command", ""))))
+                else:
+                    hooks.append(Hook(layout.rel(full), key, str(item.get("command", ""))))
     return hooks
+
+
+def stop_hooks(plugin):
+    return [hook for hook in plugin.hooks if hook.event == "stop"]
 
 
 def skills_in(layout, paths):
@@ -220,24 +266,43 @@ def load_plugin(layout, folder, prefer_cursor):
         manifest = layout.read_json(f"{folder}/{manifest_rel}") or {}
         rules = [Rule(layout.rel(f), always_applied(layout.frontmatter(f).get("alwaysApply")))
                  for f in rule_files(component_files(layout, folder, manifest_rel, manifest, "rules", "rules"))]
-        hooks = stop_hooks(layout, component_files(layout, folder, manifest_rel, manifest, "hooks", "hooks/hooks.json"))
+        hooks = hooks_in(layout, component_files(layout, folder, manifest_rel, manifest, "hooks", "hooks/hooks.json"))
         skills = skills_in(layout, component_files(layout, folder, manifest_rel, manifest, "skills", "skills"))
         layout._loaded[key] = Loaded(folder, manifest_rel, rules, hooks, skills)
     return layout._loaded[key]
 
 
-def check_scenario(layout, label, plugins):
-    """Errors for one install: at most one router rule and one stop hook, nothing loaded twice."""
+def hook_acts(layout, plugin, hook):
+    """True when the hook prints, writes a file or fails when Cursor runs it
+    (scripts/cursor-hook-probe.py). A hook that cannot run at all counts as acting, and is an error."""
+    key = (plugin.folder, hook)
+    if key not in layout._probed:
+        try:
+            layout._probed[key] = PROBE.probe(layout.full(plugin.folder), hook.event, hook.command)
+        except (OSError, subprocess.SubprocessError) as problem:
+            layout.error(f"{hook.path}: cannot run its {hook.event} hook as Cursor runs it ({problem}); "
+                         "the check needs /bin/sh and git")
+            layout._probed[key] = PROBE.Result(True, None, "", [])
+    return layout._probed[key].acts
+
+
+def acting_stop_hooks(layout, plugins):
+    return [hook.path for p in plugins for hook in stop_hooks(p) if hook_acts(layout, p, hook)]
+
+
+def check_scenario(layout, label, plugins, count_skills=True):
+    """Errors for one install: at most one router rule and one stop hook that acts, nothing
+    loaded twice. Returns the routers, the acting stop hooks and the skill names."""
     routers = [r.path for p in plugins for r in p.rules if r.always]
-    hooks = [h.path for p in plugins for h in p.stop_hooks]
+    hooks = acting_stop_hooks(layout, plugins)
     if len(routers) > 1:
         layout.error(f"{label}: {len(routers)} router rules ({', '.join(routers)}); "
                      "Cursor must load at most one always-applied rule")
     if len(hooks) > 1:
-        layout.error(f"{label}: {len(hooks)} stop hooks ({', '.join(hooks)}); at most one may run")
+        layout.error(f"{label}: {len(hooks)} stop hooks act ({', '.join(hooks)}); at most one may")
     rule_names = collections.Counter(os.path.basename(r.path) for p in plugins for r in p.rules)
     skill_names = collections.Counter(s.name for p in plugins for s in p.skills)
-    for kind, counts in (("rule", rule_names), ("skill", skill_names)):
+    for kind, counts in (("rule", rule_names), ("skill", skill_names if count_skills else {})):
         for name, count in sorted(counts.items()):
             if count > 1:
                 layout.error(f"{label}: {kind} {name} loads {count} times")
@@ -247,7 +312,7 @@ def check_scenario(layout, label, plugins):
 # ─── The Cursor catalog ───
 
 def check_plugin_hook_commands(layout, plugin):
-    for hook in plugin.stop_hooks:
+    for hook in stop_hooks(plugin):
         command = hook.command.strip()
         script = command.split('"')[1] if command.startswith('"') else command.split(" ")[0]
         if not script.startswith(CURSOR_ROOT_VAR + "/"):
@@ -260,7 +325,7 @@ def check_plugin_hook_commands(layout, plugin):
 
 
 def check_cursor_catalog(layout, claude_names):
-    """Checks each Cursor catalog install; returns every folder the catalog lists."""
+    """Checks each Cursor catalog install; returns (name, folder) of each plugin it lists."""
     catalog = layout.read_json(".cursor-plugin/marketplace.json")
     if not isinstance(catalog, dict) or not isinstance(catalog.get("plugins"), list):
         if catalog is not None:
@@ -272,7 +337,7 @@ def check_cursor_catalog(layout, claude_names):
         if folder is None:
             layout.error(f".cursor-plugin/marketplace.json: {name} has a source outside the tree")
             continue
-        folders.append(folder)
+        folders.append((name, folder))
         if not os.path.isfile(layout.full(f"{folder}/{CURSOR_MANIFEST}")):
             layout.error(f"missing {folder}/{CURSOR_MANIFEST} (Cursor catalog entry {name})")
             continue
@@ -294,7 +359,7 @@ def check_cursor_install(layout, name, folder):
         layout.error(f"{label}: loads no skill")
     if ROUTER_SKILL in skills and (len(routers) != 1 or len(hooks) != 1):
         layout.error(f"{label}: carries the {ROUTER_SKILL} skill with {len(routers)} router rules and "
-                     f"{len(hooks)} stop hooks; expected exactly one of each")
+                     f"{len(hooks)} stop hooks that act; expected exactly one of each")
     check_plugin_hook_commands(layout, plugin)
 
 
@@ -373,33 +438,107 @@ def closure(name, dependencies):
     return seen
 
 
-def check_claude_only_folders(layout, plugins, cursor_folders):
-    """A folder that the Claude catalog lists and the Cursor catalog does not carries no Cursor
-    file: no Cursor manifest, rule or Cursor hook. The Cursor app imports Claude Code plugins,
-    so such a file would load next to the ones of the Cursor catalog plugin that ships them,
-    even when no manifest names it. Wingman is such a folder: its Cursor files live in the
-    folder that the Cursor catalog lists."""
+def cursor_files_in(layout, folder, parts):
+    found = [part for part in parts if os.path.lexists(layout.full(f"{folder}/{part}"))]
+    for dirpath, _, names in sorted(os.walk(layout.full(folder))):
+        found += [layout.rel(os.path.join(dirpath, n)).removeprefix(f"{folder}/")
+                  for n in sorted(names) if n.endswith(".mdc")]
+    return list(dict.fromkeys(found))
+
+
+def check_claude_listed_folders(layout, plugins, cursor_folders):
+    """A folder that the Claude catalog lists carries no Cursor rule and no Cursor hook, and a
+    Cursor manifest there names neither. The Cursor app and the Cursor CLI import Claude Code
+    plugins, so such a file would load next to the native Cursor install, even when no
+    manifest names it. A folder that only the Claude catalog lists (the Claude hawkscan and
+    wingman) carries no Cursor manifest either: their Cursor files live in the folder that
+    the Cursor catalog lists."""
     for name, folder in sorted(plugins.items(), key=lambda item: item[1]):
-        if folder in cursor_folders:
-            continue
-        found = [part for part in CURSOR_PARTS if os.path.lexists(layout.full(f"{folder}/{part}"))]
-        for dirpath, _, names in sorted(os.walk(layout.full(folder))):
-            found += [layout.rel(os.path.join(dirpath, n)).removeprefix(f"{folder}/")
-                      for n in sorted(names) if n.endswith(".mdc")]
-        for part in dict.fromkeys(found):
-            layout.error(f"{folder}/{part}: only the Claude catalog lists {folder} ({name}), so it must "
-                         "carry no Cursor file; Cursor imports Claude Code plugins and would load it")
+        parts = CURSOR_RULES_AND_HOOKS if folder in cursor_folders else CURSOR_PARTS
+        for part in cursor_files_in(layout, folder, parts):
+            layout.error(f"{folder}/{part}: the Claude catalog lists {folder} ({name}), so it must carry no "
+                         "Cursor rule or hook" + ("" if folder in cursor_folders else " and no Cursor manifest") +
+                         "; Cursor imports Claude Code plugins and would load it")
+        manifest_rel = f"{folder}/{CURSOR_MANIFEST}"
+        if folder in cursor_folders and os.path.isfile(layout.full(manifest_rel)):
+            manifest = layout.read_json(manifest_rel) or {}
+            for key in ("rules", "hooks"):
+                if key in manifest:
+                    layout.error(f"{manifest_rel}: names {key}; the Claude catalog lists {folder} ({name}), "
+                                 "so its Cursor manifest names no rules and no hooks")
 
 
-def check_claude_imports(layout, plugins):
+def check_imported_hooks(layout, plugin, label):
+    """Every hook that a Claude-listed folder registers in Cursor does nothing there."""
+    for hook in plugin.hooks:
+        if hook_acts(layout, plugin, hook):
+            result = layout._probed[(plugin.folder, hook)]
+            detail = (result.stdout[:80] or ", ".join(result.written)[:80] or f"exit {result.exit}").replace("\n", " ")
+            layout.error(f"{label}: {hook.path} registers a {hook.event} hook that acts when Cursor runs it "
+                         f"({detail}); a Claude Code hook must do nothing in Cursor "
+                         "(plugins/hawkscan/hooks/skip-under-cursor)")
+
+
+def claude_installs(layout, plugins):
+    """(name, member folders) of each Claude Code install: a plugin with its dependencies, and
+    every plugin together."""
     dependencies = {name: check_claude_plugin(layout, name, folder, plugins) for name, folder in plugins.items()}
     installs = [(name, closure(name, dependencies)) for name in plugins]
     if len(plugins) > 1:
         installs.append(("every plugin", list(plugins)))
-    for prefer_cursor, reads in ((True, f"{CURSOR_MANIFEST} when present"), (False, CLAUDE_MANIFEST)):
+    return installs
+
+
+READINGS = ((True, f"{CURSOR_MANIFEST} when present"), (False, CLAUDE_MANIFEST))
+
+
+def check_claude_imports(layout, plugins, installs):
+    for prefer_cursor, reads in READINGS:
         for name, members in installs:
             label = f"Claude Code install of {name} imported into Cursor (Cursor reads {reads})"
-            check_scenario(layout, label, [load_plugin(layout, plugins[m], prefer_cursor) for m in members])
+            loaded = [load_plugin(layout, plugins[m], prefer_cursor) for m in members]
+            check_scenario(layout, label, loaded)
+            for plugin in loaded:
+                check_imported_hooks(layout, plugin, label)
+
+
+def project_install(layout):
+    """What a project install from this tree loads: the rules of cursor-plugins/hawkscan and
+    the stop entry of its project hooks.json, whose script is that folder's stop.sh. None
+    when the tree has no Cursor-only hawkscan (an error of the Cursor catalog check)."""
+    rules_dir = layout.full(CURSOR_HAWKSCAN_RULES)
+    hooks_rel = f"{CURSOR_HAWKSCAN_HOOKS}/hooks.json"
+    if not os.path.isdir(rules_dir) or not os.path.isfile(layout.full(hooks_rel)):
+        return None
+    rules = [Rule(f"{PROJECT_INSTALL}: .cursor/rules/{os.path.basename(f)}",
+                  always_applied(layout.frontmatter(f).get("alwaysApply"))) for f in rule_files([rules_dir])]
+    entries = [hook for hook in hooks_in(layout, [layout.full(hooks_rel)]) if hook.event == "stop"]
+    stop_script = f"{CURSOR_ROOT_VAR}/hooks/cursor/stop.sh"  # the installers copy it into .cursor/hooks/
+    hooks = [Hook(f"{PROJECT_INSTALL}: .cursor/hooks.json", "stop", stop_script) for _ in entries]
+    return Loaded(CURSOR_HAWKSCAN, PROJECT_INSTALL, rules, hooks, [Skill(ROUTER_SKILL, PROJECT_INSTALL)])
+
+
+def check_combined(layout, plugins, installs, cursor_entries):
+    """A Claude Code install that Cursor imports, next to one native Cursor install, loads only
+    what the native install loads: no second router rule and no second stop hook that acts.
+    The skills of both load; the check does not count them."""
+    natives = [(f"Cursor catalog install of {name} ({folder})", load_plugin(layout, folder, prefer_cursor=True))
+               for name, folder in cursor_entries if os.path.isfile(layout.full(f"{folder}/{CURSOR_MANIFEST}"))]
+    project = project_install(layout)
+    if project is not None:
+        natives.append((PROJECT_INSTALL, project))
+    for prefer_cursor, reads in READINGS:
+        for name, members in installs:
+            imported = [load_plugin(layout, plugins[m], prefer_cursor) for m in members]
+            for native_label, native in natives:
+                label = f"Claude Code install of {name} (Cursor reads {reads}) + {native_label}"
+                routers, hooks, _ = check_scenario(layout, label, imported + [native], count_skills=False)
+                native_routers = [r.path for r in native.rules if r.always]
+                native_hooks = acting_stop_hooks(layout, [native])
+                if ROUTER_SKILL in {s.name for s in native.skills} and \
+                        (routers, hooks) != (native_routers, native_hooks):
+                    layout.error(f"{label}: loads the router rules {routers} and the acting stop hooks {hooks}; "
+                                 f"expected only those of the native install: {native_routers} and {native_hooks}")
 
 
 # ─── Installers and versions ───
@@ -458,14 +597,14 @@ def tree_files(root):
 
 def check_installed(layout, label, dot_cursor):
     """What a Cursor project install from this tree must hold."""
-    rules = layout.full("plugins/hawkscan/rules")
+    rules = layout.full(CURSOR_HAWKSCAN_RULES)
     for name in INSTALLED_RULES:
         installed = os.path.join(dot_cursor, "rules", name)
         if not os.path.isfile(installed) or not same_file(installed, os.path.join(rules, name)):
-            layout.error(f"{label}: the install has no rules/{name} from plugins/hawkscan/rules/")
+            layout.error(f"{label}: the install has no rules/{name} from {CURSOR_HAWKSCAN_RULES}/")
     hook = os.path.join(dot_cursor, *INSTALLED_HOOK.split("/"))
-    if not is_executable(hook) or not same_file(hook, layout.full("plugins/hawkscan/hooks/cursor/stop.sh")):
-        layout.error(f"{label}: the install has no executable {INSTALLED_HOOK} from plugins/hawkscan/hooks/cursor/")
+    if not is_executable(hook) or not same_file(hook, layout.full(f"{CURSOR_HAWKSCAN_HOOKS}/stop.sh")):
+        layout.error(f"{label}: the install has no executable {INSTALLED_HOOK} from {CURSOR_HAWKSCAN_HOOKS}/")
     try:
         with open(os.path.join(dot_cursor, "hooks.json"), encoding="utf-8") as f:
             stops = json.load(f)["hooks"]["stop"]
@@ -523,9 +662,12 @@ def check(root, version=None, require_installers=True, run_installers=False):
     plugins = claude_plugins(layout)
     if not plugins:
         layout.error("no Claude plugins: neither .claude-plugin/marketplace.json nor plugins/*/.claude-plugin/plugin.json")
-    cursor_folders = check_cursor_catalog(layout, plugins or None)
-    check_claude_only_folders(layout, plugins, set(cursor_folders))
-    check_claude_imports(layout, plugins)
+    cursor_entries = check_cursor_catalog(layout, plugins or None)
+    cursor_folders = [folder for _, folder in cursor_entries]
+    check_claude_listed_folders(layout, plugins, set(cursor_folders))
+    installs = claude_installs(layout, plugins)
+    check_claude_imports(layout, plugins, installs)
+    check_combined(layout, plugins, installs, cursor_entries)
     if require_installers:
         check_installers(layout)
     if run_installers:
@@ -553,8 +695,9 @@ def main():
             print(f"ERROR: {error}", file=sys.stderr)
         print(f"FAILED: {len(errors)} problem(s) in {args.root}", file=sys.stderr)
         return 1
-    print(f"OK: {args.root}: at most one router rule and one stop hook in each checked install, "
-          "and every Cursor distribution file.")
+    print(f"OK: {args.root}: at most one router rule and one acting stop hook in each checked install "
+          "(a Claude Code install next to one native Cursor install too), no Claude Code hook acts in "
+          "Cursor, and every Cursor distribution file.")
     return 0
 
 

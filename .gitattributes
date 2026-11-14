@@ -13,10 +13,9 @@ scripts/cursor-legacy-rules.txt text eol=lf
 *.json text eol=lf
 # Generated files are compared byte for byte with what their generators write
 # (scripts/generate-cursor-adapter.py --check, scripts/test-wingman-skills.sh), so they, the
-# skills and rules they copy, and the Cursor hook sources stay LF in every checkout, as the
-# export (git archive) reads them.
+# skills they copy, and the sources of the rules and Cursor hooks (cursor-src/) stay LF in
+# every checkout, as the export (git archive) reads them.
 plugins/*/skills/** text eol=lf
-plugins/*/rules/** text eol=lf
 cursor-plugins/** text eol=lf
 plugins/wingman/copilot-skills/** text eol=lf
-plugins/hawkscan/hooks/cursor/** text eol=lf
+cursor-src/** text eol=lf

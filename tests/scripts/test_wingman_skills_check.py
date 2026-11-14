@@ -1,4 +1,5 @@
-"""scripts/test-wingman-skills.sh: the check of the bundled wingman skill copies.
+"""scripts/test-wingman-skills.sh: the check of the bundled wingman skill copies and of the
+skills of the Cursor-only hawkscan plugin.
 
 CI and the release validate job run the script after generate-wingman-skills.sh. Each test
 damages a copy of this working tree and expects the script to fail with a named error; the
@@ -13,6 +14,8 @@ import pytest
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 COPILOT = "plugins/wingman/copilot-skills"
 CURSOR = "cursor-plugins/wingman/skills"
+HAWKSCAN = "plugins/hawkscan/skills"
+CURSOR_HAWKSCAN = "cursor-plugins/hawkscan/skills"
 
 
 def copy_tree(dest):
@@ -98,8 +101,26 @@ def crlf_copies(tree):
 
 def cursor_rules_in_the_claude_wingman(tree):
     os.makedirs(os.path.join(tree, "plugins/wingman/rules"))
-    shutil.copy2(os.path.join(tree, "plugins/hawkscan/rules/stackhawk.mdc"),
+    shutil.copy2(os.path.join(tree, "cursor-src/rules/stackhawk.mdc"),
                  os.path.join(tree, "plugins/wingman/rules/stackhawk.mdc"))
+
+
+def cursor_rules_in_the_claude_hawkscan(tree):
+    os.makedirs(os.path.join(tree, "plugins/hawkscan/rules"))
+    shutil.copy2(os.path.join(tree, "cursor-src/rules/stackhawk.mdc"),
+                 os.path.join(tree, "plugins/hawkscan/rules/stackhawk.mdc"))
+
+
+def changed_hawkscan_copy(tree):
+    append(os.path.join(tree, CURSOR_HAWKSCAN, "hawkscan", "references", "scan-policy.md"), "\nchanged\n")
+
+
+def missing_hawkscan_copy(tree):
+    shutil.rmtree(os.path.join(tree, CURSOR_HAWKSCAN, "hawkscan"))
+
+
+def crlf_hawkscan_copy(tree):
+    to_crlf(os.path.join(tree, CURSOR_HAWKSCAN, "hawkscan", "SKILL.md"))
 
 
 @pytest.mark.parametrize("damage, expected", [
@@ -112,6 +133,10 @@ def cursor_rules_in_the_claude_wingman(tree):
     (symlinked_file, f"{CURSOR} differs from {COPILOT}"),
     (crlf_copies, "CR line endings in the bundled skill copies"),
     (cursor_rules_in_the_claude_wingman, "plugins/wingman/rules exists"),
+    (cursor_rules_in_the_claude_hawkscan, "plugins/hawkscan/rules exists"),
+    (changed_hawkscan_copy, f"{CURSOR_HAWKSCAN} differs from {HAWKSCAN}"),
+    (missing_hawkscan_copy, f"{CURSOR_HAWKSCAN} differs from {HAWKSCAN}"),
+    (crlf_hawkscan_copy, "CR line endings in the bundled skill copies"),
 ], ids=lambda value: getattr(value, "__name__", None))
 def test_the_check_fails_on_a_damaged_copy(tree, damage, expected):
     damage(tree)

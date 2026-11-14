@@ -25,8 +25,9 @@ import time
 import pytest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-HOOK_DIR = os.path.join(REPO_ROOT, "plugins/hawkscan/hooks/cursor")
+HOOK_DIR = os.path.join(REPO_ROOT, "cursor-src/hooks")  # the hand-written source
 HOOK = os.path.join(HOOK_DIR, "stop.sh")
+HAWKSCAN_HOOK = os.path.join(REPO_ROOT, "cursor-plugins/hawkscan/hooks/cursor/stop.sh")
 WINGMAN_HOOK = os.path.join(REPO_ROOT, "cursor-plugins/wingman/hooks/cursor/stop.sh")
 
 # Tools the hook shells out to; a PATH holding only these has no jq.
@@ -265,7 +266,7 @@ def test_plugin_hook_command_runs_from_the_workspace_root(tmp_path):
     assert entry["loop_limit"] == 1
     assert "${CURSOR_PLUGIN_ROOT}" in entry["command"]
     plugin_root = tmp_path / "plugin cache" / "hawkscan"  # a space in the path must not break it
-    shutil.copytree(os.path.join(REPO_ROOT, "plugins/hawkscan"), plugin_root, symlinks=True)
+    shutil.copytree(os.path.join(REPO_ROOT, "cursor-plugins/hawkscan"), plugin_root, symlinks=True)
     command = entry["command"].replace("${CURSOR_PLUGIN_ROOT}", str(plugin_root))
     repo = tmp_path / "proj"
     make_repo(str(repo), "modified")
@@ -285,7 +286,8 @@ def test_project_hooks_file_limits_the_hook_to_one_loop():
     assert entries == [{"command": ".cursor/hooks/stackhawk-stop.sh", "loop_limit": 1}]
 
 
-def test_wingman_carries_an_identical_hook():
-    with open(HOOK, "rb") as a, open(WINGMAN_HOOK, "rb") as b:
+@pytest.mark.parametrize("copy", [HAWKSCAN_HOOK, WINGMAN_HOOK], ids=["hawkscan", "wingman"])
+def test_the_cursor_only_plugins_carry_an_identical_hook(copy):
+    with open(HOOK, "rb") as a, open(copy, "rb") as b:
         assert a.read() == b.read()
-    assert os.access(WINGMAN_HOOK, os.X_OK)
+    assert os.access(copy, os.X_OK)

@@ -8,11 +8,12 @@ from this repository:
   plugins/<name>/                  each plugin of .claude-plugin/marketplace.json, named by
                                    its catalog name, as Claude Code installs it. The umbrella
                                    wingman leaves out its Copilot and Codex bundle files
-                                   (copilot-skills/, .github/). Its source folder carries no
-                                   Cursor file, and the export refuses one: Claude Code
-                                   installs its dependencies, and the Cursor app imports
-                                   Claude Code plugins, so a second router rule and a second
-                                   stop hook would load.
+                                   (copilot-skills/, .github/). No such folder carries a Cursor
+                                   rule or hook, and the Claude folders of hawkscan and wingman
+                                   carry no Cursor file at all; the export refuses one. The
+                                   Cursor app and the Cursor CLI import Claude Code plugins, so
+                                   a second router rule and a second stop hook would load next
+                                   to the native Cursor install.
   bundles/wingman/                 the wingman bundle for Copilot, Codex and Cursor, which do
                                    not install plugin dependencies: plugins/wingman with the
                                    Cursor parts (.cursor-plugin/, rules/, hooks/cursor/) of
@@ -20,10 +21,16 @@ from this repository:
                                    catalog lists. Both source folders carry the same four
                                    bundled skills; the bundle keeps one copy, copilot-skills/,
                                    and its Cursor manifest names it.
+  cursor-plugins/hawkscan/         the Cursor-only hawkscan plugin, as in the source (without
+                                   its README): its Cursor manifest, its skills, the rules and
+                                   the Cursor hooks. The installers read the rules and the stop
+                                   hook there, the same path in agent-skills and in the
+                                   marketplace.
   .cursor-plugin/marketplace.json  the Cursor catalog, with marketplace sources
   install/                         install.sh, install.ps1 and cursor-legacy-rules.txt
-  export-manifest.json             the commit, the version, and the mode, size and sha256 of
-                                   every other file
+  export-manifest.json             format 2: the commit, the version, the folder of each plugin
+                                   in the Claude snapshots and in the Cursor catalog, and the
+                                   mode, size and sha256 of every other file
 
 It reads the commit with git archive (LF line endings, whatever the checkout's settings),
 never the working tree. It refuses a commit whose generated files (the wingman skill copies,
@@ -66,6 +73,9 @@ SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 VERSION_RE = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?")
 PLUGIN_NAME_RE = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 MANIFEST_NAME = "export-manifest.json"
+# Format 2 moved the Cursor parts of hawkscan out of plugins/hawkscan into
+# cursor-plugins/hawkscan, and added the "cursor" map. A sync that reads format 1 refuses it.
+FORMAT = 2
 INSTALLER_DIR = "install"
 INSTALLER_FILES = ("install.sh", "install.ps1", "cursor-legacy-rules.txt")
 
@@ -76,9 +86,15 @@ BUNDLES = {
 }
 # What Cursor reads from a plugin folder beyond its skills. The bundle takes these parts from
 # the umbrella's Cursor-only folder (its source in the Cursor catalog); the Claude-listed
-# folder of an umbrella must carry none of them.
+# folder of a Cursor-only plugin must carry none of them.
 CURSOR_PARTS = (".cursor-plugin", "rules", "hooks/cursor")
+# Cursor rules and hooks: no Claude-listed folder carries them.
+CURSOR_RULES_AND_HOOKS = ("rules", "hooks/cursor")
 CURSOR_ONLY_ROOT = "cursor-plugins"
+# The Cursor-only plugins that the export publishes as they are, at cursor-plugins/<name>.
+# The umbrellas (BUNDLES) are Cursor-only too; their Cursor parts go into bundles/<name>.
+CURSOR_ONLY_PUBLISHED = ("hawkscan",)
+CURSOR_ONLY = tuple(BUNDLES) + CURSOR_ONLY_PUBLISHED
 # The Cursor-only folder: its skill copies, and the README that stays in the source.
 CURSOR_ONLY_SKILLS = "skills"
 CURSOR_ONLY_README = "README.md"
@@ -201,11 +217,12 @@ def tree_state(tree):
 
 
 def preflight(tree):
-    """The commit as committed, before the stamp regenerates its copies: the Claude-listed
-    folder of each umbrella carries no Cursor file, and the generators change nothing."""
+    """The commit as committed, before the stamp regenerates its copies: no Claude-listed folder
+    carries a Cursor rule or hook (the one of a Cursor-only plugin no Cursor file), and the
+    generators change nothing."""
     plugins = claude_plugins(tree)
-    for name in BUNDLES:
-        refuse_cursor_parts(tree, name, plugins[name])
+    for name, source in plugins.items():
+        refuse_cursor_parts(tree, name, source)
     before = tree_state(tree)
     run_steps(tree, GENERATOR_STEPS)
     after = tree_state(tree)
@@ -239,9 +256,9 @@ def claude_plugins(tree):
         if not re.fullmatch(r"plugins/[a-z0-9-]+", source):
             raise ExportError(f".claude-plugin/marketplace.json: {entry['name']} has source {entry['source']}")
         plugins[entry["name"]] = source
-    missing = sorted(set(BUNDLES) - set(plugins))
+    missing = sorted(set(CURSOR_ONLY) - set(plugins))
     if missing:
-        raise ExportError(f"the Claude catalog does not list the umbrella plugins {missing}")
+        raise ExportError(f"the Claude catalog does not list the Cursor-only plugins {missing}")
     return plugins
 
 
@@ -278,8 +295,9 @@ def add_folder(files, tree, source, target, omits=()):
 
 def cursor_sources(tree, plugins):
     """The source Cursor catalog, and catalog name -> the folder it installs each plugin from.
-    A plugin shares its Claude-listed folder; an umbrella has its own Cursor-only folder,
-    cursor-plugins/<name>, which the Claude catalog cannot list (its sources are plugins/*)."""
+    A plugin shares its Claude-listed folder; a Cursor-only plugin (hawkscan, wingman) has its
+    own folder, cursor-plugins/<name>, which the Claude catalog cannot list (its sources are
+    plugins/*)."""
     catalog = read_json(tree, ".cursor-plugin/marketplace.json")
     names = [entry["name"] for entry in catalog["plugins"]]
     if names != list(plugins):
@@ -287,29 +305,42 @@ def cursor_sources(tree, plugins):
     sources = {}
     for entry in catalog["plugins"]:
         name = entry["name"]
-        expected = f"{CURSOR_ONLY_ROOT}/{name}" if name in BUNDLES else plugins[name]
+        expected = f"{CURSOR_ONLY_ROOT}/{name}" if name in CURSOR_ONLY else plugins[name]
         if str(entry["source"]).removeprefix("./").rstrip("/") != expected:
             raise ExportError(f".cursor-plugin/marketplace.json: {name} source {entry['source']} is not ./{expected}")
         sources[name] = expected
     return catalog, sources
 
 
+def export_cursor_folder(name):
+    """The folder of the export that its Cursor catalog installs a plugin from."""
+    if name in BUNDLES:
+        return f"bundles/{name}"
+    if name in CURSOR_ONLY_PUBLISHED:
+        return f"{CURSOR_ONLY_ROOT}/{name}"
+    return f"plugins/{name}"
+
+
 def cursor_catalog(catalog):
     """The source Cursor catalog with the marketplace folders as sources."""
-    entries = []
-    for entry in catalog["plugins"]:
-        folder = "bundles" if entry["name"] in BUNDLES else "plugins"
-        entries.append({**entry, "source": f"./{folder}/{entry['name']}"})
+    entries = [{**entry, "source": f"./{export_cursor_folder(entry['name'])}"} for entry in catalog["plugins"]]
     return dump_json({**catalog, "plugins": entries})
 
 
 def refuse_cursor_parts(tree, name, source):
-    """The Claude-listed folder of an umbrella carries no Cursor part. The export refuses one
-    rather than leave it out, because a direct Claude install from the source would load it."""
-    for part in CURSOR_PARTS:
-        if os.path.lexists(os.path.join(tree, *source.split("/"), *part.split("/"))):
-            raise ExportError(f"{source}/{part}: the Claude catalog lists {source}, so it must carry no "
-                              f"Cursor file; the Cursor files of {name} belong in {CURSOR_ONLY_ROOT}/{name}")
+    """A Claude-listed folder carries no Cursor rule or hook, and the one of a Cursor-only plugin
+    no Cursor part at all. The export refuses one rather than leave it out, because a direct
+    Claude install from the source would load it."""
+    base = os.path.join(tree, *source.split("/"))
+    parts = CURSOR_PARTS if name in CURSOR_ONLY else CURSOR_RULES_AND_HOOKS
+    found = [part for part in parts if os.path.lexists(os.path.join(base, *part.split("/")))]
+    for dirpath, _, names in sorted(os.walk(base)):
+        found += [os.path.relpath(os.path.join(dirpath, n), base).replace(os.sep, "/") for n in sorted(names)
+                  if n.endswith(".mdc")]
+    if found:
+        home = f"{CURSOR_ONLY_ROOT}/{name}" if name in CURSOR_ONLY else "cursor-src/"
+        raise ExportError(f"{source}/{found[0]}: the Claude catalog lists {source}, so it must carry no "
+                          f"Cursor {'file' if name in CURSOR_ONLY else 'rule or hook'}; it belongs in {home}")
 
 
 def bundle_cursor_parts(tree, name, claude_source, cursor_source):
@@ -339,6 +370,27 @@ def bundle_cursor_parts(tree, name, claude_source, cursor_source):
     return parts
 
 
+def published_cursor_folder(tree, name, claude_source, cursor_source):
+    """The files of a Cursor-only plugin that the export publishes as it is: its Cursor parts
+    and its skills/, a copy of the skills/ of its Claude-listed folder. Its README stays in
+    the source."""
+    cursor = folder_files(tree, cursor_source)
+    allowed = CURSOR_PARTS + (CURSOR_ONLY_SKILLS, CURSOR_ONLY_README)
+    unexpected = sorted(rel for rel in cursor if not omitted(rel, allowed))
+    if unexpected:
+        raise ExportError(f"{cursor_source}/{unexpected[0]}: unexpected; a Cursor-only folder holds only {', '.join(allowed)}")
+    skills = {rel: v for rel, v in cursor.items() if omitted(rel, (CURSOR_ONLY_SKILLS,))}
+    canonical = {rel: v for rel, v in folder_files(tree, claude_source).items() if omitted(rel, (CURSOR_ONLY_SKILLS,))}
+    if not skills or skills != canonical:
+        raise ExportError(f"{cursor_source}/{CURSOR_ONLY_SKILLS} differs from {claude_source}/{CURSOR_ONLY_SKILLS}; "
+                          "run scripts/generate-wingman-skills.sh")
+    if CURSOR_MANIFEST not in cursor:
+        raise ExportError(f"{cursor_source} has no {CURSOR_MANIFEST}")
+    if json.loads(cursor[CURSOR_MANIFEST][0]).get("name") != name:
+        raise ExportError(f"{cursor_source}/{CURSOR_MANIFEST} must name {name}")
+    return {rel: v for rel, v in cursor.items() if rel != CURSOR_ONLY_README}
+
+
 def payload(tree):
     """The Claude plugins, the Cursor sources of the umbrellas, and relative path -> (bytes,
     executable) for every file of the payload but the manifest."""
@@ -346,17 +398,19 @@ def payload(tree):
     catalog, cursor = cursor_sources(tree, plugins)
     files = {}
     for name, source in plugins.items():
-        if name in BUNDLES:
-            refuse_cursor_parts(tree, name, source)  # preflight() refused them already; stays fail-closed
+        refuse_cursor_parts(tree, name, source)  # preflight() refused them already; stays fail-closed
         add_folder(files, tree, source, f"plugins/{name}", BUNDLES.get(name, ()))
     for name in BUNDLES:
         add_folder(files, tree, plugins[name], f"bundles/{name}")
         for rel, value in bundle_cursor_parts(tree, name, plugins[name], cursor[name]).items():
             files[f"bundles/{name}/{rel}"] = value
+    for name in CURSOR_ONLY_PUBLISHED:
+        for rel, value in published_cursor_folder(tree, name, plugins[name], cursor[name]).items():
+            files[f"{CURSOR_ONLY_ROOT}/{name}/{rel}"] = value
     files[".cursor-plugin/marketplace.json"] = (cursor_catalog(catalog), False)
     for name in INSTALLER_FILES:
         add_file(files, tree, f"scripts/{name}", f"{INSTALLER_DIR}/{name}")
-    return plugins, {name: cursor[name] for name in BUNDLES}, files
+    return plugins, {name: export_cursor_folder(name) for name in cursor}, files
 
 
 def add_file(files, tree, source, target):
@@ -367,16 +421,19 @@ def add_file(files, tree, source, target):
         files[target] = (f.read(), bool(os.stat(full).st_mode & 0o111))
 
 
-def manifest(files, commit, version, plugins, cursor_folders):
-    """bundles maps each umbrella to its Claude-listed source folder, as sources.json does in
-    the marketplace; cursor_folders names the Cursor-only folder of its Cursor parts."""
+def manifest(files, commit, version, plugins, cursor):
+    """plugins maps each plugin to its Claude-listed source folder (its snapshot is
+    plugins/<name>), and bundles each umbrella to the same, as sources.json does in the
+    marketplace. cursor maps each plugin to the folder of the export that the Cursor catalog
+    installs it from: bundles/<name> for an umbrella, cursor-plugins/<name> for another
+    Cursor-only plugin, plugins/<name> for the rest."""
     return dump_json({
-        "format": 1,
+        "format": FORMAT,
         "source": {"commit": commit},
         "version": version,
         "plugins": plugins,
         "bundles": {name: plugins[name] for name in BUNDLES},
-        "cursor_folders": cursor_folders,
+        "cursor": cursor,
         "files": [
             {"path": rel, "mode": "100755" if executable else "100644",
              "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
@@ -421,8 +478,8 @@ def export(source_repo, ref, version, dest):
             extract(source_repo, commit, tree)
             preflight(tree)
             stamp(tree, version)
-            plugins, cursor_folders, files = payload(tree)
-        write({**files, MANIFEST_NAME: (manifest(files, commit, version, plugins, cursor_folders), False)}, stage)
+            plugins, cursor, files = payload(tree)
+        write({**files, MANIFEST_NAME: (manifest(files, commit, version, plugins, cursor), False)}, stage)
         errors = load_layout_check().check(stage, version=version, run_installers=True)
         if errors:
             raise ExportError("the payload fails the layout check:\n  " + "\n  ".join(errors))
@@ -444,7 +501,7 @@ def layout_path(rel, plugins):
         return False
     if rel == ".cursor-plugin/marketplace.json" or rel in {f"{INSTALLER_DIR}/{n}" for n in INSTALLER_FILES}:
         return True
-    folders = {"plugins": plugins, "bundles": BUNDLES}
+    folders = {"plugins": plugins, "bundles": BUNDLES, CURSOR_ONLY_ROOT: CURSOR_ONLY_PUBLISHED}
     return parts[0] in folders and len(parts) > 2 and parts[1] in folders[parts[0]]
 
 
@@ -525,7 +582,7 @@ def verify(source_repo, ref, version, root):
     commit = git(source_repo, "rev-parse", "--verify", f"{ref}^{{commit}}").decode().strip()
     version = version or recorded.get("version")
     errors = []
-    if recorded.get("format") != 1:
+    if recorded.get("format") != FORMAT:
         errors.append(f"{MANIFEST_NAME}: unknown format {recorded.get('format')!r}")
     if (recorded.get("source") or {}).get("commit") != commit:
         errors.append(f"the export is of {(recorded.get('source') or {}).get('commit')}; {ref} is {commit}")

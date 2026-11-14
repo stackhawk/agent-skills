@@ -1,0 +1,9 @@
+---
+description: StackHawk guidance that applies while stackhawk.yml is in context.
+globs:
+  - "**/stackhawk.yml"
+  - "**/stackhawk-*.yml"
+alwaysApply: false
+---
+Before you change this file, read these references of the hawkscan skill: `config-patterns.md` (env var interpolation, whole-value rule), `scan-policy.md` (policy traps), and `multi-profile.md` if the file has `app.authentication.profiles`. Get the syntax of a field from `hawk config show <field-path> --text`.
+After every change run `hawk validate config <file>`. Never write an API key or credential into this file.

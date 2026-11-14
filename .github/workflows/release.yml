@@ -80,10 +80,12 @@ jobs:
       - name: Stamp the release version
         run: bash scripts/bump-version.sh "$RELEASE_VERSION"
       - name: Regenerate the wingman bundled skills
+        # Also the skill copies of the Cursor-only hawkscan plugin (cursor-plugins/hawkscan/skills/).
         run: bash scripts/generate-wingman-skills.sh
       - name: Validate the stamped tree
         # The layout check covers direct installs from this repository, which is a Claude Code
-        # and a Cursor marketplace too: no install may load the router rule or the stop hook twice.
+        # and a Cursor marketplace too: no install may load the router rule or the stop hook twice,
+        # also a Claude Code install next to one native Cursor install.
         run: |
           bash scripts/check-version.sh "$RELEASE_VERSION"
           bash scripts/test-wingman-skills.sh

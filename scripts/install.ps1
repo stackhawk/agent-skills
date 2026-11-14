@@ -10,9 +10,11 @@
 # From a clone of stackhawk/agent-skills, scripts\install.ps1 installs the unreleased
 # development build the same way. The two name some plugin folders differently (plugins/api
 # in a clone, plugins/stackhawk-api in a snapshot), so each skill is found by its catalog
-# plugin name first, then by its source folder. Both install the canonical skills, rules and
-# stop hook of plugins/, never the bundled wingman copies (plugins/wingman/copilot-skills/,
-# cursor-plugins/wingman/ or bundles/wingman/).
+# plugin name first, then by its source folder. Both install the canonical skills of plugins/,
+# never the bundled wingman copies (plugins/wingman/copilot-skills/, cursor-plugins/wingman/
+# or bundles/wingman/). The rules and the stop hook come from cursor-plugins/hawkscan/, the
+# Cursor-only hawkscan plugin: the same folder in both clones (in agent-skills, a generated
+# copy of cursor-src/).
 param(
     [Parameter(Mandatory)]
     [ValidateSet("cursor", "copilot")]
@@ -83,8 +85,8 @@ $CursorSkills = @(
     @{ Name = "stackhawk-data-seed"; Catalog = "stackhawk-data-seed"; Folder = "stackhawk-data-seed"; Label = "Data seed skill" },
     @{ Name = "optimize";            Catalog = "stackhawk-optimize";  Folder = "optimize";            Label = "Scan optimization skill" }
 )
-$CursorRulesSource  = Join-Path $RepoRoot "plugins/hawkscan/rules"
-$CursorHooksSource  = Join-Path $RepoRoot "plugins/hawkscan/hooks/cursor"
+$CursorRulesSource  = Join-Path $RepoRoot "cursor-plugins/hawkscan/rules"
+$CursorHooksSource  = Join-Path $RepoRoot "cursor-plugins/hawkscan/hooks/cursor"
 $CursorLegacyRules  = Join-Path $PSScriptRoot "cursor-legacy-rules.txt"
 $CursorHookScript   = "stackhawk-stop.sh"
 $CursorLegacyMarker = "# Cursor stop hook for hawkscan plugin"

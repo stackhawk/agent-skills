@@ -55,7 +55,8 @@ for entry in manifest["files"]:
         check(path, json.load(open(path)).get(entry["field"]))
 
 # Skills and generated copies that bump-version.sh does not list: the wingman bundled skills
-# in plugins/wingman/copilot-skills/ and their Cursor-only copies in cursor-plugins/wingman/skills/.
+# in plugins/wingman/copilot-skills/ and the skill copies of the Cursor-only plugins in
+# cursor-plugins/*/skills/ (wingman and hawkscan).
 listed = {e["path"] for e in manifest["files"]}
 copies = glob.glob("plugins/wingman/copilot-skills/*/SKILL.md") + glob.glob("cursor-plugins/*/skills/*/SKILL.md")
 for path in sorted(glob.glob("plugins/*/skills/*/SKILL.md") + copies):

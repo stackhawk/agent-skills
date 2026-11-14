@@ -12,7 +12,7 @@
 # in interactive sessions.
 #
 # Usage: scripts/cursor-plugin-smoke.sh [plugin-dir] [out-dir]
-#   plugin-dir  default: plugins/hawkscan of this checkout
+#   plugin-dir  default: cursor-plugins/hawkscan of this checkout
 #   out-dir     where the raw streams are kept (default: a temporary directory)
 #
 # Needs CURSOR_API_KEY in the environment (never on the command line) or a CLI login that
@@ -21,7 +21,7 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-plugin_dir="${1:-${REPO_ROOT}/plugins/hawkscan}"
+plugin_dir="${1:-${REPO_ROOT}/cursor-plugins/hawkscan}"
 out_dir="${2:-$(mktemp -d)}"
 mkdir -p "$out_dir"
 

@@ -77,7 +77,8 @@ def install(kind, target, home, path=None, check=True):
         cmd = ["bash", INSTALL_SH, "--platform", "cursor", "--target", str(target)]
     else:
         cmd = ["pwsh", "-NoProfile", "-NonInteractive", "-File", INSTALL_PS1, "-Platform", "cursor", "-Target", str(target)]
-    proc = subprocess.run(cmd, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+    proc = subprocess.run(cmd, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120,
+                          check=False)
     if check:
         assert proc.returncode == 0, proc.stdout + proc.stderr
     return proc
@@ -130,7 +131,8 @@ def run_hook_command(command, cwd, project_dir):
     env = {k: v for k, v in os.environ.items() if not k.startswith("CURSOR_")}
     env["CURSOR_PROJECT_DIR"] = str(project_dir)
     script = f"{command} <<'CURSOR_HOOK_EOF'\n{stop_payload()}\nCURSOR_HOOK_EOF"
-    proc = subprocess.run(["sh", "-c", script], cwd=str(cwd), env=env, capture_output=True, text=True, timeout=30)
+    proc = subprocess.run(["sh", "-c", script], cwd=str(cwd), env=env, capture_output=True, text=True, timeout=30,
+                          check=False)
     assert proc.returncode == 0, proc.stderr
     return proc.stdout.strip()
 
@@ -145,7 +147,8 @@ def test_project_install_writes_exactly_the_new_layout(kind, project, home):
     expected = expected_skill_files() | {f"rules/{r}" for r in RULES} | {"hooks.json", "hooks/stackhawk-stop.sh"}
     assert files_under(dot_cursor) == expected
     for rule in RULES:
-        assert (dot_cursor / "rules" / rule).read_bytes() == open(os.path.join(REPO_ROOT, "plugins/hawkscan/rules", rule), "rb").read()
+        with open(os.path.join(REPO_ROOT, "cursor-src", "rules", rule), "rb") as source:
+            assert (dot_cursor / "rules" / rule).read_bytes() == source.read()
     assert hooks(dot_cursor) == {"version": 1, "hooks": {"stop": [PROJECT_ENTRY]}}
     assert os.access(dot_cursor / "hooks" / "stackhawk-stop.sh", os.X_OK)
 
@@ -154,7 +157,7 @@ def test_project_install_writes_exactly_the_new_layout(kind, project, home):
 def test_project_install_meets_the_context_budgets(kind, project, home):
     install(kind, project, home)
     proc = subprocess.run([sys.executable, MEASURE, "--check", "--json", str(project / ".cursor")],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, check=False)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     report = json.loads(proc.stdout)
     assert report["rules"] == {"always": 1, "glob": 1, "agent-requested": 0, "manual": 0}

@@ -11,7 +11,8 @@ import pytest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci", "stage-marketplace-sync.sh")
-PATHS = ["plugins/hawkscan/SKILL.md", "bundles/wingman/README.md", "skills/hawkscan/SKILL.md",
+PATHS = ["plugins/hawkscan/SKILL.md", "bundles/wingman/README.md", "cursor-plugins/hawkscan/.cursor-plugin/plugin.json",
+         "skills/hawkscan/SKILL.md",
          "install/install.sh", "sources.json", ".claude-plugin/marketplace.json",
          ".github/plugin/marketplace.json", ".agents/plugins/marketplace.json",
          ".codex-plugin/marketplace.json", ".cursor-plugin/marketplace.json"]
@@ -41,7 +42,7 @@ def marketplace(tmp_path):
 
 
 def stage(repo):
-    return subprocess.run(["bash", SCRIPT, str(repo)], capture_output=True, text=True)
+    return subprocess.run(["bash", SCRIPT, str(repo)], capture_output=True, text=True, check=False)
 
 
 def test_a_complete_sync_is_staged(marketplace):
@@ -52,7 +53,8 @@ def test_a_complete_sync_is_staged(marketplace):
     assert sorted(git(marketplace, "diff", "--cached", "--name-only").split()) == sorted(PATHS)
 
 
-@pytest.mark.parametrize("missing", ["install/install.sh", ".cursor-plugin/marketplace.json"])
+@pytest.mark.parametrize("missing", ["install/install.sh", ".cursor-plugin/marketplace.json",
+                                     "cursor-plugins/hawkscan/.cursor-plugin/plugin.json"])
 def test_a_sync_that_does_not_write_a_published_path_fails(marketplace, missing):
     for rel in PATHS:
         if rel != missing:

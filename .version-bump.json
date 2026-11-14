@@ -86,7 +86,7 @@
       "type": "yaml-frontmatter"
     },
     {
-      "path": "plugins/hawkscan/.cursor-plugin/plugin.json",
+      "path": "cursor-plugins/hawkscan/.cursor-plugin/plugin.json",
       "field": "version",
       "type": "json",
       "stamp_only": true

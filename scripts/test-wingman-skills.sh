@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Verifies generate-wingman-skills.sh output is complete and idempotent.
+# Verifies generate-wingman-skills.sh output is complete and idempotent: the wingman copies, and
+# the skills of the Cursor-only hawkscan plugin.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -7,6 +8,8 @@ cd "$REPO_ROOT"
 
 DEST="plugins/wingman/copilot-skills"
 CURSOR_DEST="cursor-plugins/wingman/skills"
+HAWKSCAN_SKILLS="plugins/hawkscan/skills"
+HAWKSCAN_CURSOR_DEST="cursor-plugins/hawkscan/skills"
 EXPECTED=(hawkscan stackhawk-api stackhawk-data-seed stackhawk-optimize)
 errors=0
 
@@ -55,7 +58,7 @@ fi
 
 # 4b. The copies are LF, as the generators write them and git stores them: a CR means a copy
 # was made from CRLF sources (a checkout without .gitattributes) and differs from the commit.
-crlf_copies="$(LC_ALL=C grep -rl $'\r' "$DEST" "$CURSOR_DEST" 2>/dev/null || true)"
+crlf_copies="$(LC_ALL=C grep -rl $'\r' "$DEST" "$CURSOR_DEST" "$HAWKSCAN_CURSOR_DEST" 2>/dev/null || true)"
 if [ -n "$crlf_copies" ]; then
   echo "ERROR: CR line endings in the bundled skill copies (run generate-wingman-skills.sh in an LF checkout):"
   printf '%s\n' "$crlf_copies" | head -10
@@ -172,6 +175,28 @@ elif find "$CURSOR_DEST" -type l | grep -q .; then
   errors=$((errors + 1))
 else
   echo "OK: ${CURSOR_DEST} equals ${DEST}"
+fi
+
+# 10. The Cursor-only hawkscan plugin carries the skills of plugins/hawkscan, byte for byte, and
+# no symlink. plugins/hawkscan carries no Cursor rule or Cursor hook: the Claude catalog lists it.
+for part in .cursor-plugin rules hooks/cursor; do
+  if [ -e "plugins/hawkscan/${part}" ]; then
+    echo "ERROR: plugins/hawkscan/${part} exists - the Cursor files of hawkscan belong in cursor-plugins/hawkscan (sources in cursor-src/)"
+    errors=$((errors + 1))
+  fi
+done
+if [ ! -d "$HAWKSCAN_CURSOR_DEST" ]; then
+  echo "ERROR: missing ${HAWKSCAN_CURSOR_DEST} (run generate-wingman-skills.sh)"
+  errors=$((errors + 1))
+elif [ "$(listing "$HAWKSCAN_SKILLS" "")" != "$(listing "$HAWKSCAN_CURSOR_DEST" "")" ]; then
+  echo "ERROR: ${HAWKSCAN_CURSOR_DEST} differs from ${HAWKSCAN_SKILLS} (run generate-wingman-skills.sh)"
+  diff <(listing "$HAWKSCAN_SKILLS" "") <(listing "$HAWKSCAN_CURSOR_DEST" "") | head -20 || true
+  errors=$((errors + 1))
+elif find "$HAWKSCAN_CURSOR_DEST" -type l | grep -q .; then
+  echo "ERROR: symlinks found in ${HAWKSCAN_CURSOR_DEST} - output must be real files"
+  errors=$((errors + 1))
+else
+  echo "OK: ${HAWKSCAN_CURSOR_DEST} equals ${HAWKSCAN_SKILLS}"
 fi
 
 if [ $errors -gt 0 ]; then

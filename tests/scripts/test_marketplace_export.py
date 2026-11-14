@@ -9,9 +9,14 @@ marketplace before the push.
 The defect these tests guard: the marketplace once copied all of `plugins/wingman` into the
 Claude-listed snapshot. Cursor imports Claude Code plugins, so a Claude Code user with wingman
 (and its hawkscan dependency) got the router rule and the stop hook twice. The source had the
-same defect: its own Claude catalog listed `plugins/wingman` with the Cursor files. Now the
-Cursor files of wingman live in `cursor-plugins/wingman`, which only the Cursor catalog lists,
+same defect: its own Claude catalog listed `plugins/wingman` with the Cursor files. Then the
+Cursor files of wingman moved to `cursor-plugins/wingman`, which only the Cursor catalog lists,
 and the export builds the marketplace bundle from both folders.
+
+The Claude hawkscan carried the router rule and the stop hook too, so a Claude Code install
+next to one native Cursor install still loaded each twice. Now no Claude snapshot carries a
+Cursor rule or hook: the Cursor parts of hawkscan live in `cursor-plugins/hawkscan`, which the
+export publishes as it is, and the Claude hooks of hawkscan do nothing when Cursor runs them.
 
 Every export here comes from a git snapshot of this working tree, so the tests see uncommitted
 changes the way a commit would carry them.
@@ -39,6 +44,7 @@ CLAUDE_SNAPSHOT_OMITS = {
 }
 CURSOR_PARTS = (".cursor-plugin", "rules", "hooks/cursor")
 CURSOR_WINGMAN = "cursor-plugins/wingman"
+CURSOR_HAWKSCAN = "cursor-plugins/hawkscan"
 INSTALLER_FILES = ("install.sh", "install.ps1", "cursor-legacy-rules.txt")
 BUNDLED_SKILLS = {"hawkscan", "stackhawk-api", "stackhawk-data-seed", "stackhawk-optimize"}
 INSTALLERS = ["sh"] + (["ps1"] if shutil.which("pwsh") else [])
@@ -241,8 +247,40 @@ def test_the_exported_bundle_loads_one_router_one_stop_hook_and_the_four_skills(
     layout = LAYOUT.Layout(str(exported))
     bundle = LAYOUT.load_plugin(layout, "bundles/wingman", prefer_cursor=True)
     assert [r.path for r in bundle.rules if r.always] == ["bundles/wingman/rules/stackhawk.mdc"]
-    assert [h.path for h in bundle.stop_hooks] == ["bundles/wingman/hooks/cursor/plugin-hooks.json"]
+    assert [h.path for h in LAYOUT.stop_hooks(bundle)] == ["bundles/wingman/hooks/cursor/plugin-hooks.json"]
+    assert LAYOUT.acting_stop_hooks(layout, [bundle]) == ["bundles/wingman/hooks/cursor/plugin-hooks.json"]
     assert {s.name for s in bundle.skills} == BUNDLED_SKILLS
+    assert layout.errors == []
+
+
+def test_the_exported_cursor_hawkscan_is_the_source_folder_without_its_readme(exported, release_tree):
+    expected = files_under(release_tree / CURSOR_HAWKSCAN)
+    del expected["README.md"]
+    assert files_under(exported / CURSOR_HAWKSCAN) == expected
+    assert sorted(os.listdir(exported / "cursor-plugins")) == ["hawkscan"]
+
+
+def test_the_exported_cursor_hawkscan_loads_one_router_one_stop_hook_and_its_skill(exported):
+    layout = LAYOUT.Layout(str(exported))
+    plugin = LAYOUT.load_plugin(layout, CURSOR_HAWKSCAN, prefer_cursor=True)
+    assert [r.path for r in plugin.rules if r.always] == [f"{CURSOR_HAWKSCAN}/rules/stackhawk.mdc"]
+    assert LAYOUT.acting_stop_hooks(layout, [plugin]) == [f"{CURSOR_HAWKSCAN}/hooks/cursor/plugin-hooks.json"]
+    assert {s.name for s in plugin.skills} == {"hawkscan"}
+    assert layout.errors == []
+
+
+def test_the_claude_hawkscan_carries_no_cursor_file_and_registers_only_silent_hooks(exported):
+    """Cursor imports the Claude Code install of hawkscan: no rule, and its Claude hooks (Stop,
+    SessionStart, PostToolUse) do nothing when Cursor runs them."""
+    hawkscan = exported / "plugins" / "hawkscan"
+    for rel in CURSOR_PARTS:
+        assert not (hawkscan / rel).exists(), rel
+    assert not list(hawkscan.glob("**/*.mdc"))
+    layout = LAYOUT.Layout(str(exported))
+    plugin = LAYOUT.load_plugin(layout, "plugins/hawkscan", prefer_cursor=True)
+    assert plugin.manifest == ".claude-plugin/plugin.json" and plugin.rules == []
+    assert {h.event for h in plugin.hooks} == {"sessionStart", "postToolUse", "stop"}
+    assert [h for h in plugin.hooks if LAYOUT.hook_acts(layout, plugin, h)] == []
     assert layout.errors == []
 
 
@@ -258,8 +296,9 @@ def test_cursor_catalog_points_at_marketplace_folders(exported, source_repo, cla
     with open(source_repo / ".cursor-plugin" / "marketplace.json") as f:
         source = json.load(f)
     assert [e["name"] for e in catalog["plugins"]] == list(claude_catalog)
+    folders = {"wingman": "bundles", "hawkscan": "cursor-plugins"}
     for entry, original in zip(catalog["plugins"], source["plugins"]):
-        folder = "bundles" if entry["name"] == "wingman" else "plugins"
+        folder = folders.get(entry["name"], "plugins")
         assert entry["source"] == f"./{folder}/{entry['name']}"
         assert {k: v for k, v in entry.items() if k != "source"} == {k: v for k, v in original.items() if k != "source"}
     assert {k: v for k, v in catalog.items() if k != "plugins"} == {k: v for k, v in source.items() if k != "plugins"}
@@ -342,7 +381,7 @@ def test_export_folders_have_fixed_modes(exported):
 
 
 def test_export_reads_the_commit_not_the_working_tree(source_repo, tmp_path):
-    rule = source_repo / "plugins" / "hawkscan" / "rules" / "stackhawk.mdc"
+    rule = source_repo / "cursor-src" / "rules" / "stackhawk.mdc"
     original = rule.read_text()
     try:
         rule.write_text(original + "\nUNCOMMITTED\n")
@@ -380,7 +419,52 @@ def test_the_layout_the_old_sync_wrote_fails(scratch):
     """The reproduced defect: the old sync kept the Cursor files in the Claude-listed wingman."""
     copy_cursor_files_into_claude_wingman(scratch, (".cursor-plugin", "rules", "hooks"))
     errors = errors_of(scratch)
-    assert_error(errors, "Claude Code install of wingman", "2 router rules", "2 stop hooks")
+    assert_error(errors, "plugins/wingman/rules: the Claude catalog lists plugins/wingman (wingman)",
+                 "plugins/wingman/hooks/cursor/plugin-hooks.json registers a stop hook that acts",
+                 "Claude Code install of wingman", "+ Cursor catalog install of wingman (bundles/wingman): "
+                 "2 router rules", "2 stop hooks act")
+
+
+def copy_cursor_files_into_claude_hawkscan(root):
+    for part in (".cursor-plugin", "rules", "hooks/cursor"):
+        source, target = root / CURSOR_HAWKSCAN / part, root / "plugins" / "hawkscan" / part
+        if source.is_dir():
+            shutil.copytree(source, target)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+
+
+def test_the_layout_of_the_previous_release_fails(scratch):
+    """The defect of this change: the Claude hawkscan carried the Cursor router and stop hook,
+    so a Claude Code install next to one native Cursor install loaded each twice."""
+    copy_cursor_files_into_claude_hawkscan(scratch)
+    errors = errors_of(scratch)
+    assert_error(errors, "plugins/hawkscan/rules: the Claude catalog lists plugins/hawkscan (hawkscan)",
+                 "plugins/hawkscan/.cursor-plugin: the Claude catalog lists plugins/hawkscan",
+                 "Claude Code install of hawkscan (Cursor reads .cursor-plugin/plugin.json when present) "
+                 "+ project install: 2 router rules",
+                 "+ Cursor catalog install of hawkscan (cursor-plugins/hawkscan): 2 router rules", "2 stop hooks act")
+
+
+@pytest.mark.parametrize("hook, event", [("stop", "stop"), ("session-start", "sessionStart")])
+def test_a_claude_hook_that_acts_in_cursor_fails(scratch, hook, event):
+    """Without its first line (the Cursor guard), a Claude hook acts when Cursor runs it."""
+    script = scratch / "plugins" / "hawkscan" / "hooks" / hook
+    text = script.read_text()
+    guard = '. "$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/skip-under-cursor"\n'
+    assert text.count(guard) == 1
+    script.write_text(text.replace(guard, ""))
+    errors = errors_of(scratch)
+    assert_error(errors, f"plugins/hawkscan/hooks/hooks.json registers a {event} hook that acts when Cursor runs it")
+    if event == "stop":
+        assert_error(errors, "+ project install: 2 stop hooks act")
+
+
+def test_a_claude_hook_that_fails_in_cursor_counts_as_acting(scratch):
+    """Without the guard file each Claude hook exits with an error; that is not doing nothing."""
+    (scratch / "plugins" / "hawkscan" / "hooks" / "skip-under-cursor").unlink()
+    assert_error(errors_of(scratch), "plugins/hawkscan/hooks/hooks.json registers a stop hook that acts", "(exit 1)")
 
 
 def test_a_stray_router_rule_in_claude_wingman_fails(scratch):
@@ -423,7 +507,7 @@ def test_a_skills_folder_in_claude_wingman_fails(scratch):
     "install/install.sh",
     "install/install.ps1",
     "install/cursor-legacy-rules.txt",
-    "plugins/hawkscan/.cursor-plugin/plugin.json",
+    f"{CURSOR_HAWKSCAN}/.cursor-plugin/plugin.json",
     "bundles/wingman/.cursor-plugin/plugin.json",
 ])
 def test_a_missing_cursor_distribution_file_fails(scratch, rel):
@@ -465,11 +549,11 @@ def test_a_wingman_dependency_outside_the_catalog_fails(scratch):
 
 
 def test_an_unstamped_cursor_manifest_fails(scratch):
-    path = scratch / "plugins" / "hawkscan" / ".cursor-plugin" / "plugin.json"
+    path = scratch / CURSOR_HAWKSCAN / ".cursor-plugin" / "plugin.json"
     manifest = json.loads(path.read_text())
     del manifest["version"]
     path.write_text(json.dumps(manifest))
-    assert_error(errors_of(scratch), "plugins/hawkscan/.cursor-plugin/plugin.json", VERSION)
+    assert_error(errors_of(scratch), f"{CURSOR_HAWKSCAN}/.cursor-plugin/plugin.json", VERSION)
     assert errors_of(scratch, version=None) == []
 
 
@@ -497,10 +581,10 @@ def test_the_check_command_line_reports_and_fails(scratch):
 
 
 def test_the_source_tree_is_checked_with_its_own_catalogs(source_repo):
-    """This repository is a Claude Code marketplace too. Its Claude catalog lists
-    plugins/wingman, which carries no Cursor file, and its Cursor catalog lists
-    cursor-plugins/wingman, so a direct source install never loads the router rule or the stop
-    hook twice."""
+    """This repository is a Claude Code marketplace too. Its Claude catalog lists plugins/hawkscan
+    and plugins/wingman, which carry no Cursor file, and its Cursor catalog lists
+    cursor-plugins/hawkscan and cursor-plugins/wingman, so a direct source install never loads
+    the router rule or the stop hook twice, also next to one native Cursor install."""
     assert LAYOUT.check(str(source_repo), version=None, require_installers=False) == []
 
 
@@ -513,22 +597,34 @@ def commit_change(source_repo, tmp_path, change, message):
     return clone
 
 
+@pytest.mark.parametrize("plugin", ["wingman", "hawkscan"])
 @pytest.mark.parametrize("part", [".cursor-plugin", "rules", "hooks/cursor"])
-def test_export_refuses_cursor_files_in_the_claude_wingman(source_repo, tmp_path, part):
+def test_export_refuses_cursor_files_in_the_claude_folder_of_a_cursor_only_plugin(source_repo, tmp_path, part, plugin):
     """Not dropped from the Claude snapshot: refused, so the source cannot carry them either."""
     def change(clone):
-        shutil.copytree(clone / CURSOR_WINGMAN / part, clone / "plugins" / "wingman" / part)
-    clone = commit_change(source_repo, tmp_path, change, "Cursor files in the Claude wingman")
+        shutil.copytree(clone / "cursor-plugins" / plugin / part, clone / "plugins" / plugin / part)
+    clone = commit_change(source_repo, tmp_path, change, f"Cursor files in the Claude {plugin}")
     proc = run_export(clone, tmp_path / "dest", check=False)
     assert proc.returncode != 0
-    assert f"plugins/wingman/{part}" in proc.stderr and "must carry no Cursor file" in proc.stderr
+    assert f"plugins/{plugin}/{part}" in proc.stderr and "must carry no Cursor file" in proc.stderr
     assert not (tmp_path / "dest").exists()
+
+
+def test_export_refuses_a_cursor_rule_in_a_shared_plugin_folder(source_repo, tmp_path):
+    def change(clone):
+        shutil.copytree(clone / "cursor-src" / "rules", clone / "plugins" / "api" / "rules")
+    clone = commit_change(source_repo, tmp_path, change, "a Cursor rule in the shared api folder")
+    proc = run_export(clone, tmp_path / "dest", check=False)
+    assert proc.returncode != 0
+    assert "plugins/api/rules" in proc.stderr and "must carry no Cursor rule or hook" in proc.stderr
 
 
 @pytest.mark.parametrize("rel", [
     f"{CURSOR_WINGMAN}/skills/hawkscan/SKILL.md",
     "plugins/wingman/copilot-skills/stackhawk-api/SKILL.md",
     f"{CURSOR_WINGMAN}/rules/stackhawk.mdc",
+    f"{CURSOR_HAWKSCAN}/skills/hawkscan/SKILL.md",
+    f"{CURSOR_HAWKSCAN}/hooks/cursor/hooks.json",
 ])
 def test_export_refuses_a_commit_with_stale_generated_files(source_repo, tmp_path, rel):
     """The stamp regenerates the copies, so the payload would be right; the commit is not, and a
@@ -558,21 +654,30 @@ def test_export_refuses_a_cursor_catalog_that_lists_the_claude_wingman(source_re
     assert ".cursor-plugin/marketplace.json" in proc.stdout + proc.stderr
 
 
-def test_export_refuses_an_unexpected_file_in_the_cursor_only_folder(source_repo, tmp_path):
+@pytest.mark.parametrize("folder", [CURSOR_WINGMAN, CURSOR_HAWKSCAN])
+def test_export_refuses_an_unexpected_file_in_a_cursor_only_folder(source_repo, tmp_path, folder):
     def change(clone):
-        (clone / CURSOR_WINGMAN / "notes.md").write_text("stray\n")
+        (clone / folder / "notes.md").write_text("stray\n")
     clone = commit_change(source_repo, tmp_path, change, "a stray file in the Cursor-only folder")
     proc = run_export(clone, tmp_path / "dest", check=False)
     assert proc.returncode != 0
-    assert f"{CURSOR_WINGMAN}/notes.md" in proc.stdout + proc.stderr
+    assert f"{folder}/notes.md" in proc.stdout + proc.stderr
 
 
-def test_manifest_names_the_cursor_folder_of_the_bundle(exported):
+def test_manifest_maps_each_plugin_to_its_cursor_folder(exported):
+    """Format 2: the Cursor parts of hawkscan left plugins/hawkscan. A sync that reads format 1
+    refuses the export rather than publish a hawkscan without them."""
     with open(exported / "export-manifest.json") as f:
         manifest = json.load(f)
+    assert manifest["format"] == 2
     assert manifest["bundles"] == {"wingman": "plugins/wingman"}
-    assert manifest["cursor_folders"] == {"wingman": CURSOR_WINGMAN}
-    assert not [i for i in manifest["files"] if i["path"].startswith("cursor-plugins/")]
+    assert manifest["cursor"] == {
+        "hawkscan": CURSOR_HAWKSCAN, "stackhawk-api": "plugins/stackhawk-api", "hawkscan-ci": "plugins/hawkscan-ci",
+        "stackhawk-data-seed": "plugins/stackhawk-data-seed", "wingman": "bundles/wingman",
+        "stackhawk-optimize": "plugins/stackhawk-optimize"}
+    assert "cursor_folders" not in manifest
+    published = {i["path"].split("/")[1] for i in manifest["files"] if i["path"].startswith("cursor-plugins/")}
+    assert published == {"hawkscan"}
 
 
 # ─── Verify an export ───
@@ -746,7 +851,7 @@ def test_snapshot_copilot_install(kind, exported, tmp_path):
 @pytest.mark.parametrize("kind", INSTALLERS)
 @pytest.mark.parametrize("missing, named", [
     ("plugins/stackhawk-api", "api"),
-    ("plugins/hawkscan/rules", "stackhawk.mdc"),
+    (f"{CURSOR_HAWKSCAN}/rules", "stackhawk.mdc"),
 ])
 def test_an_incomplete_snapshot_stops_the_install_before_any_change(kind, missing, named, scratch, tmp_path):
     shutil.rmtree(scratch / missing)

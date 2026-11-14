@@ -10,7 +10,11 @@
 #   cursor-plugins/wingman/skills/   for the Cursor-only wingman plugin. Only the
 #                                    Cursor catalog lists cursor-plugins/wingman.
 #
-# One run writes the same bytes to both, so they cannot drift apart;
+# It also writes cursor-plugins/hawkscan/skills/, the skills of plugins/hawkscan for the
+# Cursor-only hawkscan plugin (only the Cursor catalog lists cursor-plugins/hawkscan), so
+# every skill copy of a Cursor-only plugin comes from this script, after the version stamp.
+#
+# One run writes the same bytes to both wingman copies, so they cannot drift apart;
 # scripts/generate-cursor-adapter.py --check and scripts/test-wingman-skills.sh
 # fail when they differ. The marketplace bundle (scripts/export-marketplace.py)
 # keeps one copy, copilot-skills/, for all three platforms.
@@ -128,4 +132,15 @@ for entry in "${MAPPINGS[@]}"; do
 done
 echo "Generated: ${CURSOR_DEST} (copies of ${DEST})"
 
-echo "Done. Generated ${#MAPPINGS[@]} skill(s) into ${DEST} and ${CURSOR_DEST}"
+# The Cursor-only hawkscan plugin gets the skills of plugins/hawkscan, byte for byte. The rest
+# of cursor-plugins/hawkscan/ comes from scripts/generate-cursor-adapter.py.
+HAWKSCAN_SKILLS="plugins/hawkscan/skills"
+HAWKSCAN_CURSOR_DEST="cursor-plugins/hawkscan/skills"
+rm -rf "$HAWKSCAN_CURSOR_DEST"
+mkdir -p "$HAWKSCAN_CURSOR_DEST"
+for src in "${HAWKSCAN_SKILLS}"/*/; do
+  cp -RL "${src%/}" "${HAWKSCAN_CURSOR_DEST}/$(basename "$src")"
+done
+echo "Generated: ${HAWKSCAN_CURSOR_DEST} (copies of ${HAWKSCAN_SKILLS})"
+
+echo "Done. Generated ${#MAPPINGS[@]} skill(s) into ${DEST} and ${CURSOR_DEST}, and ${HAWKSCAN_CURSOR_DEST}"
