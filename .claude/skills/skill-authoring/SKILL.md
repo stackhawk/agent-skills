@@ -1,6 +1,6 @@
 ---
 name: skill-authoring
-version: 1.1.1
+version: 1.1.2
 description: >
   Guides authoring and maintaining agent skills in this repository — enforcing
   Anthropic best practices, release-version rules, keeping the Cursor adapter current, and
@@ -167,7 +167,7 @@ cd .opencode/skills/ && ln -s ../../plugins/<name>/skills/<name> <name>
 cd .cursor/skills/ && ln -s ../../plugins/<name>/skills/<name> <name>
 ```
 
-**5. Name the skill in the Cursor router rule** `plugins/hawkscan/rules/stackhawk.mdc`: one
+**5. Name the skill in the Cursor router rule** `cursor-src/rules/stackhawk.mdc`: one
 bullet with the skill name and when it applies. The router is always applied in Cursor, so keep
 it under its 2,000-byte budget. Do not add a `scripts/generate-cursor-rules.sh` MAPPINGS entry:
 those generated rules are deprecated and no longer installed.
@@ -253,11 +253,13 @@ into the snapshot. Never edit version numbers manually in individual files.
 - The Cursor adapter is up to date and within its context budgets
   (`generate-cursor-adapter.py --check`, `measure-cursor-context.py --check`)
 - The deprecated Cursor rules are up to date (no diff after running `generate-cursor-rules.sh`)
-- The wingman bundled skills (`plugins/wingman/copilot-skills/` and its Cursor-only copy in
-  `cursor-plugins/wingman/skills/`) are up to date (no diff after `generate-wingman-skills.sh`)
+- The bundled skill copies (`plugins/wingman/copilot-skills/`, and the Cursor-only copies in
+  `cursor-plugins/wingman/skills/` and `cursor-plugins/hawkscan/skills/`) are up to date (no
+  diff after `generate-wingman-skills.sh`)
 - No direct install from this repository loads the Cursor router rule or stop hook twice
-  (`check-marketplace-layout.py --no-installers .`): the Claude-listed `plugins/wingman/`
-  carries no Cursor file
+  (`check-marketplace-layout.py --no-installers .`): the Claude-listed `plugins/hawkscan/` and
+  `plugins/wingman/` carry no Cursor file, and the Claude hooks of `plugins/hawkscan/` do
+  nothing when Cursor runs them (each hook script sources `hooks/skip-under-cursor` first)
 - SKILL.md frontmatter has `name:`, `version:`, `description:`
 
 The PR will be blocked if any check fails. Fix by running:
@@ -266,5 +268,5 @@ bash scripts/bump-version.sh --placeholder
 bash scripts/generate-wingman-skills.sh
 bash scripts/generate-cursor-rules.sh
 python3 scripts/generate-cursor-adapter.py
-git add plugins/ cursor-plugins/ cursor/ scripts/ .cursor-plugin/ && git commit --amend --no-edit
+git add plugins/ cursor-src/ cursor-plugins/ cursor/ scripts/ .cursor-plugin/ && git commit --amend --no-edit
 ```

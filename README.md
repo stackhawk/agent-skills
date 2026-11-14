@@ -194,7 +194,9 @@ This installs the skills into `.cursor/skills/`, `stackhawk.mdc` and `stackhawk-
 
 **User-level install** (every project on this machine): give your home directory as the target (`--target ~`; on Windows, leave out `-Target`). This installs the skills into `~/.cursor/skills/` and the stop hook into `~/.cursor/hooks.json`. Cursor has no file-based user rules, so for the router rule use a project install.
 
-**Team marketplace:** a Cursor team admin can import `stackhawk/agent-skills-marketplace` as a team marketplace. Its Cursor catalog lists the six plugins; `wingman` installs from `bundles/wingman/`, which bundles its four skills. Enable `wingman` or the separate plugins, not both: `hawkscan` and `wingman` each carry the router rule and the stop hook. Use one channel per project: a project install, a Cursor plugin, and Claude Code plugins that the Cursor app imports each bring their own router rule and stop hook. In a headless run (`-p`), the Cursor CLI (2026.11.11) loads a plugin's skills but does not give its rules to the agent, and it runs stop hooks only in interactive sessions. For the router rule in headless runs, use a project install.
+**Team marketplace:** a Cursor team admin can import `stackhawk/agent-skills-marketplace` as a team marketplace. Its Cursor catalog lists the six plugins; `wingman` installs from `bundles/wingman/`, which bundles its four skills, and `hawkscan` from `cursor-plugins/hawkscan/`. Enable `wingman` or the separate plugins, not both: `hawkscan` and `wingman` each carry the router rule and the stop hook.
+
+**One Cursor channel per project.** A project install and a Cursor plugin (`hawkscan` or `wingman`) each bring their own router rule and stop hook, so use one of them in a project, not both. Cursor does not merge two channels, and the installers do not look for a Cursor plugin. A Claude Code install can stay: Cursor imports Claude Code plugins from `~/.claude`, but the StackHawk Claude Code plugins carry no Cursor rule, and their hooks do nothing when Cursor runs them. Cursor then lists the StackHawk skills of that Claude Code install next to those of the Cursor channel. In a headless run (`-p`), the Cursor CLI (2026.11.11) loads a plugin's skills but does not give its rules to the agent, and it runs stop hooks only in interactive sessions. For the router rule in headless runs, use a project install.
 
 The stop hook is a bash script. On Windows, Cursor needs bash (for example Git for Windows) to run it. The generated rules in `cursor/.cursor/rules/` are deprecated: the installers no longer copy them, and `cursor/` will be removed in the next major release.
 
@@ -245,7 +247,7 @@ bash agent-skills/scripts/install.sh --platform cursor --target .     # Windows:
 cursor-agent --plugin-dir agent-skills/cursor-plugins/wingman
 ```
 
-The Claude and Codex catalogs list `plugins/wingman`, which carries no Cursor file. Only the Cursor catalog (`.cursor-plugin/marketplace.json`) lists `cursor-plugins/wingman`, the Cursor-only wingman with its own copies of the four skills, the router rule and the stop hook. The Cursor app imports Claude Code plugins, so a Claude Code install of wingman gives Cursor exactly one router rule and one stop hook, from its `hawkscan` dependency. Every other plugin serves both catalogs from its `plugins/<name>` folder.
+The Claude and Codex catalogs list `plugins/hawkscan` and `plugins/wingman`, which carry no Cursor file. Only the Cursor catalog (`.cursor-plugin/marketplace.json`) lists `cursor-plugins/hawkscan` and `cursor-plugins/wingman`, the Cursor-only plugins with their own copies of the skills, the router rule and the stop hook. The Cursor app and the Cursor CLI import Claude Code plugins, so a Claude Code install gives Cursor its skills, no rule, and hooks that do nothing in Cursor. Every other plugin serves both catalogs from its `plugins/<name>` folder.
 
 ### 3. Try it
 
@@ -306,7 +308,8 @@ These are [Agent Skills](https://agentskills.io) — they teach AI coding agents
 
 ```
 plugins/
-├── hawkscan/                    HawkScan DAST scanning
+├── hawkscan/                    HawkScan DAST scanning (no Cursor files)
+│   ├── hooks/                   Claude Code hooks (they do nothing when Cursor runs them)
 │   └── skills/hawkscan/
 │       ├── SKILL.md             scan workflow
 │       └── references/          CLI flags, config patterns, findings schema, Docker, install
@@ -323,10 +326,12 @@ plugins/
 │       └── SKILL.md             hawk perch seed workflow
 ├── optimize/                    Scan optimization
 └── wingman/                     Umbrella: Claude Code dependencies, Copilot and Codex copies (no Cursor files)
+cursor-src/                      Cursor router and config rules, Cursor stop hook (hand-written; no catalog lists it)
+cursor-plugins/hawkscan/         Cursor-only hawkscan (generated; only the Cursor catalog lists it)
 cursor-plugins/wingman/          Cursor-only wingman (generated; only the Cursor catalog lists it)
 skills/                          Symlinks for Gemini/Copilot discovery
 cursor/                          Generated Cursor .mdc rules (deprecated; not installed)
-scripts/generate-cursor-adapter.py  Builds the Cursor plugin manifests and cursor-plugins/wingman
+scripts/generate-cursor-adapter.py  Builds the Cursor plugin manifests and cursor-plugins/
 scripts/measure-cursor-context.py   Measures the Cursor context load of an install
 scripts/install.sh               Installer for Cursor and Copilot (macOS/Linux)
 scripts/install.ps1              Installer for Cursor and Copilot (Windows)
@@ -334,9 +339,10 @@ scripts/generate-marketplace-catalogs.py   Builds local install verification cat
 scripts/generate-marketplace-skills.py     Builds local skills CLI verification copies
 scripts/export-marketplace.py      Exports (or --verify checks) the release payload the marketplace publishes
 scripts/check-marketplace-layout.py  Checks that payload and the synced marketplace
+scripts/cursor-hook-probe.py       Runs one plugin hook as Cursor runs it (used by the layout check)
 ```
 
-Released plugins and skills are published through [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace). The release exports the payload of its tag (Claude plugin snapshots, the wingman bundle, the Cursor catalog and installers), and the marketplace sync script publishes it, generates platform catalogs, and vendors standalone skills for `npx skills add`. The release workflow validates the sync and pushes it to marketplace `main`.
+Released plugins and skills are published through [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace). The release exports the payload of its tag (Claude plugin snapshots, the wingman bundle, the Cursor-only hawkscan, the Cursor catalog and installers), and the marketplace sync script publishes it, generates platform catalogs, and vendors standalone skills for `npx skills add`. The release workflow validates the sync and pushes it to marketplace `main`.
 
 ### Platform Support
 
