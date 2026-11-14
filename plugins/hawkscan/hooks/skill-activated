@@ -12,6 +12,9 @@
 
 set -euo pipefail
 
+# Do nothing when Cursor runs this hook: see skip-under-cursor.
+. "$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/skip-under-cursor"
+
 # Portable mutex via mkdir (atomic on POSIX). Chosen over flock because flock
 # is NOT present on stock macOS — this hook runs on macOS, Linux, and git-bash
 # on Windows. Guards the record read-modify-write below: this hook is

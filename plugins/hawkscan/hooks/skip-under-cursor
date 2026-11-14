@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Sourced first by every Claude Code hook script of this plugin (session-start,
+# post-commit-scan, skill-activated, stop), before the script reads its input or
+# writes anything. Not a hook itself: hooks.json never names it. It is executable only
+# because every file in hooks/ is; run on its own, it does nothing.
+#
+# The Cursor app and the Cursor CLI import Claude Code plugins and run their hooks:
+# SessionStart as sessionStart, PostToolUse as postToolUse, Stop as stop. In Cursor, one
+# native Cursor install (the Cursor plugin, or a project install) carries the router rule
+# and the stop hook, so these hooks must do nothing there. Otherwise Cursor would get a
+# second scan reminder, a second context block, and a session record that says claude-code.
+#
+# Cursor runs a hook with CURSOR_VERSION and CURSOR_PROJECT_DIR set and without
+# CLAUDECODE. Claude Code runs a hook with CLAUDECODE=1, also when it inherited a Cursor
+# variable. So Cursor runs this hook when a Cursor variable is set and CLAUDECODE is not.
+# When both are set, the hook runs: a Claude Code hook is never silenced.
+if [ -z "${CLAUDECODE:-}" ] && { [ -n "${CURSOR_VERSION:-}" ] || [ -n "${CURSOR_PROJECT_DIR:-}" ]; }; then
+  # Read the payload, so that the write of the hook runner to stdin does not fail.
+  if [ ! -t 0 ]; then
+    cat > /dev/null 2>&1 || true
+  fi
+  exit 0
+fi
