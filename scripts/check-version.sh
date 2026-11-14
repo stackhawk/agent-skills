@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ─── Version Consistency Check ───
 # Every version-bearing file listed in .version-bump.json (and every generated wingman
-# copy) must carry one version: the in-tree placeholder by default, or the version
+# copy, Cursor-only ones included) must carry one version: the in-tree placeholder by default, or the version
 # the release job just stamped. "stamp_only" files carry none in the tree and the
 # stamped version after a stamp. Files under "unversioned" must carry none, so Claude
 # Code keeps tracking the commit instead of a number that never changes.
@@ -54,9 +54,11 @@ for entry in manifest["files"]:
     else:
         check(path, json.load(open(path)).get(entry["field"]))
 
-# Skills and generated copies that bump-version.sh does not list.
+# Skills and generated copies that bump-version.sh does not list: the wingman bundled skills
+# in plugins/wingman/copilot-skills/ and their Cursor-only copies in cursor-plugins/wingman/skills/.
 listed = {e["path"] for e in manifest["files"]}
-for path in sorted(glob.glob("plugins/*/skills/*/SKILL.md") + glob.glob("plugins/wingman/copilot-skills/*/SKILL.md")):
+copies = glob.glob("plugins/wingman/copilot-skills/*/SKILL.md") + glob.glob("cursor-plugins/*/skills/*/SKILL.md")
+for path in sorted(glob.glob("plugins/*/skills/*/SKILL.md") + copies):
     if path not in listed:
         check(path, frontmatter_version(path))
 

@@ -336,7 +336,8 @@ jobs:
   # Cursor installs marketplace plugins from its dashboard (team marketplace import or the
   # official marketplace), and the released marketplace has no Cursor catalog yet (see
   # RELEASING.md, "Cursor distribution prerequisites"). So this job checks the plugin folders
-  # this repository ships: scripts/cursor-plugin-smoke.sh loads each one with
+  # this repository ships (the Cursor catalog installs wingman from cursor-plugins/wingman,
+  # not from the Claude-listed plugins/wingman): scripts/cursor-plugin-smoke.sh loads each with
   # `cursor-agent --plugin-dir` and asks, read-only, which skills the agent has, with and
   # without the plugin. It does not check rules or hooks: the CLI does not give plugin rules
   # to a headless agent and runs stop hooks only in interactive sessions. Without the
@@ -356,7 +357,7 @@ jobs:
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
         run: |
-          for plugin in plugins/hawkscan plugins/wingman; do
+          for plugin in plugins/hawkscan cursor-plugins/wingman; do
             rc=0
             bash scripts/cursor-plugin-smoke.sh "$plugin" "$RUNNER_TEMP/smoke-$(basename "$plugin")" || rc=$?
             if [ "$rc" = 77 ]; then

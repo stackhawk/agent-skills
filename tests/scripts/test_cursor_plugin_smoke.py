@@ -78,10 +78,10 @@ def test_a_skill_of_the_plugin_that_is_not_listed_fails(tmp_path):
 
 
 def test_wingman_needs_the_four_bundled_skills_from_its_manifest_path(tmp_path):
-    proc = run(tmp_path, "plugins/wingman", answer=skills(*WINGMAN[:3]))
+    proc = run(tmp_path, "cursor-plugins/wingman", answer=skills(*WINGMAN[:3]))
     assert proc.returncode == 1
     assert "stackhawk-optimize" in proc.stderr
-    proc = run(tmp_path, "plugins/wingman", answer=skills(*WINGMAN))
+    proc = run(tmp_path, "cursor-plugins/wingman", answer=skills(*WINGMAN))
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
@@ -98,7 +98,7 @@ def test_a_control_that_already_lists_every_skill_is_inconclusive(tmp_path):
 
 
 def test_one_skill_absent_from_the_control_is_enough(tmp_path):
-    proc = run(tmp_path, "plugins/wingman", answer=skills(*WINGMAN),
+    proc = run(tmp_path, "cursor-plugins/wingman", answer=skills(*WINGMAN),
                control=skills("hawkscan", "api"))
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "absent without it: stackhawk-api stackhawk-data-seed stackhawk-optimize" in proc.stdout
@@ -113,6 +113,6 @@ def test_skips_without_the_cli_or_authentication(tmp_path, case):
 
 
 def test_a_folder_without_a_cursor_manifest_fails(tmp_path):
-    proc = run(tmp_path, "plugins/wingman/copilot-skills", answer=skills("hawkscan"))
+    proc = run(tmp_path, "plugins/wingman", answer=skills("hawkscan"))
     assert proc.returncode == 1
     assert ".cursor-plugin/plugin.json" in proc.stderr

@@ -130,8 +130,34 @@ else
   fi
 fi
 
+# 8. The Claude catalog lists plugins/wingman, and the Cursor app imports Claude Code
+# plugins: a Cursor file there would load the router rule and the stop hook a second time,
+# next to the ones of the hawkscan dependency. They live in cursor-plugins/wingman only.
+for part in .cursor-plugin rules hooks; do
+  if [ -e "plugins/wingman/${part}" ]; then
+    echo "ERROR: plugins/wingman/${part} exists - the Cursor files of wingman belong in cursor-plugins/wingman"
+    errors=$((errors + 1))
+  fi
+done
+
+# 9. The Cursor-only plugin carries the same four skills, byte for byte, and no symlink.
+CURSOR_DEST="cursor-plugins/wingman/skills"
+if [ ! -d "$CURSOR_DEST" ]; then
+  echo "ERROR: missing ${CURSOR_DEST} (run generate-wingman-skills.sh)"
+  errors=$((errors + 1))
+elif ! diff -r -x README.md "$DEST" "$CURSOR_DEST" > /dev/null || [ -e "${CURSOR_DEST}/README.md" ]; then
+  echo "ERROR: ${CURSOR_DEST} differs from ${DEST} (run generate-wingman-skills.sh)"
+  diff -r -x README.md "$DEST" "$CURSOR_DEST" | head -20 || true
+  errors=$((errors + 1))
+elif find "$CURSOR_DEST" -type l | grep -q .; then
+  echo "ERROR: symlinks found in ${CURSOR_DEST} - output must be real files"
+  errors=$((errors + 1))
+else
+  echo "OK: ${CURSOR_DEST} equals ${DEST}"
+fi
+
 if [ $errors -gt 0 ]; then
   echo "FAILED: $errors error(s)"
   exit 1
 fi
-echo "PASS: wingman copilot-skills valid"
+echo "PASS: wingman bundled skills valid"

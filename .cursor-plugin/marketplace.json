@@ -38,7 +38,7 @@
     },
     {
       "name": "wingman",
-      "source": "./plugins/wingman",
+      "source": "./cursor-plugins/wingman",
       "description": "StackHawk umbrella plugin \u2014 installs the default StackHawk skill set (hawkscan, api, data-seed, optimize) in one command for the combined hawk CLI.",
       "category": "security",
       "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/wingman"

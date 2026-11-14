@@ -2,15 +2,17 @@
 # Copies StackHawk agent skills for platforms that require manual installation
 # (Cursor, Copilot). Same layout as scripts/install.sh.
 #
-# Usage:
-#   .\scripts\install.ps1 -Platform cursor -Target .        # project install
-#   .\scripts\install.ps1 -Platform cursor                  # user level: skills and stop hook
-#   .\scripts\install.ps1 -Platform copilot -Target .
+# Usage, from a clone of stackhawk/agent-skills-marketplace (the released build):
+#   .\install\install.ps1 -Platform cursor -Target .        # project install
+#   .\install\install.ps1 -Platform cursor                  # user level: skills and stop hook
+#   .\install\install.ps1 -Platform copilot -Target .
 #
-# It runs from a clone of stackhawk/agent-skills (scripts\install.ps1) and from a released
-# snapshot in stackhawk/agent-skills-marketplace (install\install.ps1). The two name some
-# plugin folders differently (plugins/api in a clone, plugins/stackhawk-api in a snapshot),
-# so each skill is found by its catalog plugin name first, then by its source folder.
+# From a clone of stackhawk/agent-skills, scripts\install.ps1 installs the unreleased
+# development build the same way. The two name some plugin folders differently (plugins/api
+# in a clone, plugins/stackhawk-api in a snapshot), so each skill is found by its catalog
+# plugin name first, then by its source folder. Both install the canonical skills, rules and
+# stop hook of plugins/, never the bundled wingman copies (plugins/wingman/copilot-skills/,
+# cursor-plugins/wingman/ or bundles/wingman/).
 param(
     [Parameter(Mandatory)]
     [ValidateSet("cursor", "copilot")]

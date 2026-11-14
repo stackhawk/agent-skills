@@ -1,3 +1,9 @@
 # Shell scripts run under bash, also on Windows (Git for Windows); CRLF line endings break
 # them ("set: pipefail: invalid option name"). The installers copy stop.sh as checked out.
 *.sh text eol=lf
+# Generated copies are compared byte for byte with their sources
+# (scripts/generate-cursor-adapter.py --check, scripts/test-wingman-skills.sh), so they and the
+# Cursor hook sources stay LF in every checkout, as the export (git archive) reads them.
+cursor-plugins/** text eol=lf
+plugins/wingman/copilot-skills/** text eol=lf
+plugins/hawkscan/hooks/cursor/** text eol=lf

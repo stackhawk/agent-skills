@@ -27,7 +27,7 @@ import pytest
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HOOK_DIR = os.path.join(REPO_ROOT, "plugins/hawkscan/hooks/cursor")
 HOOK = os.path.join(HOOK_DIR, "stop.sh")
-WINGMAN_HOOK = os.path.join(REPO_ROOT, "plugins/wingman/hooks/cursor/stop.sh")
+WINGMAN_HOOK = os.path.join(REPO_ROOT, "cursor-plugins/wingman/hooks/cursor/stop.sh")
 
 # Tools the hook shells out to; a PATH holding only these has no jq.
 NO_JQ_TOOLS = ["git", "grep", "sed", "tr", "cat", "head", "tail", "sort", "wc", "bash", "env", "printf", "dirname", "mkdir", "mv"]

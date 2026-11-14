@@ -14,6 +14,9 @@ synced stackhawk/agent-skills-marketplace checkout, before the push. It fails wh
     without one, the default folder counts.
   - a Cursor install that carries the hawkscan skill lacks its router rule or its stop hook,
     or a Cursor install loads no skill;
+  - a folder that the Claude catalog lists and the Cursor catalog does not (the Claude
+    wingman) carries a Cursor file: .cursor-plugin/, rules/, hooks/cursor/ or any .mdc rule,
+    named by a manifest or not;
   - a file of the Cursor distribution is missing: the Cursor catalog, a plugin's Cursor
     manifest or a path it names, a hook script, the installers or the legacy rule list;
   - the Claude Code packaging is broken: a manifest name differs from its catalog name, a
@@ -55,6 +58,8 @@ INSTALLER_DIR = "install"
 INSTALLER_FILES = ("install.sh", "install.ps1", "cursor-legacy-rules.txt")
 CURSOR_MANIFEST = ".cursor-plugin/plugin.json"
 CLAUDE_MANIFEST = ".claude-plugin/plugin.json"
+# What Cursor reads from a plugin folder beyond its skills.
+CURSOR_PARTS = (".cursor-plugin", "rules", "hooks/cursor")
 CURSOR_ROOT_VAR = "${CURSOR_PLUGIN_ROOT}"
 CLAUDE_ROOT_VAR = "${CLAUDE_PLUGIN_ROOT}"
 FALSE_VALUES = {"false", "no", "off", "0", ""}
@@ -255,6 +260,7 @@ def check_plugin_hook_commands(layout, plugin):
 
 
 def check_cursor_catalog(layout, claude_names):
+    """Checks each Cursor catalog install; returns every folder the catalog lists."""
     catalog = layout.read_json(".cursor-plugin/marketplace.json")
     if not isinstance(catalog, dict) or not isinstance(catalog.get("plugins"), list):
         if catalog is not None:
@@ -266,10 +272,10 @@ def check_cursor_catalog(layout, claude_names):
         if folder is None:
             layout.error(f".cursor-plugin/marketplace.json: {name} has a source outside the tree")
             continue
+        folders.append(folder)
         if not os.path.isfile(layout.full(f"{folder}/{CURSOR_MANIFEST}")):
             layout.error(f"missing {folder}/{CURSOR_MANIFEST} (Cursor catalog entry {name})")
             continue
-        folders.append(folder)
         check_cursor_install(layout, name, folder)
     names = {entry.get("name") for entry in catalog["plugins"]}
     if claude_names is not None and names != set(claude_names):
@@ -365,6 +371,24 @@ def closure(name, dependencies):
         seen.append(current)
         stack.extend(reversed(dependencies[current]))
     return seen
+
+
+def check_claude_only_folders(layout, plugins, cursor_folders):
+    """A folder that the Claude catalog lists and the Cursor catalog does not carries no Cursor
+    file: no Cursor manifest, rule or Cursor hook. The Cursor app imports Claude Code plugins,
+    so such a file would load next to the ones of the Cursor catalog plugin that ships them,
+    even when no manifest names it. Wingman is such a folder: its Cursor files live in the
+    folder that the Cursor catalog lists."""
+    for name, folder in sorted(plugins.items(), key=lambda item: item[1]):
+        if folder in cursor_folders:
+            continue
+        found = [part for part in CURSOR_PARTS if os.path.lexists(layout.full(f"{folder}/{part}"))]
+        for dirpath, _, names in sorted(os.walk(layout.full(folder))):
+            found += [layout.rel(os.path.join(dirpath, n)).removeprefix(f"{folder}/")
+                      for n in sorted(names) if n.endswith(".mdc")]
+        for part in dict.fromkeys(found):
+            layout.error(f"{folder}/{part}: only the Claude catalog lists {folder} ({name}), so it must "
+                         "carry no Cursor file; Cursor imports Claude Code plugins and would load it")
 
 
 def check_claude_imports(layout, plugins):
@@ -500,6 +524,7 @@ def check(root, version=None, require_installers=True, run_installers=False):
     if not plugins:
         layout.error("no Claude plugins: neither .claude-plugin/marketplace.json nor plugins/*/.claude-plugin/plugin.json")
     cursor_folders = check_cursor_catalog(layout, plugins or None)
+    check_claude_only_folders(layout, plugins, set(cursor_folders))
     check_claude_imports(layout, plugins)
     if require_installers:
         check_installers(layout)

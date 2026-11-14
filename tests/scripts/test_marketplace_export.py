@@ -8,7 +8,10 @@ marketplace before the push.
 
 The defect these tests guard: the marketplace once copied all of `plugins/wingman` into the
 Claude-listed snapshot. Cursor imports Claude Code plugins, so a Claude Code user with wingman
-(and its hawkscan dependency) got the router rule and the stop hook twice.
+(and its hawkscan dependency) got the router rule and the stop hook twice. The source had the
+same defect: its own Claude catalog listed `plugins/wingman` with the Cursor files. Now the
+Cursor files of wingman live in `cursor-plugins/wingman`, which only the Cursor catalog lists,
+and the export builds the marketplace bundle from both folders.
 
 Every export here comes from a git snapshot of this working tree, so the tests see uncommitted
 changes the way a commit would carry them.
@@ -32,8 +35,10 @@ VERSION = "9.8.7"
 # What the Claude-oriented snapshot of a plugin may leave out of its source folder. Owned by
 # this test, not by the exporter, so a change that drops more files from a Claude snapshot fails.
 CLAUDE_SNAPSHOT_OMITS = {
-    "wingman": (".github", "copilot-skills", ".cursor-plugin", "rules", "hooks/cursor"),
+    "wingman": (".github", "copilot-skills"),
 }
+CURSOR_PARTS = (".cursor-plugin", "rules", "hooks/cursor")
+CURSOR_WINGMAN = "cursor-plugins/wingman"
 INSTALLER_FILES = ("install.sh", "install.ps1", "cursor-legacy-rules.txt")
 BUNDLED_SKILLS = {"hawkscan", "stackhawk-api", "stackhawk-data-seed", "stackhawk-optimize"}
 INSTALLERS = ["sh"] + (["ps1"] if shutil.which("pwsh") else [])
@@ -201,8 +206,40 @@ def test_a_lost_claude_file_fails_the_snapshot_comparison(scratch, release_tree)
     assert files_under(scratch / "plugins" / "hawkscan") != expected
 
 
-def test_bundle_equals_the_release_wingman_folder(exported, release_tree):
-    assert files_under(exported / "bundles" / "wingman") == files_under(release_tree / "plugins" / "wingman")
+def expected_bundle(release_tree):
+    """plugins/wingman as released, with the Cursor parts of cursor-plugins/wingman. The
+    bundle keeps one copy of the bundled skills, so its Cursor manifest names copilot-skills/."""
+    files = files_under(release_tree / "plugins" / "wingman")
+    cursor = files_under(release_tree / CURSOR_WINGMAN)
+    for rel, value in cursor.items():
+        if any(rel == p or rel.startswith(p + "/") for p in CURSOR_PARTS):
+            files[rel] = value
+    executable, data = files[".cursor-plugin/plugin.json"]
+    manifest = json.loads(data)
+    assert manifest["skills"] == "./skills/"
+    manifest["skills"] = "./copilot-skills/"
+    files[".cursor-plugin/plugin.json"] = (executable, (json.dumps(manifest, indent=2) + "\n").encode())
+    return files
+
+
+def test_bundle_is_the_claude_wingman_with_the_cursor_parts(exported, release_tree):
+    assert files_under(exported / "bundles" / "wingman") == expected_bundle(release_tree)
+
+
+def test_the_cursor_only_skills_equal_the_bundled_copies(release_tree):
+    skills = files_under(release_tree / CURSOR_WINGMAN / "skills")
+    bundled = files_under(release_tree / "plugins" / "wingman" / "copilot-skills")
+    del bundled["README.md"]
+    assert skills == bundled and len(skills) > 4
+
+
+def test_the_exported_bundle_loads_one_router_one_stop_hook_and_the_four_skills(exported):
+    layout = LAYOUT.Layout(str(exported))
+    bundle = LAYOUT.load_plugin(layout, "bundles/wingman", prefer_cursor=True)
+    assert [r.path for r in bundle.rules if r.always] == ["bundles/wingman/rules/stackhawk.mdc"]
+    assert [h.path for h in bundle.stop_hooks] == ["bundles/wingman/hooks/cursor/plugin-hooks.json"]
+    assert {s.name for s in bundle.skills} == BUNDLED_SKILLS
+    assert layout.errors == []
 
 
 def test_installers_and_the_legacy_rule_list_are_exported(exported, release_tree):
@@ -314,7 +351,7 @@ def test_export_reads_the_commit_not_the_working_tree(source_repo, tmp_path):
 def test_a_failed_export_leaves_no_destination(source_repo, tmp_path):
     clone = tmp_path / "clone"
     git(tmp_path, "clone", "-q", str(source_repo), str(clone))
-    (clone / "plugins" / "wingman" / "rules" / "stackhawk.mdc").unlink()
+    (clone / "cursor-plugins" / "wingman" / "rules" / "stackhawk.mdc").unlink()
     git(clone, "commit", "-qam", "drop the wingman router copy")
     proc = run_export(clone, tmp_path / "dest", check=False)
     assert proc.returncode != 0
@@ -456,10 +493,183 @@ def test_the_check_command_line_reports_and_fails(scratch):
 
 
 def test_the_source_tree_is_checked_with_its_own_catalogs(source_repo):
-    """In this repository the Claude catalog lists plugins/wingman with its Cursor files, so the
-    check finds the double import that the export removes. Recorded, not fixed here."""
-    errors = LAYOUT.check(str(source_repo), version=None, require_installers=False)
-    assert_error(errors, "Claude Code install of wingman", "2 router rules")
+    """This repository is a Claude Code marketplace too. Its Claude catalog lists
+    plugins/wingman, which carries no Cursor file, and its Cursor catalog lists
+    cursor-plugins/wingman, so a direct source install never loads the router rule or the stop
+    hook twice."""
+    assert LAYOUT.check(str(source_repo), version=None, require_installers=False) == []
+
+
+def commit_change(source_repo, tmp_path, change, message):
+    clone = tmp_path / "clone"
+    git(tmp_path, "clone", "-q", str(source_repo), str(clone))
+    change(clone)
+    git(clone, "add", "-A")
+    git(clone, "commit", "-qm", message)
+    return clone
+
+
+@pytest.mark.parametrize("part", [".cursor-plugin", "rules", "hooks/cursor"])
+def test_export_refuses_cursor_files_in_the_claude_wingman(source_repo, tmp_path, part):
+    """Not dropped from the Claude snapshot: refused, so the source cannot carry them either."""
+    def change(clone):
+        shutil.copytree(clone / CURSOR_WINGMAN / part, clone / "plugins" / "wingman" / part)
+    clone = commit_change(source_repo, tmp_path, change, "Cursor files in the Claude wingman")
+    proc = run_export(clone, tmp_path / "dest", check=False)
+    assert proc.returncode != 0
+    assert f"plugins/wingman/{part}" in proc.stderr and "must carry no Cursor file" in proc.stderr
+    assert not (tmp_path / "dest").exists()
+
+
+@pytest.mark.parametrize("rel", [
+    f"{CURSOR_WINGMAN}/skills/hawkscan/SKILL.md",
+    "plugins/wingman/copilot-skills/stackhawk-api/SKILL.md",
+    f"{CURSOR_WINGMAN}/rules/stackhawk.mdc",
+])
+def test_export_refuses_a_commit_with_stale_generated_files(source_repo, tmp_path, rel):
+    """The stamp regenerates the copies, so the payload would be right; the commit is not, and a
+    direct install from the source reads it as committed."""
+    def change(clone):
+        with open(clone / rel, "a") as f:
+            f.write("\ndrift\n")
+    clone = commit_change(source_repo, tmp_path, change, "a changed generated file")
+    proc = run_export(clone, tmp_path / "dest", check=False)
+    assert proc.returncode != 0
+    assert "the generated files of the commit differ from what its sources give" in proc.stderr
+    assert rel in proc.stderr
+    assert not (tmp_path / "dest").exists()
+
+
+def test_export_refuses_a_cursor_catalog_that_lists_the_claude_wingman(source_repo, tmp_path):
+    def change(clone):
+        path = clone / ".cursor-plugin" / "marketplace.json"
+        catalog = json.loads(path.read_text())
+        for entry in catalog["plugins"]:
+            if entry["name"] == "wingman":
+                entry["source"] = "./plugins/wingman"
+        path.write_text(json.dumps(catalog, indent=2) + "\n")
+    clone = commit_change(source_repo, tmp_path, change, "the Cursor catalog lists the Claude wingman")
+    proc = run_export(clone, tmp_path / "dest", check=False)
+    assert proc.returncode != 0
+    assert ".cursor-plugin/marketplace.json" in proc.stdout + proc.stderr
+
+
+def test_export_refuses_an_unexpected_file_in_the_cursor_only_folder(source_repo, tmp_path):
+    def change(clone):
+        (clone / CURSOR_WINGMAN / "notes.md").write_text("stray\n")
+    clone = commit_change(source_repo, tmp_path, change, "a stray file in the Cursor-only folder")
+    proc = run_export(clone, tmp_path / "dest", check=False)
+    assert proc.returncode != 0
+    assert f"{CURSOR_WINGMAN}/notes.md" in proc.stdout + proc.stderr
+
+
+def test_manifest_names_the_cursor_folder_of_the_bundle(exported):
+    with open(exported / "export-manifest.json") as f:
+        manifest = json.load(f)
+    assert manifest["bundles"] == {"wingman": "plugins/wingman"}
+    assert manifest["cursor_folders"] == {"wingman": CURSOR_WINGMAN}
+    assert not [i for i in manifest["files"] if i["path"].startswith("cursor-plugins/")]
+
+
+# ─── Verify an export ───
+
+def run_verify(source, root, *args):
+    return subprocess.run(
+        ["python3", EXPORT, "--source-repo", str(source), "--verify", str(root), *args],
+        capture_output=True, text=True, timeout=300, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}, check=False,
+    )
+
+
+def test_verify_accepts_the_export(exported, source_repo):
+    proc = run_verify(source_repo, exported, "--version", VERSION)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "byte for byte" in proc.stdout
+
+
+def break_unexpected_path(root):
+    (root / "notes.txt").write_text("stray\n")
+    return "notes.txt: unexpected path"
+
+
+def break_symlink(root):
+    os.symlink("README.md", root / "plugins" / "hawkscan" / "link.md")
+    return "plugins/hawkscan/link.md: a symlink"
+
+
+def break_line_endings(root):
+    path = root / "bundles" / "wingman" / "rules" / "stackhawk.mdc"
+    path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    return "bundles/wingman/rules/stackhawk.mdc: CRLF line endings"
+
+
+def break_missing_file(root):
+    (root / "bundles" / "wingman" / "hooks" / "cursor" / "stop.sh").unlink()
+    return "bundles/wingman/hooks/cursor/stop.sh: missing"
+
+
+def break_modified_file(root):
+    with open(root / "install" / "install.sh", "a") as f:
+        f.write("# changed\n")
+    return "install/install.sh: modified"
+
+
+def break_mode(root):
+    os.chmod(root / "bundles" / "wingman" / "hooks" / "cursor" / "stop.sh", 0o644)
+    return "bundles/wingman/hooks/cursor/stop.sh: mode 100644"
+
+
+def break_listed_outside_layout(root):
+    path = root / "export-manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest["files"].append(dict(manifest["files"][0], path="../outside"))
+    path.write_text(json.dumps(manifest, indent=2) + "\n")
+    return "unexpected path '../outside'"
+
+
+def break_consistent_tamper(root):
+    """A changed file whose manifest entry was rewritten to match: only a fresh export shows it."""
+    path = root / "bundles" / "wingman" / "rules" / "stackhawk.mdc"
+    data = path.read_bytes() + b"\n- extra-skill: never loads.\n"
+    path.write_bytes(data)
+    manifest_path = root / "export-manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    for item in manifest["files"]:
+        if item["path"] == "bundles/wingman/rules/stackhawk.mdc":
+            item.update(bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    return "bundles/wingman/rules/stackhawk.mdc: differs from a fresh export"
+
+
+@pytest.mark.parametrize("damage", [
+    break_unexpected_path, break_symlink, break_line_endings, break_missing_file, break_modified_file,
+    break_mode, break_listed_outside_layout, break_consistent_tamper,
+], ids=lambda f: f.__name__.removeprefix("break_"))
+def test_verify_rejects_a_damaged_export(scratch, source_repo, damage):
+    needle = damage(scratch)
+    proc = run_verify(source_repo, scratch)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert needle in proc.stderr, proc.stderr
+    assert "FAILED" in proc.stderr
+
+
+def test_verify_rejects_an_export_of_another_commit(exported, source_repo, tmp_path):
+    clone = commit_change(source_repo, tmp_path, lambda c: (c / "NOTES.md").write_text("later\n"), "a later commit")
+    proc = run_verify(clone, exported)
+    assert proc.returncode == 1
+    commit = git(clone, "rev-parse", "HEAD").decode().strip()
+    assert f"HEAD is {commit}" in proc.stderr
+
+
+def test_verify_rejects_another_version(exported, source_repo):
+    proc = run_verify(source_repo, exported, "--version", "9.9.9")
+    assert proc.returncode == 1
+    assert f"the export is version '{VERSION}'; expected '9.9.9'" in proc.stderr
+
+
+def test_verify_rejects_a_folder_without_a_manifest(source_repo, tmp_path):
+    proc = run_verify(source_repo, tmp_path)
+    assert proc.returncode == 1
+    assert "cannot read export-manifest.json" in proc.stderr
 
 
 # ─── Installs from the snapshot layout ───

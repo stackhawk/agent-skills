@@ -116,7 +116,7 @@
       "stamp_only": true
     },
     {
-      "path": "plugins/wingman/.cursor-plugin/plugin.json",
+      "path": "cursor-plugins/wingman/.cursor-plugin/plugin.json",
       "field": "version",
       "type": "json",
       "stamp_only": true

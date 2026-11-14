@@ -5,15 +5,17 @@ set -euo pipefail
 # Copies StackHawk agent skills into a target project for platforms that
 # require manual installation (Cursor, Copilot).
 #
-# Usage:
-#   ./scripts/install.sh --platform cursor  --target /path/to/project
-#   ./scripts/install.sh --platform cursor  --target ~        # user level: skills and stop hook
-#   ./scripts/install.sh --platform copilot --target /path/to/project
+# Usage, from a clone of stackhawk/agent-skills-marketplace (the released build):
+#   ./install/install.sh --platform cursor  --target /path/to/project
+#   ./install/install.sh --platform cursor  --target ~        # user level: skills and stop hook
+#   ./install/install.sh --platform copilot --target /path/to/project
 #
-# It runs from a clone of stackhawk/agent-skills (scripts/install.sh) and from a released
-# snapshot in stackhawk/agent-skills-marketplace (install/install.sh). The two name some
-# plugin folders differently (plugins/api in a clone, plugins/stackhawk-api in a snapshot),
-# so each skill is found by its catalog plugin name first, then by its source folder.
+# From a clone of stackhawk/agent-skills, scripts/install.sh installs the unreleased
+# development build the same way. The two name some plugin folders differently (plugins/api
+# in a clone, plugins/stackhawk-api in a snapshot), so each skill is found by its catalog
+# plugin name first, then by its source folder. Both install the canonical skills, rules and
+# stop hook of plugins/, never the bundled wingman copies (plugins/wingman/copilot-skills/,
+# cursor-plugins/wingman/ or bundles/wingman/).
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"

@@ -16,7 +16,7 @@
     "dast",
     "umbrella"
   ],
-  "skills": "./copilot-skills/",
+  "skills": "./skills/",
   "rules": "./rules/",
   "hooks": "./hooks/cursor/plugin-hooks.json"
 }

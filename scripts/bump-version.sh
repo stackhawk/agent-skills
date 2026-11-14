@@ -54,6 +54,14 @@ with open(manifest_path) as f:
 
 updated = 0
 
+# A listed file that is missing is an error, not a skip: a moved manifest would otherwise
+# keep the placeholder in a release that check-version.sh only sees later.
+missing = [e["path"] for e in manifest.get("files", []) if not os.path.isfile(os.path.join(repo_root, e["path"]))]
+if missing:
+    for path in missing:
+        print(f"ERROR: {path} is listed in .version-bump.json but does not exist", file=sys.stderr)
+    sys.exit(1)
+
 def update_json_file(path, field, new_ver, stamp_only):
     with open(path) as f:
         data = json.load(f)
@@ -78,9 +86,6 @@ def update_yaml_frontmatter(path, field, new_ver):
 
 for entry in manifest.get("files", []):
     abs_path = os.path.join(repo_root, entry["path"])
-    if not os.path.exists(abs_path):
-        print(f"  SKIP (not found): {entry['path']}")
-        continue
     file_type = entry.get("type", "json")
     field = entry["field"]
     if file_type == "json":

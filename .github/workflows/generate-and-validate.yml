@@ -41,7 +41,7 @@ jobs:
 
       - name: Validate JSON manifests
         run: |
-          for f in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json plugins/*/.cursor-plugin/plugin.json plugins/*/.github/plugin/plugin.json plugins/*/hooks/cursor/*.json .claude-plugin/marketplace.json .codex-plugin/marketplace.json .cursor-plugin/marketplace.json gemini-extension.json; do
+          for f in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json plugins/*/.cursor-plugin/plugin.json plugins/*/.github/plugin/plugin.json plugins/*/hooks/cursor/*.json cursor-plugins/*/.cursor-plugin/plugin.json cursor-plugins/*/hooks/cursor/*.json .claude-plugin/marketplace.json .codex-plugin/marketplace.json .cursor-plugin/marketplace.json gemini-extension.json; do
             if [ -f "$f" ]; then
               python3 -m json.tool "$f" > /dev/null
               echo "OK: $f"
@@ -67,25 +67,26 @@ jobs:
             exit 1
           fi
 
-      - name: Validate wingman Copilot bundle
+      - name: Validate the wingman bundled skills
         run: bash scripts/test-wingman-skills.sh
 
-      - name: Verify wingman bundle is up to date (PR only)
+      - name: Verify the wingman bundled skills are up to date (PR only)
         if: github.event_name == 'pull_request'
         run: |
           bash scripts/generate-wingman-skills.sh
-          git add -N plugins/wingman/copilot-skills/
-          if ! git diff --quiet plugins/wingman/copilot-skills/ plugins/wingman/.codex-plugin/plugin.json; then
-            echo "ERROR: wingman copilot-skills/ or its Codex manifest is out of date. Run 'bash scripts/generate-wingman-skills.sh' and commit the output."
-            git diff --stat plugins/wingman/copilot-skills/ plugins/wingman/.codex-plugin/plugin.json
+          generated=(plugins/wingman/copilot-skills/ cursor-plugins/wingman/skills/ plugins/wingman/.codex-plugin/plugin.json)
+          git add -N "${generated[@]}"
+          if ! git diff --quiet "${generated[@]}"; then
+            echo "ERROR: the wingman bundled skills or the wingman Codex manifest are out of date. Run 'bash scripts/generate-wingman-skills.sh' and commit the output."
+            git diff --stat "${generated[@]}"
             exit 1
           fi
-          echo "OK: wingman copilot-skills/ is up to date."
+          echo "OK: the wingman bundled skills are up to date."
 
       - name: Validate hook scripts are executable
         run: |
           errors=0
-          for hook in plugins/*/hooks/* plugins/*/hooks/cursor/*; do
+          for hook in plugins/*/hooks/* plugins/*/hooks/cursor/* cursor-plugins/*/hooks/cursor/*; do
             # Skip JSON config files and .cmd wrappers
             if [[ "$hook" == *.json ]] || [[ "$hook" == *.cmd ]]; then
               continue
@@ -190,11 +191,14 @@ jobs:
             echo "Best practice: add a '## Contents' section at the top so Claude can navigate large files."
           fi
 
-  # The Cursor adapter: generated .cursor-plugin manifests, the router and stackhawk.yml
-  # pointer rules, the plugin stop hook, and the installers. The measure step fails when a
-  # change makes the default Cursor context heavier than its budget. The export step builds
-  # the marketplace payload and fails when a Claude Code or Cursor install would load the
-  # router rule or the stop hook twice, or when a Cursor distribution file is missing.
+  # The Cursor adapter: generated .cursor-plugin manifests, the Cursor-only wingman plugin in
+  # cursor-plugins/wingman, the router and stackhawk.yml pointer rules, the plugin stop hook,
+  # and the installers. The measure step fails when a change makes the default Cursor context
+  # heavier than its budget. The source layout check fails when a direct install from this
+  # repository would load the router rule or the stop hook twice: this repository is a Claude
+  # Code and a Cursor marketplace too. The export step builds the marketplace payload and fails
+  # when a Claude Code or Cursor install of it would, or when a Cursor distribution file is
+  # missing; the verify step exports the commit again and compares the two byte for byte.
   cursor-adapter:
     runs-on: ubuntu-latest
     steps:
@@ -210,19 +214,23 @@ jobs:
           bash scripts/install.sh --platform cursor --target "$project"
           python3 scripts/measure-cursor-context.py --check "$project/.cursor"
           python3 scripts/measure-cursor-context.py --check plugins/hawkscan
-          python3 scripts/measure-cursor-context.py --check plugins/wingman
+          python3 scripts/measure-cursor-context.py --check cursor-plugins/wingman
 
-      - name: Export the marketplace payload and check its layout
+      - name: Check the source layout (direct installs from this repository)
+        run: python3 scripts/check-marketplace-layout.py --no-installers .
+
+      - name: Export the marketplace payload, check its layout and verify it
         run: |
           python3 scripts/export-marketplace.py --version 0.0.0 --dest "$RUNNER_TEMP/marketplace-export"
           python3 scripts/check-marketplace-layout.py --run-installers --version 0.0.0 "$RUNNER_TEMP/marketplace-export"
+          python3 scripts/export-marketplace.py --verify "$RUNNER_TEMP/marketplace-export" --version 0.0.0
 
       - name: Cursor regression tests (installers under bash and pwsh, stop hook, adapter, export)
         run: |
           uv run pytest -q tests/scripts/test_cursor_adapter.py tests/scripts/test_install_cursor.py \
             tests/scripts/test_cursor_plugin_smoke.py tests/hooks/test_cursor_stop_hook.py \
             tests/lib/test_cursor_eval_setup.py tests/scripts/test_marketplace_export.py \
-            tests/scripts/test_stage_marketplace_sync.py
+            tests/scripts/test_stage_marketplace_sync.py tests/scripts/test_source_layout.py
 
   # Deprecated: cursor/.cursor/rules stays for one release. The installers no longer copy it.
   generate-cursor-rules:

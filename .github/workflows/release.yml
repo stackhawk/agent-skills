@@ -79,12 +79,15 @@ jobs:
         uses: ./../../../../../home/runner/.github/actions/biodome-setup-v2
       - name: Stamp the release version
         run: bash scripts/bump-version.sh "$RELEASE_VERSION"
-      - name: Regenerate the wingman Copilot bundle
+      - name: Regenerate the wingman bundled skills
         run: bash scripts/generate-wingman-skills.sh
       - name: Validate the stamped tree
+        # The layout check covers direct installs from this repository, which is a Claude Code
+        # and a Cursor marketplace too: no install may load the router rule or the stop hook twice.
         run: |
           bash scripts/check-version.sh "$RELEASE_VERSION"
           bash scripts/test-wingman-skills.sh
+          python3 scripts/check-marketplace-layout.py --no-installers .
       - name: Verify the Cursor adapter is up to date
         # The stamp adds a version to each .cursor-plugin/plugin.json; the generator keeps it.
         run: python3 scripts/generate-cursor-adapter.py --check

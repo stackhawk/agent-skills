@@ -1,6 +1,6 @@
 ---
 name: skill-authoring
-version: 1.1.0
+version: 1.1.1
 description: >
   Guides authoring and maintaining agent skills in this repository — enforcing
   Anthropic best practices, release-version rules, keeping the Cursor adapter current, and
@@ -253,12 +253,18 @@ into the snapshot. Never edit version numbers manually in individual files.
 - The Cursor adapter is up to date and within its context budgets
   (`generate-cursor-adapter.py --check`, `measure-cursor-context.py --check`)
 - The deprecated Cursor rules are up to date (no diff after running `generate-cursor-rules.sh`)
+- The wingman bundled skills (`plugins/wingman/copilot-skills/` and its Cursor-only copy in
+  `cursor-plugins/wingman/skills/`) are up to date (no diff after `generate-wingman-skills.sh`)
+- No direct install from this repository loads the Cursor router rule or stop hook twice
+  (`check-marketplace-layout.py --no-installers .`): the Claude-listed `plugins/wingman/`
+  carries no Cursor file
 - SKILL.md frontmatter has `name:`, `version:`, `description:`
 
 The PR will be blocked if any check fails. Fix by running:
 ```bash
 bash scripts/bump-version.sh --placeholder
+bash scripts/generate-wingman-skills.sh
 bash scripts/generate-cursor-rules.sh
 python3 scripts/generate-cursor-adapter.py
-git add plugins/ cursor/ scripts/ .cursor-plugin/ && git commit --amend --no-edit
+git add plugins/ cursor-plugins/ cursor/ scripts/ .cursor-plugin/ && git commit --amend --no-edit
 ```
