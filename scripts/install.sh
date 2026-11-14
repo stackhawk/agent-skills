@@ -177,7 +177,8 @@ cursor_install_skills() {
   mkdir -p "${dot_cursor}/skills"
   for entry in "${CURSOR_SKILLS[@]}"; do
     IFS='|' read -r name catalog folder _ <<< "$entry"
-    src="$(skill_source "$name" "$catalog" "$folder")"
+    src="$(skill_source "$name" "$catalog" "$folder")" || exit 1
+    [ -n "$src" ] || exit 1
     rm -rf "${dot_cursor}/skills/${name}"
     mkdir -p "${dot_cursor}/skills/${name}"
     cp -R "${src}/." "${dot_cursor}/skills/${name}/"
@@ -297,7 +298,8 @@ install_cursor() {
     scope="user"
   fi
 
-  for f in "$CURSOR_LEGACY_RULES" "${CURSOR_HOOKS_SOURCE}/stop.sh" "${CURSOR_HOOKS_SOURCE}/hooks.json"; do
+  for f in "$CURSOR_LEGACY_RULES" "${CURSOR_HOOKS_SOURCE}/stop.sh" "${CURSOR_HOOKS_SOURCE}/hooks.json" \
+           "${CURSOR_RULES_SOURCE}/stackhawk.mdc" "${CURSOR_RULES_SOURCE}/stackhawk-config.mdc"; do
     if [ ! -f "$f" ]; then
       echo "ERROR: ${f} not found. Is the repository fully checked out?" >&2
       exit 1
@@ -320,8 +322,8 @@ case "$platform" in
   copilot)
     dest="${target}/.agents/skills"
     require_skill_sources "hawkscan|hawkscan|hawkscan|" "api|stackhawk-api|api|"
-    hawkscan_source="$(skill_source hawkscan hawkscan hawkscan)"
-    api_source="$(skill_source api stackhawk-api api)"
+    hawkscan_source="$(skill_source hawkscan hawkscan hawkscan)" || exit 1
+    api_source="$(skill_source api stackhawk-api api)" || exit 1
 
     if [ -d "${dest}/hawkscan" ] || [ -d "${dest}/stackhawk-api" ]; then
       echo "WARNING: StackHawk skills already exist in ${dest}/"

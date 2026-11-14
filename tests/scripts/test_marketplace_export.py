@@ -146,8 +146,8 @@ def scratch(exported, tmp_path):
     return copy
 
 
-def errors_of(root, version=VERSION):
-    return LAYOUT.check(str(root), version=version)
+def errors_of(root, version=VERSION, run_installers=False):
+    return LAYOUT.check(str(root), version=version, run_installers=run_installers)
 
 
 def assert_error(errors, *needles):
@@ -267,10 +267,37 @@ def test_export_refuses_a_non_empty_destination(source_repo, tmp_path):
     assert sorted(os.listdir(dest)) == ["keep.txt"]
 
 
-def test_export_rejects_a_bad_version(source_repo, tmp_path):
-    proc = run_export(source_repo, tmp_path / "dest", version="v1.2", check=False)
+@pytest.mark.parametrize("version", ["v1.2", "1.2", "1.2.3\n", "1.2.3 "])
+def test_export_rejects_a_bad_version(source_repo, tmp_path, version):
+    proc = run_export(source_repo, tmp_path / "dest", version=version, check=False)
     assert proc.returncode != 0
+    assert "is not X.Y.Z" in proc.stderr
     assert not (tmp_path / "dest").exists()
+
+
+def test_export_rejects_a_symlink_that_leaves_the_tree(source_repo, tmp_path):
+    clone = tmp_path / "clone"
+    git(tmp_path, "clone", "-q", str(source_repo), str(clone))
+    os.symlink("..", clone / "up")
+    git(clone, "add", "up")
+    git(clone, "commit", "-qm", "a link out of the tree")
+    proc = run_export(clone, tmp_path / "dest", check=False)
+    assert proc.returncode != 0
+    assert "leaves the tree" in proc.stderr
+    assert not (tmp_path / "dest").exists()
+
+
+def test_export_ignores_the_line_ending_settings_of_the_checkout(source_repo, tmp_path, exported):
+    clone = tmp_path / "clone"
+    git(tmp_path, "clone", "-q", str(source_repo), str(clone))
+    git(clone, "config", "core.autocrlf", "true")
+    run_export(clone, tmp_path / "dest")
+    assert files_under(tmp_path / "dest") == files_under(exported)
+
+
+def test_export_folders_have_fixed_modes(exported):
+    for dirpath, dirnames, _ in os.walk(exported):
+        assert stat.S_IMODE(os.stat(dirpath).st_mode) == 0o755, dirpath
 
 
 def test_export_reads_the_commit_not_the_working_tree(source_repo, tmp_path):
@@ -319,6 +346,22 @@ def test_a_stray_router_rule_in_claude_wingman_fails(scratch):
     """No manifest names it: Cursor finds a plugin's rules/ folder by default."""
     copy_cursor_files_into_claude_wingman(scratch, ("rules",))
     assert_error(errors_of(scratch), "Claude Code install of wingman", "2 router rules")
+
+
+@pytest.mark.parametrize("value", ["True", "true # router", '"true"', "yes", "on", "maybe"])
+def test_any_always_apply_that_is_not_false_counts_as_a_router(scratch, value):
+    rule = scratch / "plugins" / "wingman" / "rules" / "second.mdc"
+    rule.parent.mkdir()
+    rule.write_text(f"---\ndescription: StackHawk test\nalwaysApply: {value}\n---\nbody\n")
+    assert_error(errors_of(scratch), "Claude Code install of wingman", "2 router rules")
+
+
+@pytest.mark.parametrize("value", ["false", "False", "no", "false # pointer"])
+def test_an_always_apply_that_is_false_is_not_a_router(scratch, value):
+    rule = scratch / "plugins" / "wingman" / "rules" / "pointer.mdc"
+    rule.parent.mkdir()
+    rule.write_text(f"---\ndescription: StackHawk test\nalwaysApply: {value}\n---\nbody\n")
+    assert "router rules" not in "\n".join(errors_of(scratch))
 
 
 def test_a_second_stop_hook_in_claude_wingman_fails(scratch):
@@ -387,6 +430,21 @@ def test_an_unstamped_cursor_manifest_fails(scratch):
     path.write_text(json.dumps(manifest))
     assert_error(errors_of(scratch), "plugins/hawkscan/.cursor-plugin/plugin.json", VERSION)
     assert errors_of(scratch, version=None) == []
+
+
+def test_the_installers_run_against_the_tree(exported):
+    assert errors_of(exported, run_installers=True) == []
+
+
+def test_a_snapshot_the_installers_cannot_use_fails_only_when_they_run(scratch):
+    """A curated catalog without hawkscan-ci passes the layout, but install.sh needs that skill."""
+    shutil.rmtree(scratch / "plugins" / "hawkscan-ci")
+    path = scratch / ".cursor-plugin" / "marketplace.json"
+    catalog = json.loads(path.read_text())
+    catalog["plugins"] = [e for e in catalog["plugins"] if e["name"] != "hawkscan-ci"]
+    path.write_text(json.dumps(catalog))
+    assert errors_of(scratch) == []
+    assert_error(errors_of(scratch, run_installers=True), "install/install.sh", "hawkscan-ci")
 
 
 def test_the_check_command_line_reports_and_fails(scratch):
@@ -472,13 +530,19 @@ def test_snapshot_copilot_install(kind, exported, tmp_path):
 
 
 @pytest.mark.parametrize("kind", INSTALLERS)
-def test_an_incomplete_snapshot_stops_the_install_before_any_change(kind, scratch, tmp_path):
-    shutil.rmtree(scratch / "plugins" / "stackhawk-api")
+@pytest.mark.parametrize("missing, named", [
+    ("plugins/stackhawk-api", "api"),
+    ("plugins/hawkscan/rules", "stackhawk.mdc"),
+])
+def test_an_incomplete_snapshot_stops_the_install_before_any_change(kind, missing, named, scratch, tmp_path):
+    shutil.rmtree(scratch / missing)
     home = tmp_path / "home"
     project = tmp_path / "p"
     home.mkdir()
     project.mkdir()
+    (project / ".cursor" / "rules").mkdir(parents=True)
+    (project / ".cursor" / "rules" / "stackhawk-hawkscan.mdc").write_text("---\ndescription: old\n---\n")
     proc = run_installer(kind, scratch / "install", "cursor", project, home)
     assert proc.returncode != 0
-    assert "api" in proc.stderr
-    assert not (project / ".cursor").exists()
+    assert named in proc.stderr
+    assert sorted(files_under(project / ".cursor")) == ["rules/stackhawk-hawkscan.mdc"]

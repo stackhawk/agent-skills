@@ -334,6 +334,24 @@ def test_user_level_is_detected_through_symlinks(kind, link, tmp_path):
     assert not (real_home / ".cursor" / "rules").exists()
 
 
+@pytest.mark.skipif("ps1" not in INSTALLERS or not os.path.islink("/tmp"),
+                    reason="needs pwsh and a /tmp link at the filesystem root (macOS)")
+@pytest.mark.parametrize("level", ["project", "user"])
+def test_ps1_follows_a_link_directly_under_the_root(level):
+    """macOS /tmp is a relative link at the root (/tmp -> private/tmp), and so is /var, where
+    temporary folders live. Split-Path -Parent gives "" for /tmp, which once failed every install
+    through such a path."""
+    import tempfile
+    with tempfile.TemporaryDirectory(dir="/tmp") as scratch:
+        home = os.path.join(scratch, "home")
+        project = os.path.join(home, "proj")
+        os.makedirs(project)
+        target = home if level == "user" else project
+        out = install("ps1", target, home).stdout
+        assert f"({level} level)" in out
+        assert os.path.isfile(os.path.join(target, ".cursor", "hooks", "stackhawk-stop.sh"))
+
+
 @pytest.mark.skipif("ps1" not in INSTALLERS, reason="pwsh not installed")
 def test_both_installers_give_the_same_project_install(tmp_path, home):
     results = {}

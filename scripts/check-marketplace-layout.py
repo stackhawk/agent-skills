@@ -20,20 +20,34 @@ synced stackhawk/agent-skills-marketplace checkout, before the push. It fails wh
     dependency is not in the catalog, an umbrella plugin carries skills/ (Claude Code would
     load its skills twice), a component plugin has no skill, or a Claude hook names a script
     that is missing or not executable;
-  - with --version, a Cursor manifest or a SKILL.md carries another version.
+  - with --version, a Cursor manifest or a SKILL.md carries another version;
+  - with --run-installers, install.sh (and install.ps1 when pwsh is installed) cannot make a
+    Cursor project install from the tree: every skill, both rules, the stop hook and one
+    hooks.json stop entry.
 
 The Claude plugins are the entries of .claude-plugin/marketplace.json; a tree without that
 catalog (the export) lists them as the plugins/*/ folders.
 
+What the counts assume about Cursor, from its documentation and the code of its 3.9.16 app
+and 2026.11.11 CLI, not from a live run of every case:
+  - a component path that a manifest names replaces the default folder of that component;
+  - any alwaysApply value that is not clearly false (false, no, off, 0) makes a router rule.
+It does not count installs that combine channels or catalog entries: hawkscan and wingman
+from the Cursor catalog, or a Cursor catalog install next to an imported Claude Code
+install. Each loads the router twice; the README tells users to pick one.
+
 Usage:
-  check-marketplace-layout.py [--version X.Y.Z] [--no-installers] ROOT
+  check-marketplace-layout.py [--version X.Y.Z] [--no-installers] [--run-installers] ROOT
 """
 import argparse
 import collections
 import importlib.util
 import json
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
 
 ROUTER_SKILL = "hawkscan"
 RULE_SUFFIXES = (".mdc", ".md", ".markdown")
@@ -43,6 +57,9 @@ CURSOR_MANIFEST = ".cursor-plugin/plugin.json"
 CLAUDE_MANIFEST = ".claude-plugin/plugin.json"
 CURSOR_ROOT_VAR = "${CURSOR_PLUGIN_ROOT}"
 CLAUDE_ROOT_VAR = "${CLAUDE_PLUGIN_ROOT}"
+FALSE_VALUES = {"false", "no", "off", "0", ""}
+INSTALLED_RULES = ("stackhawk.mdc", "stackhawk-config.mdc")
+INSTALLED_HOOK = "hooks/stackhawk-stop.sh"
 
 
 def load_measure_module():
@@ -118,6 +135,17 @@ def is_executable(full):
     return os.path.isfile(full) and os.access(full, os.X_OK)
 
 
+def always_applied(value):
+    """True unless alwaysApply is absent or clearly false. The frontmatter parser reads only a
+    bare `true` as true; `True`, `"true"` or `true # comment` are true for a YAML reader, and a
+    second router must not pass because of how it is spelled."""
+    if value is None or value is False:
+        return False
+    if value is True:
+        return True
+    return str(value).split(" #")[0].strip().strip("'\"").strip().lower() not in FALSE_VALUES
+
+
 # ─── How Cursor loads one plugin folder ───
 
 def component_files(layout, folder, manifest_rel, manifest, key, default):
@@ -185,7 +213,7 @@ def load_plugin(layout, folder, prefer_cursor):
         if not (prefer_cursor and os.path.isfile(layout.full(f"{folder}/{CURSOR_MANIFEST}"))):
             manifest_rel = CLAUDE_MANIFEST
         manifest = layout.read_json(f"{folder}/{manifest_rel}") or {}
-        rules = [Rule(layout.rel(f), layout.frontmatter(f).get("alwaysApply") is True)
+        rules = [Rule(layout.rel(f), always_applied(layout.frontmatter(f).get("alwaysApply")))
                  for f in rule_files(component_files(layout, folder, manifest_rel, manifest, "rules", "rules"))]
         hooks = stop_hooks(layout, component_files(layout, folder, manifest_rel, manifest, "hooks", "hooks/hooks.json"))
         skills = skills_in(layout, component_files(layout, folder, manifest_rel, manifest, "skills", "skills"))
@@ -367,6 +395,89 @@ def check_installers(layout):
                 layout.error(f"{INSTALLER_DIR}/cursor-legacy-rules.txt: lists no rule")
 
 
+def installer_commands(layout):
+    """(installer, command without its target folder) for each installer in the tree; install.ps1
+    only when pwsh is installed."""
+    sh, ps1 = layout.full(f"{INSTALLER_DIR}/install.sh"), layout.full(f"{INSTALLER_DIR}/install.ps1")
+    commands = []
+    if os.path.isfile(sh):
+        commands.append(("install.sh", ["bash", sh, "--platform", "cursor", "--target"]))
+    if os.path.isfile(ps1) and shutil.which("pwsh"):
+        commands.append(("install.ps1", ["pwsh", "-NoProfile", "-NonInteractive", "-File", ps1,
+                                         "-Platform", "cursor", "-Target"]))
+    return commands
+
+
+def same_file(a, b):
+    with open(a, "rb") as f, open(b, "rb") as g:
+        return f.read() == g.read()
+
+
+def plugin_skill_folders(layout):
+    folders = {}
+    for plugin in sorted(os.listdir(layout.full("plugins"))) if os.path.isdir(layout.full("plugins")) else []:
+        skills = layout.full(f"plugins/{plugin}/skills")
+        for name in sorted(os.listdir(skills)) if os.path.isdir(skills) else []:
+            folders.setdefault(name, []).append(os.path.join(skills, name))
+    return folders
+
+
+def tree_files(root):
+    found = {}
+    for dirpath, _, names in os.walk(root):
+        for name in names:
+            full = os.path.join(dirpath, name)
+            with open(full, "rb") as f:
+                found[os.path.relpath(full, root)] = f.read()
+    return found
+
+
+def check_installed(layout, label, dot_cursor):
+    """What a Cursor project install from this tree must hold."""
+    rules = layout.full("plugins/hawkscan/rules")
+    for name in INSTALLED_RULES:
+        installed = os.path.join(dot_cursor, "rules", name)
+        if not os.path.isfile(installed) or not same_file(installed, os.path.join(rules, name)):
+            layout.error(f"{label}: the install has no rules/{name} from plugins/hawkscan/rules/")
+    hook = os.path.join(dot_cursor, *INSTALLED_HOOK.split("/"))
+    if not is_executable(hook) or not same_file(hook, layout.full("plugins/hawkscan/hooks/cursor/stop.sh")):
+        layout.error(f"{label}: the install has no executable {INSTALLED_HOOK} from plugins/hawkscan/hooks/cursor/")
+    try:
+        with open(os.path.join(dot_cursor, "hooks.json"), encoding="utf-8") as f:
+            stops = json.load(f)["hooks"]["stop"]
+    except (OSError, ValueError, KeyError, TypeError):
+        stops = []
+    if len(stops) != 1:
+        layout.error(f"{label}: the install's hooks.json has {len(stops)} stop entries, expected one")
+    installed = sorted(os.listdir(os.path.join(dot_cursor, "skills"))) if os.path.isdir(os.path.join(dot_cursor, "skills")) else []
+    if not installed:
+        layout.error(f"{label}: the install has no skill")
+    sources = plugin_skill_folders(layout)
+    for name in installed:
+        files = tree_files(os.path.join(dot_cursor, "skills", name))
+        if not any(tree_files(source) == files for source in sources.get(name, [])):
+            layout.error(f"{label}: the installed skill {name} is not a copy of plugins/*/skills/{name}")
+
+
+def check_installers_run(layout):
+    """Runs each installer into a scratch project with a scratch HOME and checks the result."""
+    for name, command in installer_commands(layout):
+        label = f"{INSTALLER_DIR}/{name}"
+        with tempfile.TemporaryDirectory(prefix="check-install-") as scratch:
+            home, project = os.path.join(scratch, "home"), os.path.join(scratch, "project")
+            os.makedirs(home)
+            os.makedirs(project)
+            env = {k: v for k, v in os.environ.items() if not k.startswith("CURSOR_")}
+            env["HOME"] = home
+            proc = subprocess.run(command + [project], env=env, stdin=subprocess.DEVNULL,
+                                  capture_output=True, text=True, timeout=300)
+            if proc.returncode != 0:
+                output = " ".join((proc.stderr or proc.stdout).split())
+                layout.error(f"{label}: a Cursor project install from this tree failed: {output}")
+            else:
+                check_installed(layout, label, os.path.join(project, ".cursor"))
+
+
 def check_versions(layout, version, folders):
     for folder in sorted(set(folders)):
         manifest_rel = f"{folder}/{CURSOR_MANIFEST}"
@@ -382,7 +493,7 @@ def check_versions(layout, version, folders):
                     layout.error(f"{layout.rel(full)}: version {found!r}, expected {version}")
 
 
-def check(root, version=None, require_installers=True):
+def check(root, version=None, require_installers=True, run_installers=False):
     """Every error found in the tree at root; an empty list means it may be published."""
     layout = Layout(root)
     plugins = claude_plugins(layout)
@@ -392,6 +503,8 @@ def check(root, version=None, require_installers=True):
     check_claude_imports(layout, plugins)
     if require_installers:
         check_installers(layout)
+    if run_installers:
+        check_installers_run(layout)
     if version is not None:
         check_versions(layout, version, cursor_folders + list(plugins.values()))
     return layout.errors
@@ -402,17 +515,21 @@ def main():
     parser.add_argument("root", help="the export or the marketplace checkout")
     parser.add_argument("--version", help="the release version every Cursor manifest and SKILL.md must carry")
     parser.add_argument("--no-installers", action="store_true", help="do not require install/ (a source checkout)")
+    parser.add_argument("--run-installers", action="store_true",
+                        help="also run install/install.sh (and install.ps1 with pwsh) into a scratch project")
     args = parser.parse_args()
     if not os.path.isdir(args.root):
         print(f"ERROR: {args.root} is not a directory", file=sys.stderr)
         return 1
-    errors = check(args.root, version=args.version, require_installers=not args.no_installers)
+    errors = check(args.root, version=args.version, require_installers=not args.no_installers,
+                   run_installers=args.run_installers)
     if errors:
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)
         print(f"FAILED: {len(errors)} problem(s) in {args.root}", file=sys.stderr)
         return 1
-    print(f"OK: {args.root} has one router rule and one stop hook per install, and every Cursor distribution file.")
+    print(f"OK: {args.root}: at most one router rule and one stop hook in each checked install, "
+          "and every Cursor distribution file.")
     return 0
 
 

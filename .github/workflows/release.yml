@@ -21,10 +21,12 @@ permissions:
 # placeholder version (.version-bump.json): scripts/export-marketplace.py stamps the tag's version
 # into the payload the marketplace sync publishes.
 #
-# validate also exports that payload and runs the marketplace sync on it without a push, so a merge
-# whose sync would fail, or would publish the Cursor router rule or stop hook twice, never claims a
-# number (scripts/check-marketplace-layout.py). update-marketplace runs the same check before it
-# pushes. The sync takes the payload with --export (RELEASING.md, "Cursor distribution").
+# validate also exports that payload, runs the marketplace sync on it in a scratch clone and stages
+# the result without a push, so a merge whose sync would fail, write outside the published paths
+# (scripts/ci/stage-marketplace-sync.sh), or publish the Cursor router rule or stop hook twice
+# (scripts/check-marketplace-layout.py) never claims a number. update-marketplace runs the same
+# steps before it pushes. The sync takes the payload with --export (RELEASING.md, "Cursor
+# distribution prerequisites").
 #
 # A run that fails after the claim leaves it: re-run its failed jobs to finish the release, or run
 # Abandon release if the merged change itself breaks it. Every step after the tag is idempotent, so a
@@ -91,18 +93,21 @@ jobs:
         run: |
           python3 scripts/export-marketplace.py --ref HEAD --version "$RELEASE_VERSION" \
             --dest "$RUNNER_TEMP/marketplace-export"
-      # The marketplace is public, so this clone needs no token, and nothing here is pushed. The tag
-      # is local: the sync resolves the release commit from it. A re-run of a tagged release has it.
+      # The marketplace is public, so this clone needs no token, and nothing here is pushed. The sync
+      # resolves the release commit from the tag, so a local tag is forced onto HEAD; it is never
+      # pushed (claim and tag make the real one).
       - name: Dry-run the marketplace sync
         run: |
           tag="v${RELEASE_VERSION}"
-          git rev-parse -q --verify "refs/tags/${tag}" >/dev/null || git tag "$tag" HEAD
+          git tag -f "$tag" HEAD
           git clone --quiet --depth 1 --branch main \
             https://github.com/stackhawk/agent-skills-marketplace.git "$RUNNER_TEMP/marketplace"
           python3 "$RUNNER_TEMP/marketplace/scripts/sync-agent-skills.py" \
             --source-repo "$GITHUB_WORKSPACE" --tag "$tag" --export "$RUNNER_TEMP/marketplace-export"
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s "$RUNNER_TEMP/marketplace/tests"
-          python3 scripts/check-marketplace-layout.py --version "$RELEASE_VERSION" "$RUNNER_TEMP/marketplace"
+          python3 scripts/check-marketplace-layout.py --run-installers --version "$RELEASE_VERSION" \
+            "$RUNNER_TEMP/marketplace"
+          bash scripts/ci/stage-marketplace-sync.sh "$RUNNER_TEMP/marketplace"
       - name: Verify Cursor rules are up to date
         run: |
           bash scripts/generate-cursor-rules.sh
@@ -280,22 +285,13 @@ jobs:
           python3 /tmp/marketplace/scripts/sync-agent-skills.py \
             --source-repo "$GITHUB_WORKSPACE" --tag "$RELEASE_TAG" --export "$RUNNER_TEMP/marketplace-export"
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s /tmp/marketplace/tests
-          python3 scripts/check-marketplace-layout.py --version "$RELEASE_VERSION" /tmp/marketplace
+          python3 scripts/check-marketplace-layout.py --run-installers --version "$RELEASE_VERSION" /tmp/marketplace
       - name: Push marketplace sync to main
         run: |
           cd /tmp/marketplace
           git config user.name "hawkdeploy"
           git config user.email "hawkdeploy@stackhawk.com"
-          # Keep these paths in sync with install() in marketplace's sync-agent-skills.py.
-          git add -A -- plugins bundles skills install sources.json \
-            .claude-plugin/marketplace.json .github/plugin/marketplace.json \
-            .agents/plugins/marketplace.json .codex-plugin/marketplace.json \
-            .cursor-plugin/marketplace.json
-          if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
-            echo "ERROR: Marketplace sync left changes outside the staged paths. Update this list to match install()."
-            git status --short
-            exit 1
-          fi
+          bash "$GITHUB_WORKSPACE/scripts/ci/stage-marketplace-sync.sh" .
           if git diff --cached --quiet; then
             echo "Marketplace already contains ${RELEASE_TAG}"
             exit 0

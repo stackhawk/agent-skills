@@ -61,13 +61,13 @@ This repository builds what the marketplace publishes. `scripts/export-marketpla
 | `install/` | `install.sh`, `install.ps1` and `cursor-legacy-rules.txt`. |
 | `export-manifest.json` | The commit, the version, and the mode, size and sha256 of every other file. |
 
-The Claude snapshot of `wingman` leaves out the Cursor files because the Cursor desktop app imports Claude Code plugins by default (`importPluginsFromClaudeOnBoot`; inferred from the Cursor 3.9.16 code, not observed). A Claude Code user with `wingman` also has its `hawkscan` dependency, so those files would load the router rule and the stop hook a second time. The layout check counts the router rules, stop hooks, rules and skills of every Claude Code install (a plugin with its dependencies) with each manifest that Cursor could read, and of every Cursor catalog install. It also requires the Cursor catalog, every path a Cursor manifest names, the hook scripts, the installers and the legacy rule list. With `--version`, every Cursor manifest and SKILL.md must carry that version.
+The Claude snapshot of `wingman` leaves out the Cursor files because the Cursor desktop app imports Claude Code plugins by default (`importPluginsFromClaudeOnBoot`; inferred from the Cursor 3.9.16 code, not observed). A Claude Code user with `wingman` also has its `hawkscan` dependency, so those files would load the router rule and the stop hook a second time. The layout check counts the router rules, stop hooks, rules and skills of every Claude Code install (a plugin with its dependencies) with each manifest that Cursor could read, and of every Cursor catalog install. It also requires the Cursor catalog, every path a Cursor manifest names, the hook scripts, the installers and the legacy rule list. With `--version`, every Cursor manifest and SKILL.md must carry that version. With `--run-installers`, it runs `install/install.sh` (and `install/install.ps1` when `pwsh` is installed) into a scratch project and checks the skills, rules and stop hook it installs; the export and the release always use it. The docstring of the check names what it assumes about Cursor and which combined installs it does not count.
 
 The installers find each skill by its catalog plugin name in a snapshot (`plugins/stackhawk-api/skills/api`) and by its source folder in a clone (`plugins/api/skills/api`), and they read `cursor-legacy-rules.txt` from their own folder. So `install/install.sh` in a marketplace checkout installs the released, stamped skills. `scripts/install.sh` in a clone of `main` installs unreleased skills that carry the placeholder version.
 
 ### Rollout order
 
-The marketplace change below ships first. The validate job of every release runs the marketplace sync with `--export`, so until the marketplace sync accepts that option, validate fails and no merge claims a release number. Once the marketplace change is on its `main`, the next release publishes the Cursor catalog, the installers and a Claude `wingman` with no Cursor files. After that release, point the README's Cursor users at the marketplace.
+The marketplace change below ships first. The validate job of every release runs the marketplace sync with `--export` and stages its outputs with `scripts/ci/stage-marketplace-sync.sh`, so until the marketplace sync accepts that option and writes `install/` and `.cursor-plugin/marketplace.json`, validate fails and no merge claims a release number. Once the marketplace change is on its `main`, the next release publishes the Cursor catalog, the installers and a Claude `wingman` with no Cursor files. After that release, point the README's Cursor users at the marketplace.
 
 ### Marketplace change
 
@@ -82,8 +82,9 @@ In [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skill
    Without `--export`, the sync keeps its old path, for tags older than the export.
 2. The tests cover the Cursor catalog, the installers, a Claude `plugins/wingman` with no `.cursor-plugin/`, `rules/` or `hooks/`, and the export mode, including an export of another commit and a changed file.
 3. The README describes the Cursor install (team marketplace import and `install/install.sh`) and the hand sync below.
+4. `.gitattributes` gets `*.sh text eol=lf`, as here, so a Windows checkout keeps LF in `install/install.sh` and the stop hook.
 
-The first sync with `--export` then adds `.cursor-plugin/marketplace.json`, `install/`, a `.cursor-plugin/plugin.json` in each component plugin, `plugins/hawkscan/rules/`, `plugins/hawkscan/hooks/cursor/`, and `.cursor-plugin/`, `rules/` and `hooks/cursor/` in `bundles/wingman/`. It changes `sources.json` and the version and content of the other generated files, as every release does. It adds no file to `plugins/wingman/`.
+The first sync with `--export` then adds `.cursor-plugin/marketplace.json`, `install/`, a `.cursor-plugin/plugin.json` in each component plugin, `plugins/hawkscan/rules/`, `plugins/hawkscan/hooks/cursor/plugin-hooks.json`, and `.cursor-plugin/`, `rules/` and `hooks/cursor/` in `bundles/wingman/`. It changes `sources.json` and the version and content of the other generated files, as every release does. It adds no file to `plugins/wingman/`.
 
 ### Hand sync
 
@@ -94,7 +95,7 @@ python3 scripts/export-marketplace.py --ref vX.Y.Z --version X.Y.Z --dest /tmp/a
 python3 scripts/sync-agent-skills.py --source-repo /path/to/agent-skills --tag vX.Y.Z \
   --export /tmp/agent-skills-export
 python3 -m unittest discover -s tests
-python3 /path/to/agent-skills/scripts/check-marketplace-layout.py --version X.Y.Z .
+python3 /path/to/agent-skills/scripts/check-marketplace-layout.py --run-installers --version X.Y.Z .
 ```
 
 ### Known gap

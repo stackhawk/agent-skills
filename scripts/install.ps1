@@ -46,12 +46,16 @@ function Get-PhysicalPath([string]$Path) {
         if ($item -and $item.LinkType -and $item.Target) {
             $linkTarget = @($item.Target)[0]
             if (-not [System.IO.Path]::IsPathRooted($linkTarget)) {
-                $linkTarget = Join-Path (Split-Path -Parent $current) $linkTarget
+                # GetDirectoryName, not Split-Path -Parent: that gives "" for a link directly
+                # under the root, such as /var or /tmp on macOS (both link to private/...).
+                $linkTarget = Join-Path ([System.IO.Path]::GetDirectoryName($current)) $linkTarget
             }
             $current = Get-PhysicalPath $linkTarget
         }
     }
-    return $current.TrimEnd('\', '/')
+    $trimmed = $current.TrimEnd('\', '/')
+    if ($trimmed) { return $trimmed }
+    return $current
 }
 
 if (-not (Test-Path -LiteralPath $Target -PathType Container)) {
@@ -278,7 +282,9 @@ function Install-Cursor {
     if ((Test-Path -LiteralPath $HOME -PathType Container) -and ((Get-PhysicalPath $TargetPath) -eq (Get-PhysicalPath $HOME))) {
         $scope = "user"
     }
-    foreach ($file in @($CursorLegacyRules, (Join-Path $CursorHooksSource "stop.sh"), (Join-Path $CursorHooksSource "hooks.json"))) {
+    $required = @($CursorLegacyRules, (Join-Path $CursorHooksSource "stop.sh"), (Join-Path $CursorHooksSource "hooks.json"),
+        (Join-Path $CursorRulesSource "stackhawk.mdc"), (Join-Path $CursorRulesSource "stackhawk-config.mdc"))
+    foreach ($file in $required) {
         if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
             Fail "$file not found. Is the repository fully checked out?"
         }

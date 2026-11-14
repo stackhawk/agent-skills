@@ -19,11 +19,12 @@ from this repository:
   export-manifest.json             the commit, the version, and the mode, size and sha256 of
                                    every other file
 
-It reads the commit with git archive, never the working tree. Like the release validate job,
-it stamps the version with scripts/bump-version.sh, regenerates the wingman bundle and checks
-the versions, the bundle and the Cursor adapter. Then it checks the payload with
-scripts/check-marketplace-layout.py and moves it to the destination only when every check
-passes. The same commit and version always give the same bytes.
+It reads the commit with git archive (LF line endings, whatever the checkout's settings),
+never the working tree. Like the release validate job, it stamps the version with
+scripts/bump-version.sh, regenerates the wingman bundle and checks the versions, the bundle
+and the Cursor adapter. Then it checks the payload with scripts/check-marketplace-layout.py,
+runs the installers against it, and moves it to the destination only when every check
+passes. The same commit and version always give the same bytes and modes.
 
 The marketplace keeps what is its own: its plugin selection (sources.json), the listing URLs
 and README fallbacks, the Claude, Codex and Copilot catalogs, and the standalone skills/.
@@ -46,7 +47,8 @@ import tarfile
 import tempfile
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
-VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$")
+VERSION_RE = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?")
+PLUGIN_NAME_RE = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 MANIFEST_NAME = "export-manifest.json"
 INSTALLER_DIR = "install"
 INSTALLER_FILES = ("install.sh", "install.ps1", "cursor-legacy-rules.txt")
@@ -101,7 +103,9 @@ def safe_member_path(name):
 
 
 def extract(repo, commit, tree):
-    with tarfile.open(fileobj=io.BytesIO(git(repo, "archive", "--format=tar", commit))) as archive:
+    # The checkout's line-ending settings must not change the bytes: archive with LF.
+    data = git(repo, "-c", "core.autocrlf=false", "-c", "core.eol=lf", "archive", "--format=tar", commit)
+    with tarfile.open(fileobj=io.BytesIO(data)) as archive:
         for member in archive:
             if member.name == "pax_global_header":
                 continue
@@ -115,13 +119,24 @@ def extract(repo, commit, tree):
                     f.write(archive.extractfile(member).read())
                 os.chmod(target, 0o755 if member.mode & 0o111 else 0o644)
             elif member.issym():
-                link = posixpath.normpath(posixpath.join(posixpath.dirname(rel), member.linkname))
-                if member.linkname.startswith("/") or link.startswith("../"):
-                    raise ExportError(f"symlink leaves the tree: {member.name} -> {member.linkname}")
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 os.symlink(member.linkname, target)
             else:
                 raise ExportError(f"unsupported archive entry: {member.name}")
+    check_symlinks(tree)
+
+
+def check_symlinks(tree):
+    """Every symlink, followed to its end, must stay inside the tree."""
+    root = os.path.realpath(tree)
+    for dirpath, dirnames, filenames in os.walk(tree):
+        for name in dirnames + filenames:
+            full = os.path.join(dirpath, name)
+            if os.path.islink(full):
+                resolved = os.path.realpath(full)
+                if resolved != root and not resolved.startswith(root + os.sep):
+                    rel = os.path.relpath(full, tree)
+                    raise ExportError(f"symlink leaves the tree: {rel} -> {os.readlink(full)}")
 
 
 def stamp(tree, version):
@@ -145,6 +160,8 @@ def claude_plugins(tree):
     """catalog name -> source folder, in catalog order."""
     plugins = {}
     for entry in read_json(tree, ".claude-plugin/marketplace.json")["plugins"]:
+        if not PLUGIN_NAME_RE.fullmatch(str(entry.get("name"))) or entry["name"] in plugins:
+            raise ExportError(f".claude-plugin/marketplace.json: plugin name {entry.get('name')!r} is not a new kebab-case name")
         source = entry["source"].removeprefix("./").rstrip("/")
         if not re.fullmatch(r"plugins/[a-z0-9-]+", source):
             raise ExportError(f".claude-plugin/marketplace.json: {entry['name']} has source {entry['source']}")
@@ -229,12 +246,15 @@ def manifest(files, commit, version, plugins):
 
 
 def write(files, root):
+    """Writes every file with a fixed mode; folders get 0755 whatever the umask."""
     for rel, (data, executable) in sorted(files.items()):
         full = os.path.join(root, *rel.split("/"))
         os.makedirs(os.path.dirname(full), exist_ok=True)
         with open(full, "wb") as f:
             f.write(data)
         os.chmod(full, 0o755 if executable else 0o644)
+    for dirpath, _, _ in os.walk(root):
+        os.chmod(dirpath, 0o755)
 
 
 # ─── Command line ───
@@ -250,7 +270,7 @@ def check_destination(dest):
 
 def export(source_repo, ref, version, dest):
     """Write the payload of ref to dest. Returns the file count (without the manifest) and the commit."""
-    if not VERSION_RE.match(version):
+    if not VERSION_RE.fullmatch(version):
         raise ExportError(f"version {version!r} is not X.Y.Z")
     dest = os.path.abspath(dest)
     check_destination(dest)
@@ -262,7 +282,7 @@ def export(source_repo, ref, version, dest):
             stamp(tree, version)
             plugins, files = payload(tree)
         write({**files, MANIFEST_NAME: (manifest(files, commit, version, plugins), False)}, stage)
-        errors = load_layout_check().check(stage, version=version)
+        errors = load_layout_check().check(stage, version=version, run_installers=True)
         if errors:
             raise ExportError("the payload fails the layout check:\n  " + "\n  ".join(errors))
         if os.path.isdir(dest):
