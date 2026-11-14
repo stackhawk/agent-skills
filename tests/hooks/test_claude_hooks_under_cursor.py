@@ -78,8 +78,12 @@ def git(project, *args):
 
 @pytest.fixture
 def plugin(tmp_path):
+    """The plugin folder as a POSIX checkout has it. .gitattributes leaves the .cmd wrapper to
+    core.autocrlf, because cmd.exe runs it on Windows; no POSIX host runs a CRLF copy of it."""
     root = tmp_path / "plugin cache" / "hawkscan"
     shutil.copytree(PLUGIN, root, symlinks=True)
+    wrapper = root / "hooks" / "run-hook.cmd"
+    wrapper.write_bytes(wrapper.read_bytes().replace(b"\r\n", b"\n"))
     return root
 
 

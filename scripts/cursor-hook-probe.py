@@ -6,10 +6,11 @@ as sessionStart, PostToolUse as postToolUse (the matcher Bash as Shell), Stop as
 other mapped events. scripts/check-marketplace-layout.py uses this module to tell the hooks
 that act in Cursor from the ones that do nothing there.
 
-A run gives the hook what Cursor gives it. The sources are the code of the Cursor app 3.9.16
+A run gives the hook what Cursor gives it, from a copy of the plugin folder as a POSIX checkout
+has it (see posix_copy). The sources are the code of the Cursor app 3.9.16
 (_buildHookEnvironment and _getHookCwd in workbench.desktop.main.js; the Claude event map in
 claude-code-types.ts) and live runs of the Cursor CLI 2026.11.13, which set the same variables:
-  - the command, with the plugin folder in place of ${CURSOR_PLUGIN_ROOT} and
+  - the command, with the copy of the plugin folder in place of ${CURSOR_PLUGIN_ROOT} and
     ${CLAUDE_PLUGIN_ROOT}, run by /bin/sh;
   - the environment: CURSOR_PROJECT_DIR, CURSOR_VERSION, CLAUDE_PROJECT_DIR,
     CURSOR_PLUGIN_ROOT and CLAUDE_PLUGIN_ROOT, plus PATH, LANG and TMPDIR. Never CLAUDECODE:
@@ -27,6 +28,7 @@ Usage, to probe one hook by hand:
 import collections
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -52,6 +54,24 @@ def make_project(root):
     with open(app, "a", encoding="utf-8") as f:
         f.write("\n\ndef ready():\n    return True\n")
     return project
+
+
+def posix_copy(plugin_dir, scratch):
+    """A copy of the plugin folder as a POSIX checkout has it. .gitattributes leaves the line
+    endings of the .cmd hook wrapper to core.autocrlf, because cmd.exe runs it on Windows. So a
+    checkout with core.autocrlf=true has CRLF there, which /bin/sh cannot run, and no POSIX host
+    runs such a copy. Every other hook file is LF in every checkout."""
+    copy = os.path.join(scratch, "plugin")
+    shutil.copytree(plugin_dir, copy, symlinks=True)
+    for dirpath, _, names in os.walk(copy):
+        for name in names:
+            path = os.path.join(dirpath, name)
+            if name.endswith(".cmd") and not os.path.islink(path):
+                with open(path, "rb") as f:
+                    data = f.read()
+                with open(path, "wb") as f:
+                    f.write(data.replace(b"\r\n", b"\n"))
+    return copy
 
 
 def payload(event, project):
@@ -87,8 +107,8 @@ def files_of(*roots):
 def probe(plugin_dir, event, command):
     """Run the command of one hook of the plugin folder as Cursor runs it for the event.
     Raises OSError or subprocess.SubprocessError when the hook cannot run at all."""
-    plugin_dir = os.path.abspath(plugin_dir)
     with tempfile.TemporaryDirectory(prefix="cursor-hook-probe-") as scratch:
+        plugin_dir = posix_copy(os.path.abspath(plugin_dir), scratch)
         project = make_project(scratch)
         home = os.path.join(scratch, "home")
         os.makedirs(home)
