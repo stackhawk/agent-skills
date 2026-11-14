@@ -230,7 +230,8 @@ jobs:
           uv run pytest -q tests/scripts/test_cursor_adapter.py tests/scripts/test_install_cursor.py \
             tests/scripts/test_cursor_plugin_smoke.py tests/hooks/test_cursor_stop_hook.py \
             tests/lib/test_cursor_eval_setup.py tests/scripts/test_marketplace_export.py \
-            tests/scripts/test_stage_marketplace_sync.py tests/scripts/test_source_layout.py
+            tests/scripts/test_stage_marketplace_sync.py tests/scripts/test_source_layout.py \
+            tests/scripts/test_wingman_skills_check.py
 
   # Deprecated: cursor/.cursor/rules stays for one release. The installers no longer copy it.
   generate-cursor-rules:
