@@ -306,9 +306,11 @@ scripts/install.sh               Installer for Cursor and Copilot (macOS/Linux)
 scripts/install.ps1              Installer for Cursor and Copilot (Windows)
 scripts/generate-marketplace-catalogs.py   Builds local install verification catalogs
 scripts/generate-marketplace-skills.py     Builds local skills CLI verification copies
+scripts/export-marketplace.py      Exports the release payload the marketplace publishes
+scripts/check-marketplace-layout.py  Checks that payload and the synced marketplace
 ```
 
-Released plugins and skills are published through [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace). Its sync script copies the tagged Claude plugin folders, generates platform catalogs, and vendors standalone skills for `npx skills add`. The release workflow validates the sync and pushes it to marketplace `main`.
+Released plugins and skills are published through [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace). The release exports the payload of its tag (Claude plugin snapshots, the wingman bundle, the Cursor catalog and installers), and the marketplace sync script publishes it, generates platform catalogs, and vendors standalone skills for `npx skills add`. The release workflow validates the sync and pushes it to marketplace `main`.
 
 ### Platform Support
 

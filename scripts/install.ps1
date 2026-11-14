@@ -6,6 +6,11 @@
 #   .\scripts\install.ps1 -Platform cursor -Target .        # project install
 #   .\scripts\install.ps1 -Platform cursor                  # user level: skills and stop hook
 #   .\scripts\install.ps1 -Platform copilot -Target .
+#
+# It runs from a clone of stackhawk/agent-skills (scripts\install.ps1) and from a released
+# snapshot in stackhawk/agent-skills-marketplace (install\install.ps1). The two name some
+# plugin folders differently (plugins/api in a clone, plugins/stackhawk-api in a snapshot),
+# so each skill is found by its catalog plugin name first, then by its source folder.
 param(
     [Parameter(Mandatory)]
     [ValidateSet("cursor", "copilot")]
@@ -60,24 +65,44 @@ $TargetPath = (Resolve-Path -LiteralPath $Target).ProviderPath
 # merged into .cursor/hooks.json. User-level install (-Target is your home directory):
 # the skills and the stop hook only, with the command ./hooks/stackhawk-stop.sh because
 # Cursor runs user hooks from ~/.cursor/. The installer replaces only files it owns and
-# removes what older versions installed (scripts/cursor-legacy-rules.txt and a
+# removes what older versions installed (cursor-legacy-rules.txt beside this script and a
 # .cursor/hooks/stop.sh that it wrote). The stop hook is a bash script: on Windows,
 # Cursor needs bash (for example Git for Windows) to run it.
 
+# Catalog is the plugin name in the catalog (a snapshot folder); Folder is the source folder.
 $CursorSkills = @(
-    @{ Name = "hawkscan";            Src = "plugins/hawkscan/skills/hawkscan";                       Label = "DAST scanning skill" },
-    @{ Name = "api";                 Src = "plugins/api/skills/api";                                 Label = "StackHawk API reporting skill" },
-    @{ Name = "hawkscan-ci";         Src = "plugins/hawkscan-ci/skills/hawkscan-ci";                 Label = "CI/CD pipeline skill" },
-    @{ Name = "stackhawk-data-seed"; Src = "plugins/stackhawk-data-seed/skills/stackhawk-data-seed"; Label = "Data seed skill" },
-    @{ Name = "optimize";            Src = "plugins/optimize/skills/optimize";                       Label = "Scan optimization skill" }
+    @{ Name = "hawkscan";            Catalog = "hawkscan";            Folder = "hawkscan";            Label = "DAST scanning skill" },
+    @{ Name = "api";                 Catalog = "stackhawk-api";       Folder = "api";                 Label = "StackHawk API reporting skill" },
+    @{ Name = "hawkscan-ci";         Catalog = "hawkscan-ci";         Folder = "hawkscan-ci";         Label = "CI/CD pipeline skill" },
+    @{ Name = "stackhawk-data-seed"; Catalog = "stackhawk-data-seed"; Folder = "stackhawk-data-seed"; Label = "Data seed skill" },
+    @{ Name = "optimize";            Catalog = "stackhawk-optimize";  Folder = "optimize";            Label = "Scan optimization skill" }
 )
 $CursorRulesSource  = Join-Path $RepoRoot "plugins/hawkscan/rules"
 $CursorHooksSource  = Join-Path $RepoRoot "plugins/hawkscan/hooks/cursor"
-$CursorLegacyRules  = Join-Path $RepoRoot "scripts/cursor-legacy-rules.txt"
+$CursorLegacyRules  = Join-Path $PSScriptRoot "cursor-legacy-rules.txt"
 $CursorHookScript   = "stackhawk-stop.sh"
 $CursorLegacyMarker = "# Cursor stop hook for hawkscan plugin"
 $CursorProjectCmd   = ".cursor/hooks/$CursorHookScript"
 $CursorUserCmd      = "./hooks/$CursorHookScript"
+
+# The folder of one skill: plugins/<catalog name>/skills/<skill> in a released snapshot,
+# plugins/<source folder>/skills/<skill> in a clone. $null if neither exists.
+function Get-SkillSource($Skill) {
+    foreach ($plugin in @($Skill.Catalog, $Skill.Folder)) {
+        $dir = Join-Path (Join-Path (Join-Path (Join-Path $RepoRoot "plugins") $plugin) "skills") $Skill.Name
+        if (Test-Path -LiteralPath (Join-Path $dir "SKILL.md") -PathType Leaf) { return $dir }
+    }
+    return $null
+}
+
+# Stops before any change if a skill of the list is missing from this checkout.
+function Assert-SkillSources($Skills) {
+    foreach ($skill in $Skills) {
+        if ($null -eq (Get-SkillSource $skill)) {
+            Fail "the $($skill.Name) skill was not found under $RepoRoot/plugins/$($skill.Catalog)/ or $RepoRoot/plugins/$($skill.Folder)/. Nothing was installed. Is the repository fully checked out?"
+        }
+    }
+}
 
 function Test-StackHawkSkill([string]$Dir, [string]$Name) {
     $skillMd = Join-Path $Dir "SKILL.md"
@@ -120,6 +145,7 @@ function Test-StackHawkRule([string]$File) {
 }
 
 function Invoke-CursorPreflight([string]$DotCursor, [string]$Scope) {
+    Assert-SkillSources $CursorSkills
     foreach ($skill in $CursorSkills) {
         $dir = Join-Path (Join-Path $DotCursor "skills") $skill.Name
         if ((Test-Path -LiteralPath $dir) -and -not (Test-StackHawkSkill $dir $skill.Name)) {
@@ -143,7 +169,7 @@ function Install-CursorSkills([string]$DotCursor) {
         $dest = Join-Path (Join-Path $DotCursor "skills") $skill.Name
         if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
         New-Item -ItemType Directory -Force $dest | Out-Null
-        Copy-Item -Path (Join-Path (Join-Path $RepoRoot $skill.Src) "*") -Destination $dest -Recurse -Force
+        Copy-Item -Path (Join-Path (Get-SkillSource $skill) "*") -Destination $dest -Recurse -Force
     }
     Write-Host "Installed $($CursorSkills.Count) Cursor skills to $DotCursor/skills/"
     foreach ($skill in $CursorSkills) {
@@ -271,20 +297,16 @@ switch ($Platform) {
     }
 
     "copilot" {
-        $hawkscanSrc = Join-Path $RepoRoot "plugins\hawkscan\skills\hawkscan"
-        $apiSrc      = Join-Path $RepoRoot "plugins\api\skills\api"
-        $dest        = Join-Path $TargetPath ".agents\skills"
+        $copilotSkills = @(
+            @{ Name = "hawkscan"; Catalog = "hawkscan";      Folder = "hawkscan" },
+            @{ Name = "api";      Catalog = "stackhawk-api"; Folder = "api" }
+        )
+        Assert-SkillSources $copilotSkills
+        $hawkscanSrc = Get-SkillSource $copilotSkills[0]
+        $apiSrc      = Get-SkillSource $copilotSkills[1]
+        $dest        = Join-Path (Join-Path $TargetPath ".agents") "skills"
         $hawkscanDst = Join-Path $dest "hawkscan"
         $apiDst      = Join-Path $dest "stackhawk-api"
-
-        if (-not (Test-Path $hawkscanSrc)) {
-            Write-Error "Copilot skill source not found at '$hawkscanSrc'. Is the repo fully checked out?"
-            exit 1
-        }
-        if (-not (Test-Path $apiSrc)) {
-            Write-Error "Copilot skill source not found at '$apiSrc'. Is the repo fully checked out?"
-            exit 1
-        }
 
         $existingDirs = @()
         if (Test-Path $hawkscanDst) { $existingDirs += "hawkscan\" }
@@ -304,8 +326,8 @@ switch ($Platform) {
 
         New-Item -ItemType Directory -Force $hawkscanDst | Out-Null
         New-Item -ItemType Directory -Force $apiDst      | Out-Null
-        Copy-Item -Recurse "$hawkscanSrc\*" $hawkscanDst -Force
-        Copy-Item -Recurse "$apiSrc\*"      $apiDst      -Force
+        Copy-Item -Recurse (Join-Path $hawkscanSrc "*") $hawkscanDst -Force
+        Copy-Item -Recurse (Join-Path $apiSrc "*")      $apiDst      -Force
         Write-Host "Installed StackHawk skills to ${dest}\"
         Write-Host "  hawkscan\       -- DAST scanning skill"
         Write-Host "  stackhawk-api\  -- API reporting skill"

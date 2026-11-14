@@ -9,8 +9,14 @@ set -euo pipefail
 #   ./scripts/install.sh --platform cursor  --target /path/to/project
 #   ./scripts/install.sh --platform cursor  --target ~        # user level: skills and stop hook
 #   ./scripts/install.sh --platform copilot --target /path/to/project
+#
+# It runs from a clone of stackhawk/agent-skills (scripts/install.sh) and from a released
+# snapshot in stackhawk/agent-skills-marketplace (install/install.sh). The two name some
+# plugin folders differently (plugins/api in a clone, plugins/stackhawk-api in a snapshot),
+# so each skill is found by its catalog plugin name first, then by its source folder.
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 usage() {
   echo "Usage: $0 --platform <cursor|copilot> --target <project-path>" >&2
@@ -51,19 +57,20 @@ fi
 # the hook command there is ./hooks/stackhawk-stop.sh.
 # The installer replaces only files it owns: the five StackHawk skill folders, the two
 # rules, the hook script, and its own hooks.json entry. It also removes what older
-# versions installed: the rules named in scripts/cursor-legacy-rules.txt and a
+# versions installed: the rules named in cursor-legacy-rules.txt (beside this script) and a
 # .cursor/hooks/stop.sh that it wrote. Other rules, skills and hooks stay.
 
+# skill|catalog plugin name|source plugin folder|label
 CURSOR_SKILLS=(
-  "hawkscan|plugins/hawkscan/skills/hawkscan|DAST scanning skill"
-  "api|plugins/api/skills/api|StackHawk API reporting skill"
-  "hawkscan-ci|plugins/hawkscan-ci/skills/hawkscan-ci|CI/CD pipeline skill"
-  "stackhawk-data-seed|plugins/stackhawk-data-seed/skills/stackhawk-data-seed|Data seed skill"
-  "optimize|plugins/optimize/skills/optimize|Scan optimization skill"
+  "hawkscan|hawkscan|hawkscan|DAST scanning skill"
+  "api|stackhawk-api|api|StackHawk API reporting skill"
+  "hawkscan-ci|hawkscan-ci|hawkscan-ci|CI/CD pipeline skill"
+  "stackhawk-data-seed|stackhawk-data-seed|stackhawk-data-seed|Data seed skill"
+  "optimize|stackhawk-optimize|optimize|Scan optimization skill"
 )
 CURSOR_RULES_SOURCE="${REPO_ROOT}/plugins/hawkscan/rules"
 CURSOR_HOOKS_SOURCE="${REPO_ROOT}/plugins/hawkscan/hooks/cursor"
-CURSOR_LEGACY_RULES="${REPO_ROOT}/scripts/cursor-legacy-rules.txt"
+CURSOR_LEGACY_RULES="${SCRIPT_DIR}/cursor-legacy-rules.txt"
 CURSOR_HOOK_SCRIPT="stackhawk-stop.sh"
 CURSOR_LEGACY_HOOK_MARKER="# Cursor stop hook for hawkscan plugin"
 CURSOR_PROJECT_COMMAND=".cursor/hooks/${CURSOR_HOOK_SCRIPT}"
@@ -71,6 +78,32 @@ CURSOR_USER_COMMAND="./hooks/${CURSOR_HOOK_SCRIPT}"
 
 have_python() {
   command -v python3 >/dev/null 2>&1
+}
+
+# Prints the folder of one skill: plugins/<catalog name>/skills/<skill> in a released
+# snapshot, plugins/<source folder>/skills/<skill> in a clone. Fails if neither exists.
+skill_source() {
+  local skill="$1" catalog="$2" folder="$3" dir
+  for dir in "${REPO_ROOT}/plugins/${catalog}/skills/${skill}" "${REPO_ROOT}/plugins/${folder}/skills/${skill}"; do
+    if [ -f "${dir}/SKILL.md" ]; then
+      echo "$dir"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Exits 1 before any change if a skill of the list is missing from this checkout.
+require_skill_sources() {
+  local entry skill catalog folder
+  for entry in "$@"; do
+    IFS='|' read -r skill catalog folder _ <<< "$entry"
+    if ! skill_source "$skill" "$catalog" "$folder" >/dev/null; then
+      echo "ERROR: the ${skill} skill was not found under ${REPO_ROOT}/plugins/${catalog}/ or ${REPO_ROOT}/plugins/${folder}/." >&2
+      echo "Nothing was installed. Is the repository fully checked out?" >&2
+      exit 1
+    fi
+  done
 }
 
 # Prints an error and exits 1 if hooks.json cannot be merged. Never writes.
@@ -117,6 +150,7 @@ cursor_is_stackhawk_rule() {
 
 cursor_preflight() {
   local dot_cursor="$1" scope="$2" entry name rule
+  require_skill_sources "${CURSOR_SKILLS[@]}"
   for entry in "${CURSOR_SKILLS[@]}"; do
     name="${entry%%|*}"
     if [ -e "${dot_cursor}/skills/${name}" ] && ! cursor_is_stackhawk_skill "${dot_cursor}/skills/${name}" "$name"; then
@@ -139,10 +173,11 @@ cursor_preflight() {
 }
 
 cursor_install_skills() {
-  local dot_cursor="$1" entry name rest src
+  local dot_cursor="$1" entry name catalog folder src
   mkdir -p "${dot_cursor}/skills"
   for entry in "${CURSOR_SKILLS[@]}"; do
-    name="${entry%%|*}"; rest="${entry#*|}"; src="${REPO_ROOT}/${rest%%|*}"
+    IFS='|' read -r name catalog folder _ <<< "$entry"
+    src="$(skill_source "$name" "$catalog" "$folder")"
     rm -rf "${dot_cursor}/skills/${name}"
     mkdir -p "${dot_cursor}/skills/${name}"
     cp -R "${src}/." "${dot_cursor}/skills/${name}/"
@@ -284,7 +319,9 @@ case "$platform" in
 
   copilot)
     dest="${target}/.agents/skills"
-    source="${REPO_ROOT}/plugins"
+    require_skill_sources "hawkscan|hawkscan|hawkscan|" "api|stackhawk-api|api|"
+    hawkscan_source="$(skill_source hawkscan hawkscan hawkscan)"
+    api_source="$(skill_source api stackhawk-api api)"
 
     if [ -d "${dest}/hawkscan" ] || [ -d "${dest}/stackhawk-api" ]; then
       echo "WARNING: StackHawk skills already exist in ${dest}/"
@@ -300,8 +337,8 @@ case "$platform" in
     fi
 
     mkdir -p "${dest}/hawkscan" "${dest}/stackhawk-api"
-    cp -r "${source}/hawkscan/skills/hawkscan/"* "${dest}/hawkscan/"
-    cp -r "${source}/api/skills/api/"* "${dest}/stackhawk-api/"
+    cp -r "${hawkscan_source}/"* "${dest}/hawkscan/"
+    cp -r "${api_source}/"* "${dest}/stackhawk-api/"
     echo "Installed StackHawk skills to ${dest}/"
     echo "  hawkscan/       — DAST scanning skill"
     echo "  stackhawk-api/  — API reporting skill"

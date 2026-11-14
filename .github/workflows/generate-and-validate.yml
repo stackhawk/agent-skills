@@ -192,7 +192,9 @@ jobs:
 
   # The Cursor adapter: generated .cursor-plugin manifests, the router and stackhawk.yml
   # pointer rules, the plugin stop hook, and the installers. The measure step fails when a
-  # change makes the default Cursor context heavier than its budget.
+  # change makes the default Cursor context heavier than its budget. The export step builds
+  # the marketplace payload and fails when a Claude Code or Cursor install would load the
+  # router rule or the stop hook twice, or when a Cursor distribution file is missing.
   cursor-adapter:
     runs-on: ubuntu-latest
     steps:
@@ -210,11 +212,16 @@ jobs:
           python3 scripts/measure-cursor-context.py --check plugins/hawkscan
           python3 scripts/measure-cursor-context.py --check plugins/wingman
 
-      - name: Cursor regression tests (installers under bash and pwsh, stop hook, adapter)
+      - name: Export the marketplace payload and check its layout
+        run: |
+          python3 scripts/export-marketplace.py --version 0.0.0 --dest "$RUNNER_TEMP/marketplace-export"
+          python3 scripts/check-marketplace-layout.py --version 0.0.0 "$RUNNER_TEMP/marketplace-export"
+
+      - name: Cursor regression tests (installers under bash and pwsh, stop hook, adapter, export)
         run: |
           uv run pytest -q tests/scripts/test_cursor_adapter.py tests/scripts/test_install_cursor.py \
             tests/scripts/test_cursor_plugin_smoke.py tests/hooks/test_cursor_stop_hook.py \
-            tests/lib/test_cursor_eval_setup.py
+            tests/lib/test_cursor_eval_setup.py tests/scripts/test_marketplace_export.py
 
   # Deprecated: cursor/.cursor/rules stays for one release. The installers no longer copy it.
   generate-cursor-rules:
