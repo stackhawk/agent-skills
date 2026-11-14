@@ -63,7 +63,9 @@ def git(path, *args):
 
 
 def snapshot_working_tree(dest):
-    """Commit the tracked and new (not ignored) files of this checkout into a fresh repository."""
+    """Commit the tracked and new (not ignored) files of this checkout into a fresh repository.
+    core.autocrlf=input stores text files with LF, as a commit from this checkout stores them,
+    also when the checkout has CRLF line endings (Git for Windows: core.autocrlf=true)."""
     listed = git(REPO_ROOT, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
     for rel in sorted({p.decode() for p in listed.split(b"\0") if p}):
         source = os.path.join(REPO_ROOT, rel)
@@ -76,6 +78,7 @@ def snapshot_working_tree(dest):
         else:
             shutil.copy2(source, target)
     git(dest, "init", "-q", "-b", "main")
+    git(dest, "config", "core.autocrlf", "input")
     git(dest, "add", "-A")
     git(dest, "commit", "-q", "-m", "snapshot")
 
