@@ -263,12 +263,13 @@ def test_the_claude_wingman_has_no_hooks_and_no_skills_folder(source):
 # ─── Line endings ───
 
 def lf_paths():
-    """The generated copies and the Cursor hook sources they copy."""
+    """The generated copies, the Cursor hook sources they copy, and the Claude hook scripts."""
     found = []
     for top in ("cursor-plugins", "plugins/wingman/copilot-skills", "plugins/hawkscan/hooks/cursor"):
         for dirpath, _, names in os.walk(os.path.join(REPO_ROOT, top)):
             found += [os.path.relpath(os.path.join(dirpath, n), REPO_ROOT) for n in names]
-    return sorted(found)
+    return sorted(found) + [f"plugins/hawkscan/hooks/{n}" for n in ("post-commit-scan", "session-start",
+                                                                       "skill-activated", "stop")]
 
 
 def eol_attributes(paths):
@@ -277,9 +278,9 @@ def eol_attributes(paths):
     return {line.split(": ")[0]: line.split(": ")[2] for line in proc.stdout.splitlines()}
 
 
-def test_generated_copies_stay_lf_in_every_checkout():
+def test_generated_copies_and_hook_scripts_stay_lf_in_every_checkout():
     """generate-cursor-adapter.py --check compares the copies byte for byte with their sources,
-    so .gitattributes forces LF for them."""
+    and bash cannot run a CRLF hook script, so .gitattributes forces LF for them."""
     paths = lf_paths()
     assert len(paths) > 40
     attributes = eol_attributes(paths)
@@ -288,6 +289,10 @@ def test_generated_copies_stay_lf_in_every_checkout():
         with open(os.path.join(REPO_ROOT, rel), "rb") as f:
             assert b"\r" not in f.read(), rel
 
+
+def test_the_cmd_wrapper_keeps_the_line_endings_of_the_checkout():
+    """cmd.exe can misread a batch file with LF line endings."""
+    assert eol_attributes(["plugins/hawkscan/hooks/run-hook.cmd"]) == {"plugins/hawkscan/hooks/run-hook.cmd": "unspecified"}
 
 
 # ─── The installers resolve the split layout ───

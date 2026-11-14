@@ -1,6 +1,12 @@
 # Shell scripts run under bash, also on Windows (Git for Windows); CRLF line endings break
 # them ("set: pipefail: invalid option name"). The installers copy stop.sh as checked out.
 *.sh text eol=lf
+# The extensionless Claude hook scripts are bash too. run-hook.cmd keeps the checkout's line
+# endings: cmd.exe can misread a batch file with LF line endings.
+plugins/hawkscan/hooks/post-commit-scan text eol=lf
+plugins/hawkscan/hooks/session-start text eol=lf
+plugins/hawkscan/hooks/skill-activated text eol=lf
+plugins/hawkscan/hooks/stop text eol=lf
 # Generated copies are compared byte for byte with their sources
 # (scripts/generate-cursor-adapter.py --check, scripts/test-wingman-skills.sh), so they and the
 # Cursor hook sources stay LF in every checkout, as the export (git archive) reads them.
