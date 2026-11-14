@@ -168,12 +168,13 @@ Three tiers, take the first that fits:
 | Tier | Mechanism | When to use |
 |---|---|---|
 | 1. Native action | `stackhawk/hawkscan-action@v2` | GitHub Actions |
-| 2. hawk CLI via install script | `curl -fsSL https://download.stackhawk.com/hawk/install.sh \| HAWK_INSTALL_DIR="$HOME/.local/bin" sh` (Windows: `install.ps1`) — self-contained binary, no Java, no Docker | Every other provider (GitLab, Jenkins, CircleCI, Azure, Bitbucket, Buildkite, Travis, AWS CodeBuild, …) |
+| 2. hawk CLI via install script | `curl -fsSL https://download.stackhawk.com/hawk/install.sh \| HAWK_INSTALL_DIR="$HOME/.local/bin" sh` (Windows: `install.ps1`, or `install.bat` for cmd) — self-contained binary, no Java, no Docker | Every other provider (GitLab, Jenkins, CircleCI, Azure, Bitbucket, Buildkite, Travis, AWS CodeBuild, …) |
 | 3. Docker image | `stackhawk/hawkscan:latest` | Fallback only: the runner can't reach `download.stackhawk.com`, the runner is container-only, or the user asks for Docker |
 
 **CLI install rules (Tier 2):**
-- Always set `HAWK_INSTALL_DIR="$HOME/.local/bin"` explicitly — don't rely on the installer's default directory.
-- Make `hawk` reachable in the **same step** that runs it: call it by full path (`"$HOME/.local/bin/hawk" scan`) or `export PATH="$HOME/.local/bin:$PATH"` in that step. CI steps don't read shell-profile edits.
+- Set `HAWK_INSTALL_DIR="$HOME/.local/bin"` (the installer's default) explicitly, so the path the later lines use is certain. Never install into `~/.hawk/bin` or put it on PATH — that is hawk's own runtime folder, which hawk replaces when it runs.
+- In CI the installer leaves PATH alone (it detects CI and only prints the folder). Make `hawk` reachable in the **same step** that runs it: call it by full path (`"$HOME/.local/bin/hawk" scan`) or `export PATH="$HOME/.local/bin:$PATH"` in that step. For later steps, add the folder through the provider's own PATH mechanism (e.g. `echo "$HOME/.local/bin" >> "$GITHUB_PATH"`).
+- Don't set `HAWK_INSTALL_CHANNEL=dev` in a pipeline — dev builds are unreleased.
 - The CLI reads the API key from the `API_KEY` env var — map the secret to it (`API_KEY="$HAWK_API_KEY"`).
 - The CLI runs on the runner itself, so it reaches an app on `localhost` directly — no `--network host`.
 

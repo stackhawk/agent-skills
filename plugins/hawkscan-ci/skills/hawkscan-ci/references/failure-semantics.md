@@ -143,7 +143,7 @@ Don't retry blindly. If retry succeeds, the original failure was a flake. If ret
 
 **Do NOT cache:**
 - Scan output / findings. Each scan must be independent — caching findings between runs defeats the purpose.
-- `~/.hawk/` if `HAWK_API_KEY` is in the env (it's not in the cache anyway; just don't go out of your way to include it).
+- `~/.hawk/` (including `~/.hawk/bin`) — hawk's own runtime folder, which hawk replaces when it runs. Cache only the binary in `~/.local/bin`.
 
 ### GitHub Actions image cache
 

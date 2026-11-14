@@ -12,11 +12,12 @@ This reference covers the three ways CI pipelines invoke HawkScan, per-provider 
 
 ### CLI install rules
 
-Every Tier 2 snippet below follows the same three rules:
+Every Tier 2 snippet below follows the same rules:
 
-1. **Set `HAWK_INSTALL_DIR="$HOME/.local/bin"` explicitly.** Don't rely on the installer's default directory.
-2. **Reach `hawk` in the same step that installs or runs it** — by full path (`"$HOME/.local/bin/hawk" scan`) or a `export PATH="$HOME/.local/bin:$PATH"` in that step. CI steps don't read shell-profile edits, so the installer's "add this to your shell profile" hint does nothing in a pipeline.
+1. **Set `HAWK_INSTALL_DIR="$HOME/.local/bin"` explicitly.** It is the installer's default (`%USERPROFILE%\.local\bin` on Windows); setting it pins the path the later lines call. **Never install into `~/.hawk/bin` or put it on PATH** — that is hawk's own runtime folder, which hawk replaces when it runs (the installer refuses it), and don't cache it.
+2. **Reach `hawk` in the same step that runs it** — by full path (`"$HOME/.local/bin/hawk" scan`) or `export PATH="$HOME/.local/bin:$PATH"` in that step. Outside CI the installer adds the folder to the user's PATH itself; in CI it detects the runner, leaves PATH and shell profiles alone, and only prints the folder. For later steps, add it through the provider's PATH mechanism (GitHub Actions: `echo "$HOME/.local/bin" >> "$GITHUB_PATH"`; Azure: `echo "##vso[task.prependpath]$HOME/.local/bin"`).
 3. **Map the secret to `API_KEY`.** The CLI reads its API key from the `API_KEY` env var.
+4. **Stay on the release channel.** Leave `HAWK_INSTALL_CHANNEL` unset — `dev` installs unreleased builds.
 
 The generic install-and-scan step (Linux/macOS runners):
 
@@ -32,6 +33,15 @@ $env:HAWK_INSTALL_DIR = "$HOME\.local\bin"
 irm https://download.stackhawk.com/hawk/install.ps1 | iex
 $env:API_KEY = $env:HAWK_API_KEY
 & "$env:HAWK_INSTALL_DIR\hawk.exe" scan
+```
+
+Windows runners whose shell is strictly cmd use `install.bat`, a wrapper that runs `install.ps1` with the same environment variables:
+
+```bat
+set "HAWK_INSTALL_DIR=%USERPROFILE%\.local\bin"
+curl -fsSL -o "%TEMP%\hawk-install.bat" https://download.stackhawk.com/hawk/install.bat && call "%TEMP%\hawk-install.bat"
+set "API_KEY=%HAWK_API_KEY%"
+"%HAWK_INSTALL_DIR%\hawk.exe" scan
 ```
 
 ## Versioning Strategy
