@@ -219,8 +219,9 @@ def test_listing_the_cursor_only_wingman_in_the_claude_catalog_fails(scratch, wi
 
 # ─── What a direct install from the source loads in Cursor ───
 # A Claude Code install that Cursor imports adds no router rule and no stop hook that acts; one
-# native Cursor install (a Cursor catalog plugin or a project install) loads one of each. Two
-# native installs load two of each: the README and RELEASING.md tell users to pick one.
+# native Cursor install (a Cursor catalog plugin or a project install) loads one of each, and a
+# user-level install loads the stop hook alone. Two native installs load two stop hooks: the
+# README and RELEASING.md tell users to pick one.
 
 @pytest.mark.parametrize("prefer_cursor", [True, False], ids=["cursor-manifest", "claude-manifest"])
 def test_a_claude_code_install_of_wingman_from_the_source_adds_no_router_and_no_acting_stop_hook(source, prefer_cursor):
@@ -234,12 +235,14 @@ def test_a_claude_code_install_of_wingman_from_the_source_adds_no_router_and_no_
 
 
 def native_installs(source):
-    """label -> what each native Cursor install loads: each Cursor catalog plugin, and the
-    project install (modeled from the rules and the stop hook that the installers copy)."""
+    """label -> what each native Cursor install loads: each Cursor catalog plugin, the project
+    install (modeled from the rules and the stop hook that the installers copy) and the
+    user-level install (the stop hook alone)."""
     layout = LAYOUT.Layout(str(source))
     natives = {f"Cursor catalog {name}": LAYOUT.load_plugin(layout, folder, prefer_cursor=True)
                for name, folder in catalog(source, ".cursor-plugin/marketplace.json").items()}
     natives["project install"] = LAYOUT.project_install(layout)
+    natives["user-level install"] = LAYOUT.user_install(layout)
     assert layout.errors == []
     return layout, natives
 
@@ -256,7 +259,8 @@ def test_a_claude_code_install_next_to_one_native_install_loads_only_its_router_
         assert routers == [r.path for r in native.rules if r.always], label
         assert acting == LAYOUT.acting_stop_hooks(layout, [native]), label
         if "hawkscan" in {s.name for s in native.skills}:
-            assert (len(routers), len(acting)) == (1, 1), label
+            expected_routers = 0 if label == "user-level install" else 1
+            assert (len(routers), len(acting)) == (expected_routers, 1), label
     assert layout.errors == []
 
 
@@ -266,6 +270,14 @@ def test_two_native_installs_load_the_router_twice(source):
     pair = [natives["project install"], natives["Cursor catalog wingman"]]
     assert len([r for p in pair for r in p.rules if r.always]) == 2
     assert len(LAYOUT.acting_stop_hooks(layout, pair)) == 2
+
+
+@pytest.mark.parametrize("other", ["project install", "Cursor catalog hawkscan", "Cursor catalog wingman"])
+def test_a_user_level_install_next_to_another_native_install_loads_the_stop_hook_twice(source, other):
+    """Not supported either: a user-level install is a native channel for every project."""
+    layout, natives = native_installs(source)
+    assert natives["user-level install"].rules == []
+    assert len(LAYOUT.acting_stop_hooks(layout, [natives["user-level install"], natives[other]])) == 2
 
 
 def test_a_cursor_catalog_install_of_wingman_from_the_source_loads_one_of_each(source):

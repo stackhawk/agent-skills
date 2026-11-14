@@ -40,15 +40,18 @@ repository (--no-installers). It fails when:
 
 The Claude plugins are the entries of .claude-plugin/marketplace.json; a tree without that
 catalog (the export) lists them as the plugins/*/ folders. A project install is modeled from
-the files the installers copy (the rules and the stop hook of cursor-plugins/hawkscan/).
+the files the installers copy (the rules and the stop hook of cursor-plugins/hawkscan/), and a
+user-level install (--target ~) from the stop hook alone, because Cursor has no file-based user
+rules.
 
 What the counts assume about Cursor, from its documentation, the code of its 3.9.16 app and
 live runs of its 2026.11.13 CLI, not from a live run of every case:
   - a component path that a manifest names replaces the default folder of that component;
   - any alwaysApply value that is not clearly false (false, no, off, 0) makes a router rule.
 It does not count two native Cursor installs together (two Cursor catalog plugins that carry
-the router, or a Cursor catalog plugin and a project install): each loads the router twice,
-and the README tells users to pick one.
+the router, a Cursor catalog plugin and a project install, or a user-level install and either of
+them): each pair loads the stop hook twice, and the router twice when both carry it. The README
+tells users to pick one.
 
 Usage:
   check-marketplace-layout.py [--version X.Y.Z] [--no-installers] [--run-installers] ROOT
@@ -78,6 +81,7 @@ CURSOR_HAWKSCAN = "cursor-plugins/hawkscan"
 CURSOR_HAWKSCAN_RULES = f"{CURSOR_HAWKSCAN}/rules"
 CURSOR_HAWKSCAN_HOOKS = f"{CURSOR_HAWKSCAN}/hooks/cursor"
 PROJECT_INSTALL = "project install"
+USER_INSTALL = "user-level install"
 # Claude hook events and the Cursor events they run as (Cursor 3.9.16, claude-code-types.ts).
 CLAUDE_EVENTS = {
     "PreToolUse": "preToolUse", "PostToolUse": "postToolUse", "UserPromptSubmit": "beforeSubmitPrompt",
@@ -518,15 +522,27 @@ def project_install(layout):
     return Loaded(CURSOR_HAWKSCAN, PROJECT_INSTALL, rules, hooks, [Skill(ROUTER_SKILL, PROJECT_INSTALL)])
 
 
+def user_install(layout):
+    """What a user-level install (--target ~) from this tree loads in every project: no rule,
+    because Cursor has no file-based user rules, and the stop entry that the installers merge
+    into ~/.cursor/hooks.json, whose script is the stop.sh of cursor-plugins/hawkscan. None when
+    the tree has no Cursor-only hawkscan."""
+    project = project_install(layout)
+    if project is None:
+        return None
+    hooks = [hook._replace(path=f"{USER_INSTALL}: ~/.cursor/hooks.json") for hook in project.hooks]
+    return Loaded(CURSOR_HAWKSCAN, USER_INSTALL, [], hooks, [Skill(ROUTER_SKILL, USER_INSTALL)])
+
+
 def check_combined(layout, plugins, installs, cursor_entries):
     """A Claude Code install that Cursor imports, next to one native Cursor install, loads only
     what the native install loads: no second router rule and no second stop hook that acts.
     The skills of both load; the check does not count them."""
     natives = [(f"Cursor catalog install of {name} ({folder})", load_plugin(layout, folder, prefer_cursor=True))
                for name, folder in cursor_entries if os.path.isfile(layout.full(f"{folder}/{CURSOR_MANIFEST}"))]
-    project = project_install(layout)
-    if project is not None:
-        natives.append((PROJECT_INSTALL, project))
+    for label, native in ((PROJECT_INSTALL, project_install(layout)), (USER_INSTALL, user_install(layout))):
+        if native is not None:
+            natives.append((label, native))
     for prefer_cursor, reads in READINGS:
         for name, members in installs:
             imported = [load_plugin(layout, plugins[m], prefer_cursor) for m in members]
