@@ -14,7 +14,7 @@ This reference covers the three ways CI pipelines invoke HawkScan, per-provider 
 
 Every Tier 2 snippet below follows the same rules:
 
-1. **Set `HAWK_INSTALL_DIR="$HOME/.local/bin"` explicitly.** It is the installer's default (`%USERPROFILE%\.local\bin` on Windows); setting it pins the path the later lines call. **Never install into `~/.hawk/bin` or put it on PATH** — that is hawk's own runtime folder, which hawk replaces when it runs (the installer refuses it), and don't cache it.
+1. **Set `HAWK_INSTALL_DIR="$HOME/.local/bin"` explicitly.** It is the installer's default (`%USERPROFILE%\.local\bin` on Windows); setting it pins the path the later lines call. **Never install into `~/.hawk/bin` or put it on PATH** — that is hawk's own runtime folder, which hawk replaces when it runs (`install.sh` warns about it and `install.ps1` refuses it), and don't cache it.
 2. **Reach `hawk` in the same step that runs it** — by full path (`"$HOME/.local/bin/hawk" scan`) or `export PATH="$HOME/.local/bin:$PATH"` in that step. Outside CI the installer adds the folder to the user's PATH itself; in CI it detects the runner, leaves PATH and shell profiles alone, and only prints the folder. For later steps, add it through the provider's PATH mechanism (GitHub Actions: `echo "$HOME/.local/bin" >> "$GITHUB_PATH"`; Azure: `echo "##vso[task.prependpath]$HOME/.local/bin"`).
 3. **Map the secret to `API_KEY`.** The CLI reads its API key from the `API_KEY` env var.
 4. **Stay on the release channel.** Leave `HAWK_INSTALL_CHANNEL` unset — `dev` installs unreleased builds.
