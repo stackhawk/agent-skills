@@ -192,7 +192,7 @@ git clone https://github.com/stackhawk/agent-skills-marketplace.git
 
 This installs the skills into `.cursor/skills/`, `stackhawk.mdc` and `stackhawk-config.mdc` into `.cursor/rules/`, and `.cursor/hooks/stackhawk-stop.sh` with one entry merged into `.cursor/hooks.json`. Your other rules, skills and hooks stay. To upgrade, run the installer again: it replaces only StackHawk files, and it removes the generated rules and the `.cursor/hooks/stop.sh` hook that older versions installed.
 
-**User-level install** (every project on this machine): give your home directory as the target (`--target ~`; on Windows, leave out `-Target`). This installs the skills into `~/.cursor/skills/` and the stop hook into `~/.cursor/hooks.json`. Cursor has no file-based user rules, so for the router rule use a project install.
+**User-level install** (every project on this machine): give your home directory as the target (`--target ~`; on Windows, leave out `-Target`). This installs the skills into `~/.cursor/skills/` and the stop hook into `~/.cursor/hooks.json`. Cursor has no file-based user rules, so a user-level install has no router rule. For the router rule, use project installs instead of a user-level install, not both: each adds a stop hook.
 
 **Team marketplace:** a Cursor team admin can import `stackhawk/agent-skills-marketplace` as a team marketplace. Its Cursor catalog lists the six plugins; `wingman` installs from `bundles/wingman/`, which bundles its four skills, and `hawkscan` from `cursor-plugins/hawkscan/`. Enable `wingman` or the separate plugins, not both: `hawkscan` and `wingman` each carry the router rule and the stop hook.
 

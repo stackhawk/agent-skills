@@ -219,8 +219,8 @@ cursor_install_rules() {
     echo "  stackhawk.mdc            - always-applied router (names the skills and when each applies)"
     echo "  stackhawk-config.mdc     - applies while stackhawk.yml is in context"
   else
-    echo "No rules installed: Cursor has no file-based user rules. For the router rule, run a"
-    echo "project install."
+    echo "No rules installed: Cursor has no file-based user rules. For the router rule, use"
+    echo "project installs instead of this user-level install, not both: each adds a stop hook."
   fi
   if [ "$removed" -gt 0 ]; then
     echo ""

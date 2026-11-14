@@ -210,8 +210,8 @@ function Install-CursorRules([string]$DotCursor, [string]$Scope) {
         Write-Host "  stackhawk.mdc            - always-applied router (names the skills and when each applies)"
         Write-Host "  stackhawk-config.mdc     - applies while stackhawk.yml is in context"
     } else {
-        Write-Host "No rules installed: Cursor has no file-based user rules. For the router rule, run a"
-        Write-Host "project install."
+        Write-Host "No rules installed: Cursor has no file-based user rules. For the router rule, use"
+        Write-Host "project installs instead of this user-level install, not both: each adds a stop hook."
     }
     if ($removed -gt 0) {
         Write-Host ""
