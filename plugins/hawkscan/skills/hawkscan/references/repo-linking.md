@@ -21,22 +21,28 @@ it never blocks the scan.
 ## Commands
 
 ```bash
-# Link an existing app to a repo by its bare name (additive — preserves existing links)
+# Link an existing app to a repo by its bare name; the repo's other app links are kept
 hawk op repo link --repo <BARE_NAME> --app-id <APP_UUID>
 ```
 
 Pass `--repo` the **bare** repo name (e.g. `my-repo`), never `owner/repo` or a
 URL: those forms return "No repository found". The app ID is already known from
-SKILL.md Step 1 substep 5.
+SKILL.md Step 1 substep 5. Both flags work on every current hawk release.
+
+Some hawk releases (6.6.0 among them) find `--repo` by paging through every
+repo in the org and then rewrite the repo's full app list with the new app
+added. In a large org that lookup can outrun the time box, and if the repo has
+apps your team does not own the write fails ("Invalid App IDs"). Both are
+handled by the fallback in step 4 below; never work around them.
 
 **Never run `hawk op repo list` (or `hawk op app list`) while linking.** It pages
 through every repo in the org, which can take many minutes in large orgs. Ignore
 any `→ hawkop …` hint that `repo link` prints.
 
-> ⚠️ **Do not use `--app-name` to create applications.** Application creation must
-> go through SKILL.md Step 1 substep 5 (`hawk create app`), which announces the
-> settings URL and records the `applicationId`. Use `--app-id` with an
-> already-resolved UUID instead.
+> ⚠️ **Always pass `--app-id`; never `--app-name`.** What `--app-name` does differs
+> between hawk releases, and it must never create an application. Applications are
+> created only in SKILL.md Step 1 substep 5 (`hawk create app`), which announces the
+> settings URL and records the `applicationId`.
 
 ## Full Phase 0a Algorithm
 
@@ -54,6 +60,7 @@ any `→ hawkop …` hint that `repo link` prints.
    your tool's own 60 s command timeout. A missing `timeout` binary is not a
    link failure.
 4. Exit 0 → Report: "Linked app <APP_NAME> to repo <BARE_NAME>"
+   (or "already linked" when the output says the app was already linked)
    Timeout, non-zero exit, or any error → stop linking and report as status
    output (never a prompt; do not pause the run):
      "Couldn't link app <APP_NAME> to repo <BARE_NAME> automatically
