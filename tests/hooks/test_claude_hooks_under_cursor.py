@@ -7,16 +7,19 @@ router rule and the stop hook of the one native Cursor install do that work in C
 hook that acted there would add a second scan reminder, a second context block, and a session
 record that says claude-code.
 
-Cursor sets CURSOR_VERSION and CURSOR_PROJECT_DIR for every hook and never CLAUDECODE. Claude Code
-2.1.325 sets CLAUDECODE=1 for every hook, also when it inherited a Cursor variable (a live
-SessionStart hook in a scratch HOME showed both). plugins/hawkscan/hooks/skip-under-cursor ends a
-hook when a Cursor variable is set and CLAUDECODE is not.
+Cursor sets CURSOR_VERSION and CURSOR_PROJECT_DIR for every hook, puts a top-level
+"cursor_version" key in every hook payload, and never sets CLAUDECODE. Claude Code 2.1.325 sets
+CLAUDECODE=1 for every hook and never sends that key. Each host passes on what it inherited:
+Claude Code started from a Cursor hook keeps the Cursor variables, and Cursor started from a
+Claude Code shell keeps CLAUDECODE=1. plugins/hawkscan/hooks/skip-under-cursor ends a hook when
+a Cursor variable is set and CLAUDECODE is not; when both are set, the payload decides.
 
 Each case runs a command of plugins/hawkscan/hooks/hooks.json as both hosts run it: through a
 shell and run-hook.cmd, from a plugin folder with a space in its path, in a git project where the
 hook acts (an uncommitted code change, a commit from this minute), with a new HOME. The
 environment holds no host variable of the calling shell, then the variables of no host, of
-Cursor, of Claude Code, or of both.
+Cursor, of Claude Code, or of both. A Cursor payload keeps the Claude fields, so that the hook
+would act on it if the guard let it run.
 """
 import json
 import os
@@ -34,14 +37,21 @@ HOST_PREFIXES = ("CLAUDE", "CURSOR", "HAWK_", "_STACKHAWK", "CODEX_", "GEMINI_")
 
 CURSOR = {"CURSOR_VERSION": "3.9.16", "CURSOR_PROJECT_DIR": "{project}", "CURSOR_PLUGIN_ROOT": "{plugin}"}
 CLAUDE = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "claude-session"}
+# label -> (variables, whether the payload comes from Cursor)
 ENVIRONMENTS = {
-    "no host": {},
-    "Cursor": CURSOR,
-    "Cursor project folder only": {"CURSOR_PROJECT_DIR": "{project}"},
-    "Claude Code": CLAUDE,
-    "Claude Code with a Cursor variable": {**CURSOR, **CLAUDE},
+    "no host": ({}, False),
+    "Cursor": (CURSOR, True),
+    "Cursor project folder only": ({"CURSOR_PROJECT_DIR": "{project}"}, True),
+    "Cursor started from a Claude Code shell": ({**CURSOR, **CLAUDE}, True),
+    "Claude Code": (CLAUDE, False),
+    "Claude Code with a Cursor variable": ({**CURSOR, **CLAUDE}, False),
 }
-SILENT = ("Cursor", "Cursor project folder only")
+SILENT = ("Cursor", "Cursor project folder only", "Cursor started from a Claude Code shell")
+# The common fields of every Cursor hook payload (Cursor 3.9.16, CLI 2026.11.13), and the
+# Cursor names of the Claude events.
+CURSOR_FIELDS = {"conversation_id": "c1", "generation_id": "g1", "model": "auto", "cursor_version": "3.9.16",
+                 "workspace_roots": [], "user_email": None, "transcript_path": None}
+CURSOR_EVENTS = {"SessionStart": "sessionStart", "PostToolUse": "postToolUse", "Stop": "stop"}
 
 PAYLOADS = {
     "session-start": {"session_id": "s1", "source": "startup", "hook_event_name": "SessionStart"},
@@ -65,6 +75,14 @@ def hook_commands():
                 parts = hook["command"].replace('"', " ").split()
                 found.append((event, parts[1], hook["command"]))
     return found
+
+
+def payload(script, from_cursor, **extra):
+    """The JSON payload of the hook: the Claude Code one, or that one as Cursor sends it."""
+    data = {**PAYLOADS[script], **extra}
+    if from_cursor:
+        data.update(CURSOR_FIELDS, hook_event_name=CURSOR_EVENTS[data["hook_event_name"]])
+    return json.dumps(data)
 
 
 COMMANDS = hook_commands()
@@ -123,10 +141,15 @@ def same_files(written):
     return [re.sub(r"/[0-9]+\.json$", "/PID.json", w.split(os.sep, 1)[1]) for w in written]
 
 
-def run(command, plugin, project, home, variables, stdin):
+def hook_env(plugin, project, home, variables):
     env = {k: v for k, v in os.environ.items() if not k.startswith(HOST_PREFIXES)}
     env.update({"HOME": str(home), "CLAUDE_PLUGIN_ROOT": str(plugin), "CLAUDE_PROJECT_DIR": str(project)})
     env.update({k: v.format(project=project, plugin=plugin) for k, v in variables.items()})
+    return env
+
+
+def run(command, plugin, project, home, variables, stdin):
+    env = hook_env(plugin, project, home, variables)
     command = command.replace("${CLAUDE_PLUGIN_ROOT}", str(plugin))
     before = files_of(project, home)
     proc = subprocess.run(["/bin/sh", "-c", command], cwd=project, env=env, input=stdin, capture_output=True,
@@ -136,14 +159,32 @@ def run(command, plugin, project, home, variables, stdin):
     return proc.returncode, proc.stdout.strip(), proc.stderr, written
 
 
+def write_to_stdin(command, plugin, project, home, variables, data):
+    """Runs the hook and writes data to its stdin by hand, as a hook runner does: (exit code,
+    stdout, whether the write broke). subprocess.run(input=...) hides a broken pipe."""
+    env = hook_env(plugin, project, home, variables)
+    command = command.replace("${CLAUDE_PLUGIN_ROOT}", str(plugin))
+    proc = subprocess.Popen(["/bin/sh", "-c", command], cwd=project, env=env, stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    broken = False
+    try:
+        proc.stdin.write(data.encode())
+        proc.stdin.close()
+    except BrokenPipeError:
+        broken = True
+    stdout = proc.stdout.read().decode().strip()
+    proc.stdout.close()
+    return proc.wait(timeout=60), stdout, broken
+
+
 @pytest.mark.parametrize("event, script, command", COMMANDS, ids=IDS)
 def test_each_claude_hook_does_nothing_under_cursor_and_acts_under_claude_code(
         event, script, command, plugin, project, tmp_path):
     outcomes = {}
-    for label, variables in ENVIRONMENTS.items():
+    for label, (variables, from_cursor) in ENVIRONMENTS.items():
         home = tmp_path / f"home {label}"
         home.mkdir()
-        outcomes[label] = run(command, plugin, project, home, variables, json.dumps(PAYLOADS[script]))
+        outcomes[label] = run(command, plugin, project, home, variables, payload(script, from_cursor))
     baseline = outcomes["no host"]
     assert baseline[0] == 0, baseline[2]
     assert baseline[1] or baseline[3], f"{script} did not act in the test project: {baseline}"
@@ -157,16 +198,34 @@ def test_each_claude_hook_does_nothing_under_cursor_and_acts_under_claude_code(
         assert same_files(written) == same_files(baseline[3]), label
 
 
+@pytest.mark.parametrize("event, script, command", COMMANDS, ids=IDS)
+def test_a_claude_code_payload_that_names_cursor_version_in_a_string_still_runs_the_hook(
+        event, script, command, plugin, project, tmp_path):
+    """Inside a JSON string the quotes are escaped, so only a key of an object counts."""
+    text = payload(script, False, note='{"cursor_version": "1"}, "cursor_version": 2')
+    outcomes = {}
+    for label, variables in (("no host", {}), ("Claude Code with a Cursor variable", {**CURSOR, **CLAUDE})):
+        home = tmp_path / f"home {label}"
+        home.mkdir()
+        outcomes[label] = run(command, plugin, project, home, variables, text)
+    base, other = outcomes["no host"], outcomes["Claude Code with a Cursor variable"]
+    assert base[0] == 0 and (base[1] or base[3]), base
+    assert (other[0], other[1], same_files(other[3])) == (0, base[1], same_files(base[3]))
+
+
+@pytest.mark.parametrize("label", SILENT)
 @pytest.mark.parametrize("script", sorted(PAYLOADS))
-def test_the_guard_reads_a_large_payload_before_it_ends_the_hook(script, plugin, project, tmp_path):
-    """Cursor writes the payload to stdin. A hook that exits without reading it could make that
-    write fail; the guard reads it first."""
+def test_the_guard_reads_a_large_payload_before_it_ends_the_hook(script, label, plugin, project, tmp_path):
+    """Cursor writes the payload to stdin. A hook that exits without reading it breaks that
+    write (EPIPE); the guard reads it first. The payload is compact, as Cursor writes it."""
     home = tmp_path / "home"
     home.mkdir()
-    payload = json.dumps({**PAYLOADS[script], "padding": "x" * 2_000_000})
-    code, stdout, stderr, written = run(f'"${{CLAUDE_PLUGIN_ROOT}}/hooks/run-hook.cmd" {script}', plugin, project,
-                                        home, CURSOR, payload)
-    assert (code, stdout, written) == (0, "", []), stderr
+    data = {**json.loads(payload(script, True)), "padding": "x" * 2_000_000}
+    code, stdout, broken = write_to_stdin(f'"${{CLAUDE_PLUGIN_ROOT}}/hooks/run-hook.cmd" {script}', plugin,
+                                          project, home, ENVIRONMENTS[label][0],
+                                          json.dumps(data, separators=(",", ":")))
+    assert (code, stdout, broken) == (0, "", False)
+    assert files_of(home) == {}
 
 
 def test_every_hook_runs_through_the_wrapper_and_every_script_sources_the_guard_first():
