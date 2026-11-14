@@ -142,9 +142,10 @@ for part in .cursor-plugin rules hooks; do
 done
 
 # 9. The Cursor-only plugin carries the same four skills, byte for byte, and no symlink.
-# listing <dir> <top-level file to leave out>: the checksum of every file, by relative path.
+# listing <dir> [top-level file to leave out, as ./NAME]: the checksum of every file, by relative path.
 listing() {
-  ( cd "$1" && find . -type f ! -path "${2:-//}" | LC_ALL=C sort | while IFS= read -r f; do
+  ( cd "$1" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do
+      [ -n "${2:-}" ] && [ "$f" = "$2" ] && continue
       printf '%s  %s\n' "$(cksum < "$f")" "$f"
     done )
 }
