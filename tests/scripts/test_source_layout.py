@@ -187,15 +187,22 @@ def test_a_cursor_file_in_the_claude_wingman_fails_the_layout_check(scratch, par
     assert any(f"plugins/wingman/{part.split('/')[0]}" in e and "must carry no Cursor file" in e for e in errors), errors
 
 
-def test_listing_the_cursor_only_wingman_in_the_claude_catalog_fails(scratch):
+@pytest.mark.parametrize("with_claude_manifest", [False, True], ids=["as-is", "with-a-claude-manifest"])
+def test_listing_the_cursor_only_wingman_in_the_claude_catalog_fails(scratch, with_claude_manifest):
     path = scratch / ".claude-plugin" / "marketplace.json"
     data = json.loads(path.read_text())
     for entry in data["plugins"]:
         if entry["name"] == "wingman":
             entry["source"] = f"./{CURSOR_WINGMAN}"
     path.write_text(json.dumps(data, indent=2))
+    if with_claude_manifest:
+        shutil.copytree(scratch / "plugins" / "wingman" / ".claude-plugin", scratch / CURSOR_WINGMAN / ".claude-plugin")
     errors = LAYOUT.check(str(scratch), require_installers=False)
-    assert any(f"missing {CURSOR_WINGMAN}/.claude-plugin/plugin.json" in e for e in errors), errors
+    if with_claude_manifest:
+        assert any("Claude Code install of wingman" in e and "2 router rules" in e for e in errors), errors
+        assert any("Claude Code install of wingman" in e and "2 stop hooks" in e for e in errors), errors
+    else:
+        assert any(f"missing {CURSOR_WINGMAN}/.claude-plugin/plugin.json" in e for e in errors), errors
 
 
 # ─── A direct install from the source loads one router rule and one stop hook ───
@@ -263,13 +270,21 @@ def test_the_claude_wingman_has_no_hooks_and_no_skills_folder(source):
 # ─── Line endings ───
 
 def lf_paths():
-    """The generated copies, the Cursor hook sources they copy, and the Claude hook scripts."""
-    found = []
+    """The generated files (the Cursor adapter and the bundled skill copies), the Cursor hook
+    sources they copy, and every Claude hook script but the .cmd wrapper."""
+    found = [".cursor-plugin/marketplace.json"]
     for top in ("cursor-plugins", "plugins/wingman/copilot-skills", "plugins/hawkscan/hooks/cursor"):
         for dirpath, _, names in os.walk(os.path.join(REPO_ROOT, top)):
             found += [os.path.relpath(os.path.join(dirpath, n), REPO_ROOT) for n in names]
-    return sorted(found) + [f"plugins/hawkscan/hooks/{n}" for n in ("post-commit-scan", "session-start",
-                                                                       "skill-activated", "stop")]
+    for plugin in sorted(os.listdir(os.path.join(REPO_ROOT, "plugins"))):
+        base = os.path.join("plugins", plugin)
+        if os.path.isfile(os.path.join(REPO_ROOT, base, ".cursor-plugin", "plugin.json")):
+            found.append(f"{base}/.cursor-plugin/plugin.json")
+        hooks = os.path.join(REPO_ROOT, base, "hooks")
+        if os.path.isdir(hooks):
+            found += [f"{base}/hooks/{n}" for n in sorted(os.listdir(hooks))
+                      if os.path.isfile(os.path.join(hooks, n)) and not n.endswith(".cmd")]
+    return sorted(found)
 
 
 def eol_attributes(paths):
@@ -282,7 +297,8 @@ def test_generated_copies_and_hook_scripts_stay_lf_in_every_checkout():
     """generate-cursor-adapter.py --check compares the copies byte for byte with their sources,
     and bash cannot run a CRLF hook script, so .gitattributes forces LF for them."""
     paths = lf_paths()
-    assert len(paths) > 40
+    assert len(paths) > 50
+    assert "plugins/hawkscan/hooks/session-start" in paths and "plugins/api/.cursor-plugin/plugin.json" in paths
     attributes = eol_attributes(paths)
     assert {p: v for p, v in attributes.items() if v != "lf"} == {}
     for rel in paths:

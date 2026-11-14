@@ -19,7 +19,7 @@ cursor-plugins/wingman, which no Claude or Codex catalog may list. Its skills/ h
 of the four bundled skills: scripts/generate-wingman-skills.sh writes them in the same run as
 plugins/wingman/copilot-skills/, and this script checks that the two are identical. This
 script owns every other file under cursor-plugins/. --check fails on a missing, changed
-(CRLF line endings included), stale or not executable file and on a symlink there; a write
+(CRLF line endings included), stale or wrongly executable file and on a symlink there; a write
 removes stale files. .gitattributes keeps these copies and their sources LF in every checkout.
 
 The hand-written sources are plugins/hawkscan/rules/*.mdc and plugins/hawkscan/hooks/cursor/.
@@ -424,8 +424,8 @@ def drift(tree):
             crlf = current.replace(b"\r\n", b"\n") == data
             changed.append(f"{rel} ({'CRLF line endings' if crlf else 'content'})")
             continue
-        if executable and not is_executable(full):
-            changed.append(f"{rel} (not executable)")
+        if executable != is_executable(full):
+            changed.append(f"{rel} ({'not executable' if executable else 'executable'})")
     changed += [f"{rel} (stale)" for rel in stale_files(tree)]
     return changed
 
@@ -453,8 +453,7 @@ def write(tree):
             with open(full, "wb") as f:
                 f.write(data)
             print(f"Generated: {rel}")
-        if executable:
-            os.chmod(full, 0o755)
+        os.chmod(full, 0o755 if executable else 0o644)
     remove_empty_folders(tree, CURSOR_ONLY_ROOT)
 
 

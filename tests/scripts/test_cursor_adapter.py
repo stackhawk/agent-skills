@@ -308,6 +308,17 @@ def test_check_rejects_a_hook_that_is_not_executable(tmp_path):
     assert code != 0 and f"{CURSOR_WINGMAN}/hooks/cursor/stop.sh (not executable)" in output
 
 
+def test_check_rejects_an_executable_rule_and_a_write_fixes_it(tmp_path):
+    root = copy_repo(str(tmp_path / "repo"))
+    rule = os.path.join(root, CURSOR_WINGMAN, "rules/stackhawk.mdc")
+    os.chmod(rule, 0o755)
+    code, output = check_output(root)
+    assert code != 0 and f"{CURSOR_WINGMAN}/rules/stackhawk.mdc (executable)" in output
+    assert run_generator(root=root).returncode == 0
+    assert not os.access(rule, os.X_OK)
+    assert check_output(root)[0] == 0
+
+
 @pytest.mark.parametrize("part, reported", [
     (".cursor-plugin/plugin.json", ".cursor-plugin"),
     ("rules/stackhawk.mdc", "rules"),

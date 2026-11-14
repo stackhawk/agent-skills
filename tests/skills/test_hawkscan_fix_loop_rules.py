@@ -20,6 +20,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 SKILL_DIRS = [
     "plugins/hawkscan/skills/hawkscan",
     "plugins/wingman/copilot-skills/hawkscan",
+    "cursor-plugins/wingman/skills/hawkscan",
 ]
 CURSOR = "cursor/.cursor/rules"
 

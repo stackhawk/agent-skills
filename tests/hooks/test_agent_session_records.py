@@ -27,6 +27,7 @@ SKILL_ACTIVATED = os.path.join(HOOKS, "skill-activated")
 DETECTION_COPIES = [
     "plugins/hawkscan/skills/hawkscan/references/agent-detection.md",
     "plugins/wingman/copilot-skills/hawkscan/references/agent-detection.md",
+    "cursor-plugins/wingman/skills/hawkscan/references/agent-detection.md",
 ]
 
 NO_JQ_TOOLS = [

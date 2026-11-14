@@ -174,6 +174,8 @@ Installs `hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, and 
 
 Cursor reads the five skills as Agent Skills and loads a skill body only when the skill applies. StackHawk adds three small Cursor-only parts: an always-applied router rule (about 1.2 KB) that names the skills and when each applies, a rule that applies while `stackhawk.yml` is in context, and a stop hook. When a turn ends normally after a code change with no scan, the stop hook asks the agent to run the hawkscan skill, once per conversation. It stays silent after you press stop, after an error, and after its own follow-up turn.
 
+The marketplace gets its Cursor catalog and `install/` from the first release that ships them ([RELEASING.md](RELEASING.md#cursor-distribution-prerequisites)). Until then, use the [development build](#development-builds-from-this-repository).
+
 **Project install** (recommended; Cursor Cloud Agents and automations read only the repository's `.cursor/`). Run the released installer from a clone of the marketplace:
 
 ```bash
@@ -193,8 +195,6 @@ This installs the skills into `.cursor/skills/`, `stackhawk.mdc` and `stackhawk-
 **User-level install** (every project on this machine): give your home directory as the target (`--target ~`; on Windows, leave out `-Target`). This installs the skills into `~/.cursor/skills/` and the stop hook into `~/.cursor/hooks.json`. Cursor has no file-based user rules, so for the router rule use a project install.
 
 **Team marketplace:** a Cursor team admin can import `stackhawk/agent-skills-marketplace` as a team marketplace. Its Cursor catalog lists the six plugins; `wingman` installs from `bundles/wingman/`, which bundles its four skills. Enable `wingman` or the separate plugins, not both: `hawkscan` and `wingman` each carry the router rule and the stop hook. Use one channel per project: a project install, a Cursor plugin, and Claude Code plugins that the Cursor app imports each bring their own router rule and stop hook. In a headless run (`-p`), the Cursor CLI (2026.11.11) loads a plugin's skills but does not give its rules to the agent, and it runs stop hooks only in interactive sessions. For the router rule in headless runs, use a project install.
-
-The marketplace gets its Cursor catalog and `install/` from the first release that ships them ([RELEASING.md](RELEASING.md#cursor-distribution-prerequisites)). Until then, use the [development build](#development-builds-from-this-repository).
 
 The stop hook is a bash script. On Windows, Cursor needs bash (for example Git for Windows) to run it. The generated rules in `cursor/.cursor/rules/` are deprecated: the installers no longer copy them, and `cursor/` will be removed in the next major release.
 

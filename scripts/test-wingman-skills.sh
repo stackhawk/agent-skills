@@ -53,12 +53,13 @@ if find "$DEST" -type l | grep -q .; then
 fi
 
 # 5. Copied versions match the source skills (proves generation ran after bump-version.sh).
+# The reads drop CR: the source skills can be CRLF in a Windows checkout, the copies are LF.
 # All source skills carry one version (scripts/check-version.sh), so hawkscan's is the reference.
-expected_version="$(head -20 plugins/hawkscan/skills/hawkscan/SKILL.md | grep '^version:' | sed 's/version: //')"
+expected_version="$(head -20 plugins/hawkscan/skills/hawkscan/SKILL.md | tr -d '\r' | grep '^version:' | sed 's/version: //')"
 for name in "${EXPECTED[@]}"; do
   f="${DEST}/${name}/SKILL.md"
   [ -f "$f" ] || continue
-  actual="$(head -20 "$f" | grep '^version:' | sed 's/version: //' || true)"
+  actual="$(head -20 "$f" | tr -d '\r' | grep '^version:' | sed 's/version: //' || true)"
   if [ -z "$actual" ]; then
     echo "ERROR: $f is missing a 'version:' line in frontmatter"
     errors=$((errors + 1))
@@ -75,7 +76,7 @@ done
 for name in "${EXPECTED[@]}"; do
   f="${DEST}/${name}/SKILL.md"
   [ -f "$f" ] || continue
-  actual_name="$(grep -m1 '^name:' "$f" | sed 's/^name: *//' || true)"
+  actual_name="$(grep -m1 '^name:' "$f" | tr -d '\r' | sed 's/^name: *//' || true)"
   if [ -z "$actual_name" ]; then
     echo "ERROR: $f is missing a 'name:' line in frontmatter"
     errors=$((errors + 1))
@@ -87,7 +88,7 @@ done
 
 for pair in "plugins/api/skills/api:api" "plugins/optimize/skills/optimize:optimize"; do
   src="${pair%%:*}"; want="${pair##*:}"
-  got="$(grep -m1 '^name:' "${src}/SKILL.md" | sed 's/^name: *//' || true)"
+  got="$(grep -m1 '^name:' "${src}/SKILL.md" | tr -d '\r' | sed 's/^name: *//' || true)"
   if [ "$got" != "$want" ]; then
     echo "ERROR: ${src}/SKILL.md has name '$got', expected '$want' — source skills must NOT be renamed (breaking; separate major release)"
     errors=$((errors + 1))
@@ -141,13 +142,19 @@ for part in .cursor-plugin rules hooks; do
 done
 
 # 9. The Cursor-only plugin carries the same four skills, byte for byte, and no symlink.
+# listing <dir> <top-level file to leave out>: the checksum of every file, by relative path.
+listing() {
+  ( cd "$1" && find . -type f ! -path "${2:-//}" | LC_ALL=C sort | while IFS= read -r f; do
+      printf '%s  %s\n' "$(cksum < "$f")" "$f"
+    done )
+}
 CURSOR_DEST="cursor-plugins/wingman/skills"
 if [ ! -d "$CURSOR_DEST" ]; then
   echo "ERROR: missing ${CURSOR_DEST} (run generate-wingman-skills.sh)"
   errors=$((errors + 1))
-elif ! diff -r -x README.md "$DEST" "$CURSOR_DEST" > /dev/null || [ -e "${CURSOR_DEST}/README.md" ]; then
+elif [ "$(listing "$DEST" ./README.md)" != "$(listing "$CURSOR_DEST" "")" ]; then
   echo "ERROR: ${CURSOR_DEST} differs from ${DEST} (run generate-wingman-skills.sh)"
-  diff -r -x README.md "$DEST" "$CURSOR_DEST" | head -20 || true
+  diff <(listing "$DEST" ./README.md) <(listing "$CURSOR_DEST" "") | head -20 || true
   errors=$((errors + 1))
 elif find "$CURSOR_DEST" -type l | grep -q .; then
   echo "ERROR: symlinks found in ${CURSOR_DEST} - output must be real files"
