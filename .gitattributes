@@ -8,6 +8,9 @@ plugins/*/hooks/* text eol=lf
 plugins/*/hooks/*.cmd !text !eol
 # install.sh reads the legacy rule names line by line; a CR would end up in each name.
 scripts/cursor-legacy-rules.txt text eol=lf
+# The scripts rewrite the JSON manifests with LF (bump-version.sh stamps them, the generators
+# write them), so a CRLF checkout would show each run as a change to every manifest.
+*.json text eol=lf
 # Generated files are compared byte for byte with what their generators write
 # (scripts/generate-cursor-adapter.py --check, scripts/test-wingman-skills.sh), so they, the
 # skills and rules they copy, and the Cursor hook sources stay LF in every checkout, as the
@@ -17,5 +20,3 @@ plugins/*/rules/** text eol=lf
 cursor-plugins/** text eol=lf
 plugins/wingman/copilot-skills/** text eol=lf
 plugins/hawkscan/hooks/cursor/** text eol=lf
-plugins/*/.cursor-plugin/plugin.json text eol=lf
-.cursor-plugin/marketplace.json text eol=lf

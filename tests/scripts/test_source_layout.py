@@ -272,8 +272,11 @@ def test_the_claude_wingman_has_no_hooks_and_no_skills_folder(source):
 def lf_paths():
     """The generated files (the Cursor adapter and the bundled skill copies), the skills, rules
     and Cursor hook sources they copy, every Claude hook script but the .cmd wrapper, and the
-    legacy rule list that install.sh reads line by line."""
-    found = [".cursor-plugin/marketplace.json", "scripts/cursor-legacy-rules.txt"]
+    legacy rule list that install.sh reads line by line, and every JSON file, which the scripts
+    stamp and write with LF."""
+    found = ["scripts/cursor-legacy-rules.txt"]
+    found += subprocess.run(["git", "-C", REPO_ROOT, "ls-files", "*.json"], capture_output=True, text=True,
+                            check=True).stdout.split()
     tops = ["cursor-plugins", "plugins/wingman/copilot-skills", "plugins/hawkscan/hooks/cursor"]
     for plugin in sorted(os.listdir(os.path.join(REPO_ROOT, "plugins"))):
         tops += [f"plugins/{plugin}/{part}" for part in ("skills", "rules")
@@ -289,7 +292,7 @@ def lf_paths():
         if os.path.isdir(hooks):
             found += [f"{base}/hooks/{n}" for n in sorted(os.listdir(hooks))
                       if os.path.isfile(os.path.join(hooks, n)) and not n.endswith(".cmd")]
-    return sorted(found)
+    return sorted(set(found))
 
 
 def eol_attributes(paths, attribute="eol"):
@@ -305,7 +308,8 @@ def test_generated_copies_and_hook_scripts_stay_lf_in_every_checkout():
     assert len(paths) > 50
     for expected in ("plugins/hawkscan/hooks/session-start", "plugins/api/.cursor-plugin/plugin.json",
                      "plugins/hawkscan/rules/stackhawk.mdc", "plugins/api/skills/api/SKILL.md",
-                     "scripts/cursor-legacy-rules.txt"):
+                     "scripts/cursor-legacy-rules.txt", "plugins/wingman/.codex-plugin/plugin.json",
+                     "gemini-extension.json", ".cursor-plugin/marketplace.json"):
         assert expected in paths
     attributes = eol_attributes(paths)
     assert {p: v for p, v in attributes.items() if v != "lf"} == {}
