@@ -1,14 +1,19 @@
 # Shell scripts run under bash, also on Windows (Git for Windows); CRLF line endings break
 # them ("set: pipefail: invalid option name"). The installers copy stop.sh as checked out.
 *.sh text eol=lf
-# The extensionless Claude hook scripts are bash too. The .cmd wrapper keeps the line endings
-# of the checkout: cmd.exe can misread a batch file with LF line endings, and bash reads it
-# only on systems that check out LF.
+# The extensionless Claude hook scripts are bash too. The .cmd wrapper keeps git's default
+# line endings (core.autocrlf decides): cmd.exe can misread a batch file with LF line endings,
+# and bash reads it only on systems that check out LF.
 plugins/*/hooks/* text eol=lf
-plugins/*/hooks/*.cmd !eol
+plugins/*/hooks/*.cmd !text !eol
+# install.sh reads the legacy rule names line by line; a CR would end up in each name.
+scripts/cursor-legacy-rules.txt text eol=lf
 # Generated files are compared byte for byte with what their generators write
-# (scripts/generate-cursor-adapter.py --check, scripts/test-wingman-skills.sh), so they and the
-# Cursor hook sources stay LF in every checkout, as the export (git archive) reads them.
+# (scripts/generate-cursor-adapter.py --check, scripts/test-wingman-skills.sh), so they, the
+# skills and rules they copy, and the Cursor hook sources stay LF in every checkout, as the
+# export (git archive) reads them.
+plugins/*/skills/** text eol=lf
+plugins/*/rules/** text eol=lf
 cursor-plugins/** text eol=lf
 plugins/wingman/copilot-skills/** text eol=lf
 plugins/hawkscan/hooks/cursor/** text eol=lf

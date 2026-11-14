@@ -270,10 +270,15 @@ def test_the_claude_wingman_has_no_hooks_and_no_skills_folder(source):
 # ─── Line endings ───
 
 def lf_paths():
-    """The generated files (the Cursor adapter and the bundled skill copies), the Cursor hook
-    sources they copy, and every Claude hook script but the .cmd wrapper."""
-    found = [".cursor-plugin/marketplace.json"]
-    for top in ("cursor-plugins", "plugins/wingman/copilot-skills", "plugins/hawkscan/hooks/cursor"):
+    """The generated files (the Cursor adapter and the bundled skill copies), the skills, rules
+    and Cursor hook sources they copy, every Claude hook script but the .cmd wrapper, and the
+    legacy rule list that install.sh reads line by line."""
+    found = [".cursor-plugin/marketplace.json", "scripts/cursor-legacy-rules.txt"]
+    tops = ["cursor-plugins", "plugins/wingman/copilot-skills", "plugins/hawkscan/hooks/cursor"]
+    for plugin in sorted(os.listdir(os.path.join(REPO_ROOT, "plugins"))):
+        tops += [f"plugins/{plugin}/{part}" for part in ("skills", "rules")
+                 if os.path.isdir(os.path.join(REPO_ROOT, "plugins", plugin, part))]
+    for top in tops:
         for dirpath, _, names in os.walk(os.path.join(REPO_ROOT, top)):
             found += [os.path.relpath(os.path.join(dirpath, n), REPO_ROOT) for n in names]
     for plugin in sorted(os.listdir(os.path.join(REPO_ROOT, "plugins"))):
@@ -287,8 +292,8 @@ def lf_paths():
     return sorted(found)
 
 
-def eol_attributes(paths):
-    proc = subprocess.run(["git", "-C", REPO_ROOT, "check-attr", "eol", "--stdin"], input="\n".join(paths),
+def eol_attributes(paths, attribute="eol"):
+    proc = subprocess.run(["git", "-C", REPO_ROOT, "check-attr", attribute, "--stdin"], input="\n".join(paths),
                           capture_output=True, text=True, check=True)
     return {line.split(": ")[0]: line.split(": ")[2] for line in proc.stdout.splitlines()}
 
@@ -298,7 +303,10 @@ def test_generated_copies_and_hook_scripts_stay_lf_in_every_checkout():
     and bash cannot run a CRLF hook script, so .gitattributes forces LF for them."""
     paths = lf_paths()
     assert len(paths) > 50
-    assert "plugins/hawkscan/hooks/session-start" in paths and "plugins/api/.cursor-plugin/plugin.json" in paths
+    for expected in ("plugins/hawkscan/hooks/session-start", "plugins/api/.cursor-plugin/plugin.json",
+                     "plugins/hawkscan/rules/stackhawk.mdc", "plugins/api/skills/api/SKILL.md",
+                     "scripts/cursor-legacy-rules.txt"):
+        assert expected in paths
     attributes = eol_attributes(paths)
     assert {p: v for p, v in attributes.items() if v != "lf"} == {}
     for rel in paths:
@@ -307,8 +315,11 @@ def test_generated_copies_and_hook_scripts_stay_lf_in_every_checkout():
 
 
 def test_the_cmd_wrapper_keeps_the_line_endings_of_the_checkout():
-    """cmd.exe can misread a batch file with LF line endings."""
-    assert eol_attributes(["plugins/hawkscan/hooks/run-hook.cmd"]) == {"plugins/hawkscan/hooks/run-hook.cmd": "unspecified"}
+    """cmd.exe can misread a batch file with LF line endings, so git's default (core.autocrlf)
+    decides, as it did before .gitattributes named the hook scripts."""
+    cmd = "plugins/hawkscan/hooks/run-hook.cmd"
+    assert eol_attributes([cmd]) == {cmd: "unspecified"}
+    assert eol_attributes([cmd], "text") == {cmd: "unspecified"}
 
 
 # ─── The installers resolve the split layout ───
@@ -383,6 +394,24 @@ def test_the_installers_never_read_the_cursor_only_folder(kind, source, scratch,
     proc = run_installer(kind, scratch, project, home)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert installed(project) == installed(expected_project)
+
+
+@pytest.mark.parametrize("kind", INSTALLERS)
+def test_a_crlf_legacy_rule_list_still_removes_the_legacy_rules(kind, scratch, home, tmp_path):
+    """A checkout without .gitattributes (Git for Windows sets core.autocrlf=true) gives the
+    list CRLF line endings; the installers still match each rule name."""
+    legacy = scratch / "scripts" / "cursor-legacy-rules.txt"
+    names = [n for n in legacy.read_text().splitlines() if n and not n.startswith("#")]
+    legacy.write_bytes(legacy.read_bytes().replace(b"\n", b"\r\n"))
+    project = tmp_path / "project"
+    (project / ".cursor" / "rules").mkdir(parents=True)
+    for name in names:
+        (project / ".cursor" / "rules" / name).write_text("---\nalwaysApply: false\n---\nold\n")
+    (project / ".cursor" / "rules" / "my-team.mdc").write_text("---\nalwaysApply: false\n---\nmine\n")
+    proc = run_installer(kind, scratch, project, home)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert len(names) > 20
+    assert sorted(os.listdir(project / ".cursor" / "rules")) == ["my-team.mdc", "stackhawk-config.mdc", "stackhawk.mdc"]
 
 
 @pytest.mark.parametrize("kind", INSTALLERS)

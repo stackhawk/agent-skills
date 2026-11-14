@@ -319,6 +319,18 @@ def test_check_rejects_an_executable_rule_and_a_write_fixes_it(tmp_path):
     assert check_output(root)[0] == 0
 
 
+def test_check_follows_git_when_it_ignores_the_executable_bit(tmp_path):
+    """With core.fileMode=false (FAT, /mnt/c: every file shows as executable) git ignores the
+    bit, so --check does too; the default config still reports it (the test above)."""
+    root = copy_repo(str(tmp_path / "repo"))
+    subprocess.run(["git", "init", "-q", root], check=True, capture_output=True)
+    subprocess.run(["git", "-C", root, "config", "core.fileMode", "false"], check=True, capture_output=True)
+    for rel in ("rules/stackhawk.mdc", ".cursor-plugin/plugin.json", "README.md"):
+        os.chmod(os.path.join(root, CURSOR_WINGMAN, rel), 0o755)
+    code, output = check_output(root)
+    assert code == 0, output
+
+
 @pytest.mark.parametrize("part, reported", [
     (".cursor-plugin/plugin.json", ".cursor-plugin"),
     ("rules/stackhawk.mdc", "rules"),

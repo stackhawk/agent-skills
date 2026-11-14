@@ -6,6 +6,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 DEST="plugins/wingman/copilot-skills"
+CURSOR_DEST="cursor-plugins/wingman/skills"
 EXPECTED=(hawkscan stackhawk-api stackhawk-data-seed stackhawk-optimize)
 errors=0
 
@@ -52,14 +53,23 @@ if find "$DEST" -type l | grep -q .; then
   errors=$((errors + 1))
 fi
 
+# 4b. The copies are LF, as the generators write them and git stores them: a CR means a copy
+# was made from CRLF sources (a checkout without .gitattributes) and differs from the commit.
+crlf_copies="$(LC_ALL=C grep -rl $'\r' "$DEST" "$CURSOR_DEST" 2>/dev/null || true)"
+if [ -n "$crlf_copies" ]; then
+  echo "ERROR: CR line endings in the bundled skill copies (run generate-wingman-skills.sh in an LF checkout):"
+  printf '%s\n' "$crlf_copies" | head -10
+  errors=$((errors + 1))
+fi
+
 # 5. Copied versions match the source skills (proves generation ran after bump-version.sh).
-# The reads drop CR: the source skills can be CRLF in a Windows checkout, the copies are LF.
+# The source read drops CR, for a checkout without .gitattributes; check 4b keeps the copies LF.
 # All source skills carry one version (scripts/check-version.sh), so hawkscan's is the reference.
 expected_version="$(head -20 plugins/hawkscan/skills/hawkscan/SKILL.md | tr -d '\r' | grep '^version:' | sed 's/version: //')"
 for name in "${EXPECTED[@]}"; do
   f="${DEST}/${name}/SKILL.md"
   [ -f "$f" ] || continue
-  actual="$(head -20 "$f" | tr -d '\r' | grep '^version:' | sed 's/version: //' || true)"
+  actual="$(head -20 "$f" | grep '^version:' | sed 's/version: //' || true)"
   if [ -z "$actual" ]; then
     echo "ERROR: $f is missing a 'version:' line in frontmatter"
     errors=$((errors + 1))
@@ -76,7 +86,7 @@ done
 for name in "${EXPECTED[@]}"; do
   f="${DEST}/${name}/SKILL.md"
   [ -f "$f" ] || continue
-  actual_name="$(grep -m1 '^name:' "$f" | tr -d '\r' | sed 's/^name: *//' || true)"
+  actual_name="$(grep -m1 '^name:' "$f" | sed 's/^name: *//' || true)"
   if [ -z "$actual_name" ]; then
     echo "ERROR: $f is missing a 'name:' line in frontmatter"
     errors=$((errors + 1))
@@ -142,14 +152,14 @@ for part in .cursor-plugin rules hooks; do
 done
 
 # 9. The Cursor-only plugin carries the same four skills, byte for byte, and no symlink.
-# listing <dir> [top-level file to leave out, as ./NAME]: the checksum of every file, by relative path.
+# listing <dir> [top-level file to leave out, as ./NAME]: every folder, and the checksum of
+# every file, by relative path.
 listing() {
-  ( cd "$1" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do
+  ( cd "$1" && find . \( -type f -o -type d \) | LC_ALL=C sort | while IFS= read -r f; do
       [ -n "${2:-}" ] && [ "$f" = "$2" ] && continue
-      printf '%s  %s\n' "$(cksum < "$f")" "$f"
+      if [ -d "$f" ]; then printf 'folder  %s\n' "$f"; else printf '%s  %s\n' "$(cksum < "$f")" "$f"; fi
     done )
 }
-CURSOR_DEST="cursor-plugins/wingman/skills"
 if [ ! -d "$CURSOR_DEST" ]; then
   echo "ERROR: missing ${CURSOR_DEST} (run generate-wingman-skills.sh)"
   errors=$((errors + 1))

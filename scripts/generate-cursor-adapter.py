@@ -21,6 +21,8 @@ plugins/wingman/copilot-skills/, and this script checks that the two are identic
 script owns every other file under cursor-plugins/. --check fails on a missing, changed
 (CRLF line endings included), stale or wrongly executable file and on a symlink there; a write
 removes stale files. .gitattributes keeps these copies and their sources LF in every checkout.
+The executable bit is compared only where git tracks it: with core.fileMode=false (a FAT or
+/mnt/c checkout, where every file shows as executable) git ignores it, and so does --check.
 
 The hand-written sources are plugins/hawkscan/rules/*.mdc and plugins/hawkscan/hooks/cursor/.
 The script also enforces the rule budgets: every rule is always-applied or glob-scoped,
@@ -41,6 +43,7 @@ import json
 import os
 import re
 import stat
+import subprocess
 import sys
 
 ROUTER_MAX_BYTES = 2000
@@ -128,6 +131,7 @@ class Tree:
         self.root = root
         self.outputs = {}  # relative path -> (content bytes, executable)
         self.errors = []
+        self.modes_tracked = git_tracks_modes(root)
 
     def path(self, rel):
         return os.path.join(self.root, rel)
@@ -181,6 +185,16 @@ def files_under(tree, rel_dir):
 
 def is_executable(full):
     return bool(os.stat(full).st_mode & stat.S_IXUSR)
+
+
+def git_tracks_modes(root):
+    """False when git ignores the executable bit for this root (core.fileMode=false)."""
+    try:
+        result = subprocess.run(["git", "-C", root, "config", "--bool", "core.fileMode"],
+                                capture_output=True, text=True, check=False)
+    except OSError:
+        return True
+    return result.stdout.strip() != "false"
 
 
 # ─── Manifests and the catalog ───
@@ -424,7 +438,7 @@ def drift(tree):
             crlf = current.replace(b"\r\n", b"\n") == data
             changed.append(f"{rel} ({'CRLF line endings' if crlf else 'content'})")
             continue
-        if executable != is_executable(full):
+        if tree.modes_tracked and executable != is_executable(full):
             changed.append(f"{rel} ({'not executable' if executable else 'executable'})")
     changed += [f"{rel} (stale)" for rel in stale_files(tree)]
     return changed

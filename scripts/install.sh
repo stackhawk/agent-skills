@@ -197,6 +197,7 @@ cursor_remove_legacy_rules() {
   local rules_dir="$1" removed=0 name
   [ -d "$rules_dir" ] || { echo 0; return; }
   while IFS= read -r name; do
+    name="${name%$'\r'}"  # a CRLF copy of the list (a Windows checkout without .gitattributes)
     case "$name" in ''|'#'*) continue ;; esac
     if [ -f "${rules_dir}/${name}" ]; then
       rm -f "${rules_dir}/${name}"
