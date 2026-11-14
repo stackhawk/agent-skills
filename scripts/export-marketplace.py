@@ -123,7 +123,7 @@ def dump_json(data):
 
 
 def git(repo, *args):
-    proc = subprocess.run(["git", "-C", repo, *args], capture_output=True)
+    proc = subprocess.run(["git", "-C", repo, *args], capture_output=True, check=False)
     if proc.returncode != 0:
         raise ExportError(f"git {' '.join(args)}: {proc.stderr.decode(errors='replace').strip()}")
     return proc.stdout
@@ -133,7 +133,7 @@ def git(repo, *args):
 
 def safe_member_path(name):
     path = posixpath.normpath(name)
-    if path.startswith("/") or path == ".." or path.startswith("../"):
+    if path.startswith(("/", "../")) or path == "..":
         raise ExportError(f"unsafe path in the archive: {name}")
     return path
 
@@ -179,7 +179,7 @@ def run_steps(tree, steps, version=None):
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     for step in steps:
         command = [part.format(version=version) for part in step]
-        proc = subprocess.run(command, cwd=tree, env=env, capture_output=True, text=True)
+        proc = subprocess.run(command, cwd=tree, env=env, capture_output=True, text=True, check=False)
         if proc.returncode != 0:
             raise ExportError(f"{' '.join(step[1:])} failed in the exported commit:\n{proc.stdout}{proc.stderr}")
 

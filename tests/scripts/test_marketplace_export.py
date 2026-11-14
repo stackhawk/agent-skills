@@ -86,6 +86,7 @@ def run_export(source, dest, version=VERSION, ref="HEAD", check=True):
          "--dest", str(dest)],
         capture_output=True, text=True, timeout=300,
         env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        check=False,
     )
     if check:
         assert proc.returncode == 0, proc.stdout + proc.stderr
@@ -182,7 +183,7 @@ def test_bundle_carries_copilot_codex_and_cursor_files(exported):
                 ".cursor-plugin/plugin.json", "rules/stackhawk.mdc", "rules/stackhawk-config.mdc",
                 "hooks/cursor/plugin-hooks.json", "hooks/cursor/stop.sh"):
         assert (bundle / rel).is_file(), rel
-    names = {re.search(r"^name:\s*(\S+)", p.read_text(), re.M).group(1)
+    names = {re.search(r"^name:\s*(\S+)", p.read_text(), re.MULTILINE).group(1)
              for p in (bundle / "copilot-skills").glob("*/SKILL.md")}
     assert names == BUNDLED_SKILLS
     assert not (bundle / "skills").exists()
@@ -267,7 +268,7 @@ def test_every_cursor_manifest_and_skill_carries_the_version(exported):
     for path in manifests:
         assert json.loads(path.read_text())["version"] == VERSION, path
     for path in exported.glob("**/SKILL.md"):
-        assert re.search(rf"^version: {re.escape(VERSION)}$", path.read_text(), re.M), path
+        assert re.search(rf"^version: {re.escape(VERSION)}$", path.read_text(), re.MULTILINE), path
 
 
 def test_export_is_deterministic(exported, source_repo, tmp_path):
@@ -487,7 +488,7 @@ def test_a_snapshot_the_installers_cannot_use_fails_only_when_they_run(scratch):
 def test_the_check_command_line_reports_and_fails(scratch):
     (scratch / "install" / "install.sh").unlink()
     proc = subprocess.run(["python3", CHECK, "--version", VERSION, str(scratch)], capture_output=True, text=True,
-                          env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+                          env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}, check=False)
     assert proc.returncode == 1
     assert "install/install.sh" in proc.stderr
 
@@ -682,7 +683,7 @@ def run_installer(kind, root, platform, target, home):
     else:
         cmd = ["pwsh", "-NoProfile", "-NonInteractive", "-File", str(root / "install.ps1"),
                "-Platform", platform, "-Target", str(target)]
-    return subprocess.run(cmd, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+    return subprocess.run(cmd, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120, check=False)
 
 
 def normalized_install(root):
@@ -709,7 +710,7 @@ def test_snapshot_install_equals_the_clone_install(kind, exported, source_repo, 
     snapshot = normalized_install(from_snapshot)
     assert snapshot == normalized_install(from_clone)
     skill = (from_snapshot / ".cursor" / "skills" / "api" / "SKILL.md").read_text()
-    assert re.search(rf"^version: {re.escape(VERSION)}$", skill, re.M)
+    assert re.search(rf"^version: {re.escape(VERSION)}$", skill, re.MULTILINE)
     assert sorted(os.listdir(from_snapshot / ".cursor" / "skills")) == [
         "api", "hawkscan", "hawkscan-ci", "optimize", "stackhawk-data-seed"]
 

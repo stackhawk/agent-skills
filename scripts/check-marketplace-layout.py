@@ -494,7 +494,7 @@ def check_installers_run(layout):
             env = {k: v for k, v in os.environ.items() if not k.startswith("CURSOR_")}
             env["HOME"] = home
             proc = subprocess.run(command + [project], env=env, stdin=subprocess.DEVNULL,
-                                  capture_output=True, text=True, timeout=300)
+                                  capture_output=True, text=True, timeout=300, check=False)
             if proc.returncode != 0:
                 output = " ".join((proc.stderr or proc.stdout).split())
                 layout.error(f"{label}: a Cursor project install from this tree failed: {output}")

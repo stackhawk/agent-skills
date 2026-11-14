@@ -60,7 +60,7 @@ def run(tmp_path, plugin_arg, answer, control=BUILT_IN, auth_fail=False, with_cl
     if auth_fail:
         env["STUB_AUTH_FAIL"] = "1"
     return subprocess.run(["bash", SCRIPT, plugin_arg, str(tmp_path / "out")], cwd=REPO_ROOT,
-                          env=env, capture_output=True, text=True, timeout=60)
+                          env=env, capture_output=True, text=True, timeout=60, check=False)
 
 
 def test_relative_plugin_path_reaches_the_cli_as_an_absolute_path(tmp_path):

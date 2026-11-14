@@ -104,7 +104,7 @@ def assert_relative_component(base, value, kind):
 
 
 def run_generator(*args, root=REPO_ROOT):
-    return subprocess.run([sys.executable, GENERATOR, "--root", root, *args], capture_output=True, text=True)
+    return subprocess.run([sys.executable, GENERATOR, "--root", root, *args], capture_output=True, text=True, check=False)
 
 
 def test_committed_output_is_current():
@@ -170,14 +170,15 @@ def test_release_stamp_round_trip(tmp_path):
     before = tree_digest(root)
 
     def sh(*cmd):
-        proc = subprocess.run(["bash", *cmd], cwd=root, capture_output=True, text=True)
+        proc = subprocess.run(["bash", *cmd], cwd=root, capture_output=True, text=True, check=False)
         assert proc.returncode == 0, proc.stdout + proc.stderr
 
     # The order of the validate job in release.yml.
     sh("scripts/bump-version.sh", "9.8.7")
     sh("scripts/generate-wingman-skills.sh")
     for folder in ("plugins/hawkscan", CURSOR_WINGMAN):
-        stamped = json.load(open(os.path.join(root, folder, ".cursor-plugin/plugin.json")))
+        with open(os.path.join(root, folder, ".cursor-plugin/plugin.json")) as f:
+            stamped = json.load(f)
         assert stamped["version"] == "9.8.7"
         assert list(stamped)[:2] == ["name", "version"]
     with open(os.path.join(root, CURSOR_WINGMAN, "skills/hawkscan/SKILL.md")) as f:
@@ -471,7 +472,9 @@ def test_router_names_every_public_skill_and_no_other():
 
 
 def test_router_and_hawkscan_description_share_the_autonomy_phrase():
-    flat = lambda s: " ".join(s.split())  # noqa: E731
+    def flat(s):
+        return " ".join(s.split())
+
     assert SHARED_PHRASE in flat(read(ROUTER))
     fm, _ = frontmatter(read("plugins/hawkscan/skills/hawkscan/SKILL.md"))
     assert SHARED_PHRASE in flat(fm["description"])
@@ -532,7 +535,7 @@ def test_claude_wingman_carries_no_cursor_file():
 @pytest.mark.parametrize("rel", ["plugins/hawkscan/hooks/cursor/stop.sh", f"{CURSOR_WINGMAN}/hooks/cursor/stop.sh"])
 def test_hook_scripts_are_executable_in_git(rel):
     assert os.access(path(rel), os.X_OK)
-    staged = subprocess.run(["git", "ls-files", "-s", rel], cwd=REPO_ROOT, capture_output=True, text=True).stdout
+    staged = subprocess.run(["git", "ls-files", "-s", rel], cwd=REPO_ROOT, capture_output=True, text=True, check=False).stdout
     if staged:
         assert staged.startswith("100755"), staged
 
@@ -567,7 +570,7 @@ def test_legacy_rule_list_covers_the_deprecated_generator():
 
 def test_plugin_layout_meets_the_context_budgets():
     proc = subprocess.run(
-        [sys.executable, MEASURE, "--check", "--json", path("plugins/hawkscan")], capture_output=True, text=True
+        [sys.executable, MEASURE, "--check", "--json", path("plugins/hawkscan")], capture_output=True, text=True, check=False
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     report = json.loads(proc.stdout)

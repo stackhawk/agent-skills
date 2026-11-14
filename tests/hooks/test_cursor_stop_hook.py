@@ -123,7 +123,7 @@ def run(hook, body, cwd, env_extra=None, path=None):
         env["PATH"] = path
     env.update(env_extra or {})
     proc = subprocess.run(
-        ["bash", hook], input=body, cwd=cwd, env=env, capture_output=True, text=True, timeout=30
+        ["bash", hook], input=body, cwd=cwd, env=env, capture_output=True, text=True, timeout=30, check=False
     )
     assert proc.returncode == 0, proc.stderr
     return proc.stdout.strip()
@@ -199,12 +199,12 @@ def test_one_follow_up_per_conversation(tmp_path, use_jq):
     repo = tmp_path / "proj"
     make_repo(str(repo), "modified")
     path = None if use_jq else no_jq_path(tmp_path)
-    status_before = subprocess.run(["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True).stdout
+    status_before = subprocess.run(["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=False).stdout
     followup(run(HOOK, payload(conversation_id="conv/../A b"), cwd=str(repo), path=path))
     # The user sends another message in the same conversation; the tree is still dirty.
     assert run(HOOK, payload(conversation_id="conv/../A b"), cwd=str(repo), path=path) == ""
     followup(run(HOOK, payload(conversation_id="conv-B"), cwd=str(repo), path=path))
-    status_after = subprocess.run(["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True).stdout
+    status_after = subprocess.run(["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=False).stdout
     assert status_after == status_before, "the record must not show up in git status"
 
 
@@ -272,7 +272,7 @@ def test_plugin_hook_command_runs_from_the_workspace_root(tmp_path):
     script = f"{command} <<'CURSOR_HOOK_EOF'\n{payload()}\nCURSOR_HOOK_EOF"
     env = {k: v for k, v in os.environ.items() if not k.startswith("CURSOR_")}
     env["CURSOR_PROJECT_DIR"] = str(repo)
-    proc = subprocess.run(["sh", "-c", script], cwd=str(repo), env=env, capture_output=True, text=True, timeout=30)
+    proc = subprocess.run(["sh", "-c", script], cwd=str(repo), env=env, capture_output=True, text=True, timeout=30, check=False)
     assert proc.returncode == 0, proc.stderr
     followup(proc.stdout.strip())
 
