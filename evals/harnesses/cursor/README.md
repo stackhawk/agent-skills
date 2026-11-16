@@ -32,6 +32,6 @@ and the stop hook. The stop hook stays silent during a run: the Cursor CLI runs
 stop hooks only in interactive sessions, not with `-p`, and the workspace is not a git
 repository. The matrix therefore measures the skills and rules, not the hook.
 
-The published Cursor baseline was measured with the deprecated generated rules
-(`cursor/.cursor/rules/`) only: no skills and no hook. Run the Cursor matrix again
+The published Cursor baseline was measured with the old generated rules only
+(since removed from this repository): no skills and no hook. Run the Cursor matrix again
 before you compare a new result with that baseline.
