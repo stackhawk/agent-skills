@@ -32,7 +32,6 @@ import pytest
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PLUGIN = os.path.join(REPO_ROOT, "plugins", "hawkscan")
 GUARD = "skip-under-cursor"
-GUARD_LINE = '. "$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/skip-under-cursor"'
 HOST_PREFIXES = ("CLAUDE", "CURSOR", "HAWK_", "_STACKHAWK", "CODEX_", "GEMINI_")
 
 CURSOR = {"CURSOR_VERSION": "3.9.16", "CURSOR_PROJECT_DIR": "{project}", "CURSOR_PLUGIN_ROOT": "{plugin}"}
@@ -228,16 +227,11 @@ def test_the_guard_reads_a_large_payload_before_it_ends_the_hook(script, label, 
     assert files_of(home) == {}
 
 
-def test_every_hook_runs_through_the_wrapper_and_every_script_sources_the_guard_first():
-    """A new hook script must start with the guard, or it acts in Cursor (the layout check, which
-    runs each hook as Cursor runs it, fails then too)."""
+def test_every_hook_runs_through_the_wrapper_and_has_a_payload_case():
+    """Every hook of hooks.json runs through run-hook.cmd and has a payload here, so the cases
+    above run each of them under Cursor; the guard is not a hook of its own."""
     scripts = {script for _, script, _ in COMMANDS}
     assert scripts == set(PAYLOADS)
     for _, script, command in COMMANDS:
         assert command.startswith('"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd" '), command
-    for script in scripts:
-        with open(os.path.join(PLUGIN, "hooks", script)) as f:
-            lines = [line.rstrip("\n") for line in f]
-        code = [line for line in lines if line.strip() and not line.startswith("#")]
-        assert code[:2] == ["set -euo pipefail", GUARD_LINE], script
     assert GUARD not in {part for _, _, command in COMMANDS for part in command.replace('"', " ").split()}

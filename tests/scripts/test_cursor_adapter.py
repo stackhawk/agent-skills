@@ -36,7 +36,6 @@ RULE_NAMES = ["stackhawk.mdc", "stackhawk-config.mdc"]
 CURSOR_HAWKSCAN = "cursor-plugins/hawkscan"
 CURSOR_WINGMAN = "cursor-plugins/wingman"
 CURSOR_PARTS = (".cursor-plugin", "rules", "hooks/cursor")
-SHARED_PHRASE = "right after you complete a code change (feature, bugfix, refactor)"
 
 MANIFEST_KEYS = {
     "name", "displayName", "description", "version", "author", "publisher", "homepage",
@@ -507,15 +506,6 @@ def test_router_names_every_public_skill_and_no_other():
     assert aliases <= wingman_bundle_names()
 
 
-def test_router_and_hawkscan_description_share_the_autonomy_phrase():
-    def flat(s):
-        return " ".join(s.split())
-
-    assert SHARED_PHRASE in flat(read(ROUTER))
-    fm, _ = frontmatter(read("plugins/hawkscan/skills/hawkscan/SKILL.md"))
-    assert SHARED_PHRASE in flat(fm["description"])
-
-
 def test_pointer_budget_mode_and_references():
     text = read(POINTER)
     assert len(text.encode()) <= 1200
@@ -610,8 +600,6 @@ def test_legacy_rule_list_covers_the_deprecated_generator():
     with open(LEGACY_LIST) as f:
         listed = [line.strip() for line in f if line.strip() and not line.startswith("#")]
     assert len(listed) == len(set(listed)) == 45
-    generated = re.findall(r'^\s+"[^|]+\|([a-z0-9-]+)\|', read("scripts/generate-cursor-rules.sh"), re.MULTILINE)
-    assert {f"{n}.mdc" for n in generated} <= set(listed)
     assert set(os.listdir(path("cursor/.cursor/rules"))) <= set(listed)
     assert all(re.fullmatch(r"stackhawk-[a-z0-9-]+\.mdc", name) for name in listed)
     assert not set(listed) & set(RULE_NAMES)

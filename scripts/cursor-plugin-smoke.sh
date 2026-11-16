@@ -2,7 +2,8 @@
 # Live smoke test of a Cursor plugin folder with the Cursor CLI.
 #
 # Asks the agent, read-only (--mode ask), which skills it can use: once with the plugin
-# (`cursor-agent --plugin-dir`) and once without it, as a control, in an empty git workspace.
+# (`cursor-agent --plugin-dir`, or `agent --plugin-dir` when only `agent` is on PATH) and once
+# without it, as a control, in an empty git workspace.
 # It passes when the agent lists every skill that the plugin ships and the control does not
 # list at least one of them. An account can already have StackHawk skills (for example from
 # a Cursor team marketplace); when the control lists all of them, the result is inconclusive.
@@ -31,9 +32,9 @@ if [ ! -f "${plugin_dir}/.cursor-plugin/plugin.json" ]; then
 fi
 # The CLI runs inside the workspace, so a relative plugin path would not resolve there.
 plugin_dir="$(cd "$plugin_dir" && pwd)"
-cli="$(command -v cursor-agent || true)"
+cli="$(command -v cursor-agent || command -v agent || true)"
 if [ -z "$cli" ]; then
-  echo "SKIP: cursor-agent is not installed (curl https://cursor.com/install -fsS | bash)"
+  echo "SKIP: the Cursor CLI (cursor-agent or agent) is not installed (curl https://cursor.com/install -fsS | bash)"
   exit 77
 fi
 
@@ -79,7 +80,7 @@ ask() {
     return 77
   fi
   if [ "$status" -ne 0 ]; then
-    echo "FAIL: cursor-agent exited ${status} (${label}); see ${out_dir}/${label}.stderr" >&2
+    echo "FAIL: $(basename "$cli") exited ${status} (${label}); see ${out_dir}/${label}.stderr" >&2
     return 1
   fi
   python3 - "$stream" > "${out_dir}/${label}.txt" <<'PY'

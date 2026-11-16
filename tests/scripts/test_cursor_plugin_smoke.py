@@ -1,7 +1,7 @@
 """scripts/cursor-plugin-smoke.sh against a stub Cursor CLI.
 
-The live smoke needs a Cursor login or CURSOR_API_KEY, so these cases replace `cursor-agent`
-with a stub that records its --plugin-dir and prints a stream-json answer: one answer with
+The live smoke needs a Cursor login or CURSOR_API_KEY, so these cases replace the Cursor CLI
+(`cursor-agent`, or `agent` when only that name is on PATH) with a stub that records its --plugin-dir and prints a stream-json answer: one answer with
 the plugin and another for the control run without it. They check the parts of the script
 that do not need Cursor: the plugin path the CLI receives (it runs inside a scratch
 workspace, so the path must be absolute), the skill names it expects from the plugin's
@@ -42,19 +42,19 @@ def skills(*names):
     return "\\n".join(f"SKILL: {name}" for name in names)
 
 
-def run(tmp_path, plugin_arg, answer, control=BUILT_IN, auth_fail=False, with_cli=True):
+def run(tmp_path, plugin_arg, answer, control=BUILT_IN, auth_fail=False, cli_names=("cursor-agent",)):
     bindir = tmp_path / "bin"
     bindir.mkdir(exist_ok=True)
-    for tool in ("bash", "git", "python3", "mkdir", "rm", "grep", "tr", "mktemp", "dirname"):
+    for tool in ("bash", "git", "python3", "mkdir", "rm", "grep", "tr", "mktemp", "dirname", "basename"):
         if not (bindir / tool).exists():
             os.symlink(shutil.which(tool), bindir / tool)
-    if with_cli:
-        stub = bindir / "cursor-agent"
-        stub.write_text(STUB)
+    for name in cli_names:
+        stub = bindir / name
+        stub.write_text(STUB.replace("STUB_LOG", f"STUB_LOG_{name.replace('-', '_')}"))
         stub.chmod(0o755)
     env = {
         "PATH": str(bindir), "HOME": str(tmp_path),
-        "STUB_LOG": str(tmp_path / "plugin-dir.txt"),
+        **{f"STUB_LOG_{name.replace('-', '_')}": str(tmp_path / f"plugin-dir-{name}.txt") for name in cli_names},
         "STUB_ANSWER": answer, "STUB_CONTROL": control,
     }
     if auth_fail:
@@ -66,7 +66,7 @@ def run(tmp_path, plugin_arg, answer, control=BUILT_IN, auth_fail=False, with_cl
 def test_relative_plugin_path_reaches_the_cli_as_an_absolute_path(tmp_path):
     proc = run(tmp_path, "cursor-plugins/hawkscan", answer=BUILT_IN + "\\n" + skills("hawkscan"))
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    received = (tmp_path / "plugin-dir.txt").read_text().strip()
+    received = (tmp_path / "plugin-dir-cursor-agent.txt").read_text().strip()
     assert received == os.path.join(REPO_ROOT, "cursor-plugins/hawkscan")
     assert "PASS" in proc.stdout
 
@@ -107,7 +107,7 @@ def test_one_skill_absent_from_the_control_is_enough(tmp_path):
 @pytest.mark.parametrize("case", ["no-auth", "no-cli"])
 def test_skips_without_the_cli_or_authentication(tmp_path, case):
     proc = run(tmp_path, "cursor-plugins/hawkscan", answer=skills("hawkscan"),
-               auth_fail=case == "no-auth", with_cli=case == "no-auth")
+               auth_fail=case == "no-auth", cli_names=("cursor-agent",) if case == "no-auth" else ())
     assert proc.returncode == 77, proc.stdout + proc.stderr
     assert "SKIP" in proc.stdout
 
@@ -116,3 +116,24 @@ def test_a_folder_without_a_cursor_manifest_fails(tmp_path):
     proc = run(tmp_path, "plugins/wingman", answer=skills("hawkscan"))
     assert proc.returncode == 1
     assert ".cursor-plugin/plugin.json" in proc.stderr
+
+
+@pytest.mark.parametrize("names, used", [
+    (("agent",), "agent"),
+    (("cursor-agent", "agent"), "cursor-agent"),
+], ids=["agent only", "both names"])
+def test_the_cli_is_cursor_agent_or_else_agent(tmp_path, names, used):
+    proc = run(tmp_path, "cursor-plugins/hawkscan", answer=BUILT_IN + "\\n" + skills("hawkscan"), cli_names=names)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    logs = sorted(p.name for p in tmp_path.glob("plugin-dir-*.txt"))
+    assert logs == [f"plugin-dir-{used}.txt"]
+
+
+def test_a_failing_cli_is_named_in_the_failure(tmp_path):
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    (bindir / "agent").write_text("#!/usr/bin/env bash\nexit 5\n")
+    (bindir / "agent").chmod(0o755)
+    proc = run(tmp_path, "cursor-plugins/hawkscan", answer=skills("hawkscan"), cli_names=())
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "FAIL: agent exited 5 (plugin)" in proc.stderr
