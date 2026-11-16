@@ -198,7 +198,7 @@ def measure(root):
     rules_dir, skills_dir = component_dirs(root)
     rules = load_rules(rules_dir)
     skills = load_skills(skills_dir)
-    size = lambda s: len(s.encode("utf-8"))  # noqa: E731
+    size = lambda s: len(s.encode("utf-8"))
     always = sum(size(r["body"]) for r in rules if r["mode"] == "always")
     requested = sum(size(r["description"]) for r in rules if r["mode"] == "agent-requested")
     skill_index = sum(size(s["description"]) for s in skills)

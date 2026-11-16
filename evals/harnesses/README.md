@@ -8,7 +8,7 @@ Each harness connects the platform-agnostic test cases in `evals/` to a specific
 |----------|------|--------|--------|
 | **Claude Code** | Automated | `claude -p --output-format stream-json --verbose` | ✅ Multi-model |
 | **Codex** | Automated | `codex exec --json --sandbox workspace-write` | ✅ Multi-model |
-| **Cursor** | Automated | `agent -p --output-format stream-json --print` | ✅ Requires Pro |
+| **Cursor** | Automated | `cursor-agent -p --output-format stream-json --print` (or `agent`) | ✅ Requires Pro |
 | **Antigravity (agy)** | Automated | `agy -p --print` | ✅ Replaces Gemini |
 | **Copilot** | Automated | `copilot -p --output-format json --allow-all-tools` | ✅ Unambiguous trigger detection |
 

@@ -26,7 +26,6 @@ import pytest
 import yaml
 
 from tests.git_env import git_env
-
 from tests.scripts.test_marketplace_export import git, snapshot_working_tree
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

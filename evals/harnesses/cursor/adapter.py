@@ -1,5 +1,6 @@
 """cursor Harness adapter. Parsing + signals ported from pre-shim run-evals.py."""
 from __future__ import annotations
+
 import json
 import os
 import shutil
@@ -8,8 +9,8 @@ import tempfile
 from pathlib import Path
 
 from evals.lib.models import ParsedRun
-from evals.lib.triggers import explicit_decision, decide_trigger
 from evals.lib.observe import observe_suffix
+from evals.lib.triggers import decide_trigger, explicit_decision
 
 # adapter.py -> cursor -> harnesses -> evals -> repo root
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -27,7 +28,7 @@ def _setup_skill(target_dir: str) -> str | None:
     """
     proc = subprocess.run(
         ["bash", str(INSTALL_SH), "--platform", "cursor", "--target", target_dir],
-        capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=120,
+        capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=120, check=False,
     )
     if proc.returncode != 0:
         return f"cursor install failed: {(proc.stderr or proc.stdout)[-300:].strip()}"
@@ -262,6 +263,7 @@ class CursorAdapter:
                     capture_output=True,
                     text=True,
                     timeout=300,
+                    check=False,
                     cwd=tmpdir,
                     env=env,
                 )
