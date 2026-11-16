@@ -68,14 +68,16 @@ def make_project(root):
     app = os.path.join(project, "src", "app.py")
     git = ["git", "-C", project, "-c", "user.name=probe", "-c", "user.email=probe@example.invalid",
            "-c", "commit.gpgsign=false"]
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
     with open(app, "w", encoding="utf-8") as f:
         f.write("def health():\n    return 'ok'\n")
     for args in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "init"]):
-        subprocess.run(git + args, check=True, capture_output=True, timeout=TIMEOUT_SECONDS)
+        subprocess.run(git + args, check=True, capture_output=True, env=env, timeout=TIMEOUT_SECONDS)
     with open(app, "a", encoding="utf-8") as f:
         f.write("\n\ndef ready():\n    return True\n")
     subprocess.run(git + ["commit", "-qam", "feat: add health"], check=True, capture_output=True,
-                   timeout=TIMEOUT_SECONDS)
+                   env=env, timeout=TIMEOUT_SECONDS)
     with open(app, "a", encoding="utf-8") as f:
         f.write("\n\ndef live():\n    return True\n")
     return project
