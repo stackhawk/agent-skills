@@ -134,7 +134,8 @@ def job_steps(job, marketplace_url, checkout):
         script = (step["run"].replace(TOKEN_MARKETPLACE, marketplace_url)
                   .replace(PUBLIC_MARKETPLACE, marketplace_url).replace(JOB_CHECKOUT, checkout))
         assert "github.com/stackhawk/agent-skills-marketplace" not in script, (job, step["name"])
-        assert "/tmp/" not in script, (job, step["name"])
+        # Check the workflow text, not the substituted script: on Linux tmp_path is under /tmp/.
+        assert "/tmp/" not in step["run"].replace(JOB_CHECKOUT, ""), (job, step["name"])
         picked.append((step["name"], script))
     assert checkout_used == (job == "update-marketplace"), f"release.yml {job} moved its marketplace checkout"
     return picked
