@@ -41,7 +41,7 @@ jobs:
 
       - name: Validate JSON manifests
         run: |
-          for f in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json plugins/*/.github/plugin/plugin.json .claude-plugin/marketplace.json .codex-plugin/marketplace.json gemini-extension.json; do
+          for f in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json plugins/*/.cursor-plugin/plugin.json plugins/*/.github/plugin/plugin.json cursor-src/hooks/*.json cursor-plugins/*/.cursor-plugin/plugin.json cursor-plugins/*/hooks/cursor/*.json .claude-plugin/marketplace.json .codex-plugin/marketplace.json .cursor-plugin/marketplace.json gemini-extension.json; do
             if [ -f "$f" ]; then
               python3 -m json.tool "$f" > /dev/null
               echo "OK: $f"
@@ -67,25 +67,26 @@ jobs:
             exit 1
           fi
 
-      - name: Validate wingman Copilot bundle
+      - name: Validate the wingman bundled skills
         run: bash scripts/test-wingman-skills.sh
 
-      - name: Verify wingman bundle is up to date (PR only)
+      - name: Verify the bundled skill copies are up to date (PR only)
         if: github.event_name == 'pull_request'
         run: |
           bash scripts/generate-wingman-skills.sh
-          git add -N plugins/wingman/copilot-skills/
-          if ! git diff --quiet plugins/wingman/copilot-skills/ plugins/wingman/.codex-plugin/plugin.json; then
-            echo "ERROR: wingman copilot-skills/ or its Codex manifest is out of date. Run 'bash scripts/generate-wingman-skills.sh' and commit the output."
-            git diff --stat plugins/wingman/copilot-skills/ plugins/wingman/.codex-plugin/plugin.json
+          generated=(plugins/wingman/copilot-skills/ cursor-plugins/wingman/skills/ cursor-plugins/hawkscan/skills/ plugins/wingman/.codex-plugin/plugin.json)
+          git add -N "${generated[@]}"
+          if ! git diff --quiet "${generated[@]}"; then
+            echo "ERROR: the bundled skill copies or the wingman Codex manifest are out of date. Run 'bash scripts/generate-wingman-skills.sh' and commit the output."
+            git diff --stat "${generated[@]}"
             exit 1
           fi
-          echo "OK: wingman copilot-skills/ is up to date."
+          echo "OK: the bundled skill copies are up to date."
 
       - name: Validate hook scripts are executable
         run: |
           errors=0
-          for hook in plugins/*/hooks/* plugins/*/hooks/cursor/*; do
+          for hook in plugins/*/hooks/* cursor-src/hooks/* cursor-plugins/*/hooks/cursor/*; do
             # Skip JSON config files and .cmd wrappers
             if [[ "$hook" == *.json ]] || [[ "$hook" == *.cmd ]]; then
               continue
@@ -190,63 +191,56 @@ jobs:
             echo "Best practice: add a '## Contents' section at the top so Claude can navigate large files."
           fi
 
-  generate-cursor-rules:
+  # The Cursor adapter: generated .cursor-plugin manifests, the Cursor-only hawkscan and wingman
+  # plugins in cursor-plugins/, the router and stackhawk.yml pointer rules and the plugin stop
+  # hook (sources in cursor-src/), and the installers. The measure step fails when a change
+  # makes the default Cursor context heavier than its budget. The source layout check fails
+  # when a direct install from this repository would load the router rule or the stop hook
+  # twice, also a Claude Code install next to one native Cursor install, or when a Claude hook
+  # acts when Cursor runs it: this repository is a Claude Code and a Cursor marketplace too.
+  # The export step builds the marketplace payload and fails when a Claude Code or Cursor
+  # install of it would, or when a Cursor distribution file is missing; the verify step
+  # exports the commit again and compares the two byte for byte.
+  cursor-adapter:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
 
-      - name: Generate Cursor rules
-        run: bash scripts/generate-cursor-rules.sh
+      - name: Verify the Cursor adapter is up to date and within budget
+        run: python3 scripts/generate-cursor-adapter.py --check
 
-      - name: Verify critical content in generated rules
+      - name: Measure a project install and the plugin layouts
         run: |
-          errors=0
-          # Check that "Fix ALL findings" survived generation
-          if ! grep -q "Fix ALL findings" cursor/.cursor/rules/stackhawk-hawkscan.mdc; then
-            echo "ERROR: 'Fix ALL findings' not found in generated stackhawk-hawkscan.mdc"
-            errors=$((errors + 1))
-          else
-            echo "OK: 'Fix ALL findings' present in stackhawk-hawkscan.mdc"
-          fi
-          # Check that alwaysApply is true for main rule
-          if ! grep -q "alwaysApply: true" cursor/.cursor/rules/stackhawk-hawkscan.mdc; then
-            echo "ERROR: alwaysApply not set to true in stackhawk-hawkscan.mdc"
-            errors=$((errors + 1))
-          else
-            echo "OK: alwaysApply: true in stackhawk-hawkscan.mdc"
-          fi
-          if [ $errors -gt 0 ]; then
-            echo "FAILED: $errors content check(s) failed"
-            exit 1
-          fi
+          project="$(mktemp -d)"
+          bash scripts/install.sh --platform cursor --target "$project"
+          python3 scripts/measure-cursor-context.py --check "$project/.cursor"
+          python3 scripts/measure-cursor-context.py --check cursor-plugins/hawkscan
+          python3 scripts/measure-cursor-context.py --check cursor-plugins/wingman
 
-      - name: Check for uncommitted changes (PR only)
-        if: github.event_name == 'pull_request'
-        run: |
-          git add -N cursor/
-          if ! git diff --quiet cursor/; then
-            echo "ERROR: Cursor rules are out of date. Run 'bash scripts/generate-cursor-rules.sh' and commit the output."
-            git diff --stat cursor/
-            exit 1
-          fi
-          echo "OK: Cursor rules are up to date."
+      - name: Check the source layout (direct installs from this repository)
+        run: python3 scripts/check-marketplace-layout.py --no-installers .
 
-      - name: Commit generated rules (push to main only)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Export the marketplace payload, check its layout and verify it
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add cursor/
-          if git diff --cached --quiet; then
-            echo "No changes to commit."
-          else
-            git commit -m "chore: regenerate cursor rules"
-            git push
-          fi
+          python3 scripts/export-marketplace.py --version 0.0.0 --dest "$RUNNER_TEMP/marketplace-export"
+          python3 scripts/check-marketplace-layout.py --run-installers --version 0.0.0 "$RUNNER_TEMP/marketplace-export"
+          python3 scripts/export-marketplace.py --verify "$RUNNER_TEMP/marketplace-export" --version 0.0.0
+
+      # test_release_workflow.py runs the validate and update-marketplace steps of release.yml
+      # against a scratch marketplace: a sync without --export must stop the release in validate.
+      - name: Cursor regression tests (installers under bash and pwsh, hooks, adapter, export, release jobs)
+        run: |
+          uv run pytest -q tests/scripts/test_cursor_adapter.py tests/scripts/test_install_cursor.py \
+            tests/scripts/test_cursor_plugin_smoke.py tests/hooks/test_cursor_stop_hook.py \
+            tests/hooks/test_claude_hooks_under_cursor.py \
+            tests/lib/test_cursor_eval_setup.py tests/scripts/test_marketplace_export.py \
+            tests/scripts/test_stage_marketplace_sync.py tests/scripts/test_source_layout.py \
+            tests/scripts/test_wingman_skills_check.py tests/scripts/test_release_workflow.py
 
   ci-result:
     if: always()
-    needs: [validate, generate-cursor-rules]
+    needs: [validate, cursor-adapter]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any required job failed or was cancelled

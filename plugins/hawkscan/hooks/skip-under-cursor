@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Sourced first by every Claude Code hook script of this plugin (session-start,
+# post-commit-scan, skill-activated, stop), before the script reads its input or
+# writes anything. Not a hook itself: hooks.json never names it. It is executable only
+# because every file in hooks/ is; run on its own, it does nothing.
+#
+# The Cursor app and the Cursor CLI import Claude Code plugins and run their hooks:
+# SessionStart as sessionStart, PostToolUse as postToolUse, Stop as stop. In Cursor, one
+# native Cursor install (the Cursor plugin, or a project install) carries the router rule
+# and the stop hook, so these hooks must do nothing there. Otherwise Cursor would get a
+# second scan reminder, a second context block, and a session record that says claude-code.
+#
+# Cursor runs a hook with CURSOR_VERSION and CURSOR_PROJECT_DIR set, and puts a top-level
+# "cursor_version" key in every hook payload. Claude Code runs a hook with CLAUDECODE=1 and
+# never sends that key. Each host also passes on the variables it inherited: Cursor started
+# from a Claude Code shell passes CLAUDECODE on. So:
+#   - no Cursor variable: not Cursor. The hook runs, and its stdin is not touched;
+#   - a Cursor variable and no CLAUDECODE: Cursor. The hook does nothing;
+#   - both: the payload decides. It has the "cursor_version" key: Cursor, the hook does
+#     nothing. Else the hook runs with the same payload on its stdin.
+if [ -n "${CURSOR_VERSION:-}" ] || [ -n "${CURSOR_PROJECT_DIR:-}" ]; then
+  if [ -z "${CLAUDECODE:-}" ]; then
+    # Read the payload, so that the write of the hook runner to stdin does not fail.
+    if [ ! -t 0 ]; then
+      cat > /dev/null 2>&1 || true
+    fi
+    exit 0
+  fi
+  if [ ! -t 0 ]; then
+    skip_under_cursor_payload="$(cat 2>/dev/null)" || skip_under_cursor_payload=""
+    # A key of a JSON object follows "{" or ","; inside a string value, its quotes are escaped.
+    skip_under_cursor_key='[{,][[:space:]]*"cursor_version"[[:space:]]*:'
+    if [[ "${skip_under_cursor_payload}" =~ ${skip_under_cursor_key} ]]; then
+      exit 0
+    fi
+    exec 0<<<"${skip_under_cursor_payload}"
+    unset skip_under_cursor_payload skip_under_cursor_key
+  fi
+fi

@@ -1,12 +1,27 @@
 #!/usr/bin/env bash
-# Generates plugins/wingman/copilot-skills/ - bundled copies of wingman's four
-# dependency skills, so GitHub Copilot and Codex (neither installs plugin
-# dependencies) get the full skill set from one wingman install. It also points
-# the Codex manifest's "skills" field at that directory.
+# Generates the bundled copies of wingman's four dependency skills, so GitHub
+# Copilot, Codex and Cursor (none installs plugin dependencies) get the full
+# skill set from one wingman install:
+#
+#   plugins/wingman/copilot-skills/  for Copilot and Codex. The Claude and Codex
+#                                    catalogs list plugins/wingman. The script
+#                                    also points the Codex manifest's "skills"
+#                                    field here.
+#   cursor-plugins/wingman/skills/   for the Cursor-only wingman plugin. Only the
+#                                    Cursor catalog lists cursor-plugins/wingman.
+#
+# It also writes cursor-plugins/hawkscan/skills/, the skills of plugins/hawkscan for the
+# Cursor-only hawkscan plugin (only the Cursor catalog lists cursor-plugins/hawkscan), so
+# every skill copy of a Cursor-only plugin comes from this script, after the version stamp.
+#
+# One run writes the same bytes to both wingman copies, so they cannot drift apart;
+# scripts/generate-cursor-adapter.py --check and scripts/test-wingman-skills.sh
+# fail when they differ. The marketplace bundle (scripts/export-marketplace.py)
+# keeps one copy, copilot-skills/, for all three platforms.
 #
 # Claude Code resolves wingman's "dependencies" field instead and never reads
-# this directory. It is deliberately NOT named skills/ - Claude Code always
-# scans skills/, which would load every skill twice.
+# either copy. The Claude-listed copy is deliberately NOT named skills/ - Claude
+# Code always scans skills/, which would load every skill twice.
 #
 # Run AFTER scripts/bump-version.sh so copied frontmatter carries the new version.
 set -euo pipefail
@@ -15,6 +30,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 DEST="plugins/wingman/copilot-skills"
+CURSOR_DEST="cursor-plugins/wingman/skills"
 
 # source_path|generated_dir_name  (generated name = marketplace plugin name)
 MAPPINGS=(
@@ -77,9 +93,12 @@ Produced by `scripts/generate-wingman-skills.sh`. Edit the source skills under
 `plugins/*/skills/*/` and regenerate.
 
 These are bundled copies of wingman's four dependency skills, present so GitHub
-Copilot and Codex get the full set from one wingman install. Neither installs
-plugin dependencies, so both manifests point their `skills` field here. Claude
-Code resolves wingman's `dependencies` field and ignores this directory.
+Copilot, Codex and Cursor get the full set from one wingman install. None of
+them installs plugin dependencies. The Copilot and Codex manifests of this
+plugin point their `skills` field here. In the stackhawk/agent-skills source,
+the Cursor-only wingman plugin carries an identical copy in its own `skills/`;
+the marketplace bundle gives Cursor this folder instead.
+Claude Code resolves wingman's `dependencies` field and ignores this directory.
 
 This directory is intentionally NOT named `skills/`: Claude Code always scans a
 plugin's `skills/` directory, which would load every skill twice.
@@ -103,4 +122,25 @@ with open(path, "w") as f:
 PY
 echo "Updated: ${CODEX_MANIFEST} (skills: ./copilot-skills/)"
 
-echo "Done. Generated ${#MAPPINGS[@]} skill(s) into ${DEST}"
+# The Cursor-only wingman plugin gets the same skill folders, byte for byte. The
+# rest of cursor-plugins/wingman/ comes from scripts/generate-cursor-adapter.py.
+rm -rf "$CURSOR_DEST"
+mkdir -p "$CURSOR_DEST"
+for entry in "${MAPPINGS[@]}"; do
+  name="${entry##*|}"
+  cp -R "${DEST}/${name}" "${CURSOR_DEST}/${name}"
+done
+echo "Generated: ${CURSOR_DEST} (copies of ${DEST})"
+
+# The Cursor-only hawkscan plugin gets the skills of plugins/hawkscan, byte for byte. The rest
+# of cursor-plugins/hawkscan/ comes from scripts/generate-cursor-adapter.py.
+HAWKSCAN_SKILLS="plugins/hawkscan/skills"
+HAWKSCAN_CURSOR_DEST="cursor-plugins/hawkscan/skills"
+rm -rf "$HAWKSCAN_CURSOR_DEST"
+mkdir -p "$HAWKSCAN_CURSOR_DEST"
+for src in "${HAWKSCAN_SKILLS}"/*/; do
+  cp -RL "${src%/}" "${HAWKSCAN_CURSOR_DEST}/$(basename "$src")"
+done
+echo "Generated: ${HAWKSCAN_CURSOR_DEST} (copies of ${HAWKSCAN_SKILLS})"
+
+echo "Done. Generated ${#MAPPINGS[@]} skill(s) into ${DEST} and ${CURSOR_DEST}, and ${HAWKSCAN_CURSOR_DEST}"

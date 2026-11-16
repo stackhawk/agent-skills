@@ -1,0 +1,54 @@
+{
+  "name": "stackhawk",
+  "owner": {
+    "name": "StackHawk",
+    "email": "support@stackhawk.com"
+  },
+  "metadata": {
+    "description": "Official StackHawk plugins for Cursor. Dynamic application and API security testing (DAST) powered by HawkScan."
+  },
+  "plugins": [
+    {
+      "name": "hawkscan",
+      "source": "./cursor-plugins/hawkscan",
+      "description": "Configure, run, and interpret HawkScan DAST results. Generates stackhawk.yml configs, runs scans via CLI or Docker, and transforms security findings into prioritized fix tasks for your coding agent.",
+      "category": "security",
+      "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/hawkscan"
+    },
+    {
+      "name": "stackhawk-api",
+      "source": "./plugins/api",
+      "description": "Query the StackHawk platform API for security posture reporting, findings analysis, and app management. Uses the combined hawk CLI (hawk op \u2026) for all platform queries.",
+      "category": "security",
+      "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/api"
+    },
+    {
+      "name": "hawkscan-ci",
+      "source": "./plugins/hawkscan-ci",
+      "description": "Configure HawkScan in your CI/CD pipeline. Provider-agnostic: detects GitHub Actions, GitLab CI, Jenkins, CircleCI, Azure Pipelines, Bitbucket, Buildkite, and other CI systems from repo files, edits the pipeline file in place to add a HawkScan job, and prompts for HAWK_API_KEY storage (CI-native secrets store or external secrets manager).",
+      "category": "security",
+      "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/hawkscan-ci"
+    },
+    {
+      "name": "stackhawk-data-seed",
+      "source": "./plugins/stackhawk-data-seed",
+      "description": "Read a target repo and emit checked-in seed artifacts so HawkScan has data to scan. Generates SQL / HTTP / gRPC / Mongo / shell steps across the target repo and any upstream services it depends on, plus a manifest and a credentials handoff file that hawkscan consumes.",
+      "category": "security",
+      "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/stackhawk-data-seed"
+    },
+    {
+      "name": "wingman",
+      "source": "./cursor-plugins/wingman",
+      "description": "StackHawk umbrella plugin \u2014 installs the default StackHawk skill set (hawkscan, api, data-seed, optimize) in one command for the combined hawk CLI.",
+      "category": "security",
+      "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/wingman"
+    },
+    {
+      "name": "stackhawk-optimize",
+      "source": "./plugins/optimize",
+      "description": "Analyze a codebase and produce an optimal HawkScan setup (tech flags, scan-policy plugin selection, stackhawk.yml corrections), apply it as a non-destructive trial, run one trial scan, and promote or discard.",
+      "category": "security",
+      "homepage": "https://github.com/stackhawk/agent-skills/tree/main/plugins/optimize"
+    }
+  ]
+}

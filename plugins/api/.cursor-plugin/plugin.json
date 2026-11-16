@@ -1,0 +1,21 @@
+{
+  "name": "stackhawk-api",
+  "description": "Query the StackHawk platform API for security posture reporting, findings analysis, and app management. Uses the combined hawk CLI (hawk op \u2026) for all platform queries.",
+  "author": {
+    "name": "StackHawk",
+    "email": "support@stackhawk.com"
+  },
+  "homepage": "https://docs.stackhawk.com",
+  "repository": "https://github.com/stackhawk/agent-skills",
+  "license": "MIT",
+  "keywords": [
+    "security",
+    "appsec",
+    "stackhawk",
+    "api",
+    "reporting",
+    "findings",
+    "posture",
+    "triage"
+  ]
+}

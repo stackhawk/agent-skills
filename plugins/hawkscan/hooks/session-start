@@ -5,8 +5,8 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# Do nothing when Cursor runs this hook: see skip-under-cursor.
+. "$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/skip-under-cursor"
 
 # Check if hawk CLI or Docker is available
 hawk_available="false"

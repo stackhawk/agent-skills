@@ -27,6 +27,7 @@ SKILL_ACTIVATED = os.path.join(HOOKS, "skill-activated")
 DETECTION_COPIES = [
     "plugins/hawkscan/skills/hawkscan/references/agent-detection.md",
     "plugins/wingman/copilot-skills/hawkscan/references/agent-detection.md",
+    "cursor-plugins/wingman/skills/hawkscan/references/agent-detection.md",
 ]
 
 NO_JQ_TOOLS = [
@@ -37,7 +38,8 @@ NO_JQ_TOOLS = [
 # Agent variables that could leak in from the shell running the tests.
 AGENT_VARS = [
     "CLAUDECODE", "CLAUDE_CODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_SESSION_ID",
-    "CLAUDE_CODE_CHILD_SESSION", "CURSOR_AGENT", "CURSOR_TRACE_ID", "CODEX_THREAD_ID",
+    "CLAUDE_CODE_CHILD_SESSION", "CURSOR_AGENT", "CURSOR_TRACE_ID", "CURSOR_VERSION", "CURSOR_PROJECT_DIR",
+    "CODEX_THREAD_ID",
     "GEMINI_API_KEY", "HAWK_AGENT", "_STACKHAWK_AGENT", "ANTHROPIC_MODEL",
     "OPENAI_MODEL", "GEMINI_MODEL", "AZURE_OPENAI_DEPLOYMENT",
 ]

@@ -5,7 +5,8 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# Do nothing when Cursor runs this hook: see skip-under-cursor.
+. "$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/skip-under-cursor"
 
 # Only run if we're in a git repo
 if ! git rev-parse --git-dir > /dev/null 2>&1; then

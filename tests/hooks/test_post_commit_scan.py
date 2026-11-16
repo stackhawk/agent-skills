@@ -90,7 +90,8 @@ def no_jq_path(tmp_path):
 
 
 def run_hook(repo, stdin, path=None, home=None):
-    env = {**os.environ}
+    # A Cursor variable without CLAUDECODE would make the hook do nothing (skip-under-cursor).
+    env = {k: v for k, v in os.environ.items() if k not in ("CURSOR_VERSION", "CURSOR_PROJECT_DIR")}
     if home is not None:
         env["HOME"] = str(home)
     if path is not None:
@@ -102,6 +103,7 @@ def run_hook(repo, stdin, path=None, home=None):
         text=True,
         cwd=repo,
         env=env,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
     return result.stdout
@@ -109,7 +111,7 @@ def run_hook(repo, stdin, path=None, home=None):
 
 def head_sha(repo):
     return subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"], cwd=repo, capture_output=True, text=True
+        ["git", "rev-parse", "--short", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
     ).stdout.strip()
 
 

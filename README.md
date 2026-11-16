@@ -72,12 +72,12 @@ export HAWK_API_KEY=hawk.xxxxxxxxxxxx.xxxxxxxxxxxx
 
 ### 2. Install for your platform
 
-Commands that install from this repository (`stackhawk/agent-skills`) track `main` and show the development version (`0.0.0-dev`, or no version at all). Released, versioned builds come from [`stackhawk/agent-skills-marketplace`](https://github.com/stackhawk/agent-skills-marketplace), which every release syncs with the version stamped in.
+Install released builds from [`stackhawk/agent-skills-marketplace`](https://github.com/stackhawk/agent-skills-marketplace). Every release of this repository syncs there with its version stamped in, and one marketplace commit pins one tested release for every agent. This repository (`stackhawk/agent-skills`) is the source: an install from it tracks unreleased `main` and shows the development version (`0.0.0-dev`, or no version at all). Use it only to try a change before it ships ([Development builds](#development-builds-from-this-repository)).
 
 #### Claude Code
 
 ```
-/plugin marketplace add stackhawk/agent-skills
+/plugin marketplace add stackhawk/agent-skills-marketplace
 /plugin install wingman@stackhawk      # installs hawkscan + api + data-seed + optimize
 ```
 
@@ -94,7 +94,7 @@ Advanced — install individually instead:
 #### Codex
 
 ```
-/plugin marketplace add stackhawk/agent-skills
+/plugin marketplace add stackhawk/agent-skills-marketplace
 /plugin install hawkscan@stackhawk
 /plugin install stackhawk-api@stackhawk
 /plugin install hawkscan-ci@stackhawk
@@ -105,6 +105,8 @@ Advanced — install individually instead:
 Or use `/plugin install wingman@stackhawk` to get hawkscan, stackhawk-api, stackhawk-data-seed, and stackhawk-optimize in one install.
 
 #### Gemini CLI
+
+The marketplace has no Gemini extension, so Gemini CLI installs from this repository:
 
 ```bash
 gemini extensions install https://github.com/stackhawk/agent-skills
@@ -151,8 +153,10 @@ on every platform, so it is deferred to a separate major release.
 
 #### OpenCode
 
-Skills are auto-discovered from `.opencode/skills/`. Clone and copy (`-L` dereferences
-the repo's internal skill symlinks so the copies work standalone):
+For the released skills, use the [skills CLI](#skills-cli-npx), which supports OpenCode. To
+copy the development build instead: skills are auto-discovered from `.opencode/skills/`.
+Clone and copy (`-L` dereferences the repo's internal skill symlinks so the copies work
+standalone):
 
 ```bash
 git clone https://github.com/stackhawk/agent-skills.git
@@ -168,19 +172,62 @@ Installs `hawkscan`, `stackhawk-api`, `hawkscan-ci`, `stackhawk-data-seed`, and 
 
 #### Cursor
 
+Cursor reads the five skills as Agent Skills and loads a skill body only when the skill applies. StackHawk adds three small Cursor-only parts: an always-applied router rule (about 1.2 KB) that names the skills and when each applies, a rule that applies while `stackhawk.yml` is in context, and a stop hook. When a turn ends normally after a code change with no scan, the stop hook asks the agent to run the hawkscan skill, once per conversation. It stays silent after you press stop, after an error, and after its own follow-up turn.
+
+The marketplace gets its Cursor catalog and `install/` from the first release that ships them ([RELEASING.md](RELEASING.md#cursor-distribution-prerequisites)). Until then, use the [development build](#development-builds-from-this-repository).
+
+**Project install** (recommended; Cursor Cloud Agents and automations read only the repository's `.cursor/`). Run the released installer from a clone of the marketplace:
+
 ```bash
 # macOS / Linux
-git clone https://github.com/stackhawk/agent-skills.git
-bash agent-skills/scripts/install.sh --platform cursor --target .
+git clone https://github.com/stackhawk/agent-skills-marketplace.git
+bash agent-skills-marketplace/install/install.sh --platform cursor --target .
 ```
 
 ```powershell
 # Windows
-git clone https://github.com/stackhawk/agent-skills.git
-.\agent-skills\scripts\install.ps1 -Platform cursor
+git clone https://github.com/stackhawk/agent-skills-marketplace.git
+.\agent-skills-marketplace\install\install.ps1 -Platform cursor -Target .
 ```
 
-Installs Cursor rules (`.cursor/rules/`), skills (`.cursor/skills/`), and the stop hook that auto-triggers a scan when you finish coding.
+This installs the skills into `.cursor/skills/`, `stackhawk.mdc` and `stackhawk-config.mdc` into `.cursor/rules/`, and `.cursor/hooks/stackhawk-stop.sh` with one entry merged into `.cursor/hooks.json`. Your other rules, skills and hooks stay.
+
+**User-level install** (every project on this machine): give your home directory as the target (`--target ~`; on Windows, leave out `-Target`). This installs the skills into `~/.cursor/skills/` and the stop hook into `~/.cursor/hooks.json`. Cursor has no file-based user rules, so a user-level install has no router rule. For the router rule, use project installs instead of a user-level install, not both: each adds a stop hook.
+
+**Team marketplace:** a Cursor team admin can import `stackhawk/agent-skills-marketplace` as a team marketplace. Its Cursor catalog lists the six plugins; `wingman` installs from `bundles/wingman/`, which bundles its four skills, and `hawkscan` from `cursor-plugins/hawkscan/`. Enable `wingman` or the separate plugins, not both: `hawkscan` and `wingman` each carry the router rule and the stop hook. A team marketplace that imports this source repository (`stackhawk/agent-skills`) does not install releases. StackHawk plugins that it installed before the Cursor-only folders existed have no Cursor manifest, so Cursor runs their Claude Code hooks. Import `stackhawk/agent-skills-marketplace` instead, once it has the Cursor catalog.
+
+**One Cursor channel per project.** A project install and a Cursor plugin (`hawkscan` or `wingman`) each bring their own router rule and stop hook, so use one of them in a project, not both. A user-level install is a channel for every project on this machine: its stop hook runs in each of them, so do not combine it with a project install or a Cursor plugin. Cursor does not merge two channels, and the installers do not look for another channel. A Claude Code install can stay: Cursor imports Claude Code plugins from `~/.claude`, but the StackHawk Claude Code plugins carry no Cursor rule, and their hooks do nothing when Cursor runs them (Claude Code installs of earlier releases need an update first: see "Upgrade"). Cursor then lists the StackHawk skills of that Claude Code install next to those of the Cursor channel. In the live skill smoke test (`scripts/cursor-plugin-smoke.sh`), a headless run (`-p`) of the Cursor CLI 2026.11.11 loaded a plugin's skills but did not give its rules to the agent. That CLI runs stop hooks only in interactive sessions. For the router rule in headless runs, use a project install.
+
+The stop hook is a bash script. On Windows, Cursor needs bash (for example Git for Windows) to run it. The old generated rules and their source generator have been removed. Install or upgrade with the released installer or a native Cursor plugin. A direct copy of the old source `cursor/` directory must migrate to one of those supported paths.
+
+**Upgrade.**
+
+- A project install or a user-level install: update the clone that you install from (`git pull`), then run its installer again with the same target. `git pull` updates only the clone; it does not clean the rules and hooks already copied into a project or home directory. The installer replaces the StackHawk skills, rules and stop hook. It also removes what older versions installed: the generated `stackhawk-*.mdc` rules listed in `cursor-legacy-rules.txt` (it prints how many) and the old `hooks/stop.sh` hook with its `hooks.json` entry. Your other rules, skills and hooks stay, and a second run changes nothing. To move from a development build to the released build, run `install/install.sh` (or `install.ps1`) of a marketplace clone with the same target: it replaces the same files.
+- An install from the earlier Windows instructions (`install.ps1 -Platform cursor`, before `-Target` existed) is a user-level install. Run `install.ps1 -Platform cursor` again to upgrade it, or remove it before you make project installs (see the table below).
+- A Claude Code install: Claude Code installs of releases before the Cursor-only folders have no Cursor guard in their hooks, so Cursor runs them, and their session-start hook adds the StackHawk scan context to Cursor sessions. Once the first release with the Cursor catalog is on the marketplace, update the marketplace and `hawkscan` (a `wingman` install has it as a dependency), then restart Claude Code and Cursor:
+
+  ```bash
+  claude plugin marketplace update stackhawk
+  claude plugin update hawkscan@stackhawk
+  ```
+
+**Move to another channel.** Remove the old channel first, so that each project has one:
+
+| Channel | Remove |
+|---|---|
+| Project install | The skill folders `hawkscan`, `api`, `hawkscan-ci`, `stackhawk-data-seed` and `optimize` in `.cursor/skills/`; `stackhawk.mdc` and `stackhawk-config.mdc` in `.cursor/rules/`; `.cursor/hooks/stackhawk-stop.sh`; the `stop` entry `.cursor/hooks/stackhawk-stop.sh` in `.cursor/hooks.json`. |
+| User-level install | The same five skill folders in `~/.cursor/skills/`; `~/.cursor/hooks/stackhawk-stop.sh`; the `stop` entry `./hooks/stackhawk-stop.sh` in `~/.cursor/hooks.json`. |
+| Either install, from an earlier version | Also `hooks/stop.sh` when its second line is `# Cursor stop hook for hawkscan plugin`, its `stop` entry `.cursor/hooks/stop.sh` in `hooks.json`, and the `stackhawk-*.mdc` files in `rules/`. |
+| Cursor plugin | Turn off the `hawkscan` or `wingman` plugin in Cursor. |
+
+**Troubleshooting.**
+
+- The agent asks for a scan twice, or two StackHawk router rules load: two Cursor channels serve the project. Keep one (see the table).
+- Cursor sessions start with the StackHawk scan context although the project has no Cursor channel that adds it: Cursor imported a Claude Code install of an earlier release. Update it (see "Upgrade").
+- The installer stops with an error about `hooks.json`: the file is not valid JSON, or its `hooks` or `hooks.stop` value has the wrong type. The installer changed nothing. Correct the file, then run the installer again.
+- The stop hook does not ask for a scan: it asks once per conversation, only after a code change with no scan, and only when the turn ends normally. A headless run (`-p`) runs no stop hooks, and on Windows the hook needs bash.
+
+**What is tested.** CI runs both installers (bash and `pwsh`) into scratch projects, including an upgrade over the files of older versions. A layout check runs every StackHawk hook as Cursor runs it, for each Cursor channel alone and for a Claude Code install next to each channel. That check is a model of Cursor, built from the code of the Cursor 3.9.16 app and from live runs of the Cursor CLI. Separate live headless runs of the Cursor CLI 2026.11.13 confirmed that the session-start hook of an imported Claude Code install stays silent; that its other hooks stay silent comes from the tests and the model. The Cursor desktop app was not run live, and the headless CLI runs no stop hooks, so the stop hook counts come from the model.
 
 #### skills CLI (npx)
 
@@ -213,6 +260,23 @@ codex plugin add hawkscan@stackhawk
 copilot plugin marketplace add stackhawk/agent-skills-marketplace
 copilot plugin install wingman@stackhawk
 ```
+
+#### Development builds from this repository
+
+This repository is also a Claude Code, Codex and Cursor marketplace. Its installs track unreleased `main`: use them to test a change before it ships, not for everyday use.
+
+```bash
+# Claude Code (and Codex): the source catalogs
+/plugin marketplace add stackhawk/agent-skills
+/plugin install wingman@stackhawk
+
+# Cursor: a project install, or one plugin folder in the CLI
+git clone https://github.com/stackhawk/agent-skills.git
+bash agent-skills/scripts/install.sh --platform cursor --target .     # Windows: .\agent-skills\scripts\install.ps1 -Platform cursor -Target .
+cursor-agent --plugin-dir agent-skills/cursor-plugins/wingman
+```
+
+The Claude and Codex catalogs list `plugins/hawkscan` and `plugins/wingman`, which carry no Cursor file. Only the Cursor catalog (`.cursor-plugin/marketplace.json`) lists `cursor-plugins/hawkscan` and `cursor-plugins/wingman`, the Cursor-only plugins with their own copies of the skills, the router rule and the stop hook. The Cursor app and the Cursor CLI import Claude Code plugins, so a Claude Code install gives Cursor its skills, no rule, and hooks that do nothing in Cursor. Every other plugin serves both catalogs from its `plugins/<name>` folder.
 
 ### 3. Try it
 
@@ -273,7 +337,8 @@ These are [Agent Skills](https://agentskills.io) — they teach AI coding agents
 
 ```
 plugins/
-├── hawkscan/                    HawkScan DAST scanning
+├── hawkscan/                    HawkScan DAST scanning (no Cursor files)
+│   ├── hooks/                   Claude Code hooks (they do nothing when Cursor runs them)
 │   └── skills/hawkscan/
 │       ├── SKILL.md             scan workflow
 │       └── references/          CLI flags, config patterns, findings schema, Docker, install
@@ -285,18 +350,27 @@ plugins/
 │   └── skills/hawkscan-ci/
 │       ├── SKILL.md             CI wiring workflow
 │       └── references/          execution shapes, app startup, failure semantics
-└── stackhawk-data-seed/         Scan data seeding
-    └── skills/stackhawk-data-seed/
-        └── SKILL.md             hawk perch seed workflow
+├── stackhawk-data-seed/         Scan data seeding
+│   └── skills/stackhawk-data-seed/
+│       └── SKILL.md             hawk perch seed workflow
+├── optimize/                    Scan optimization
+└── wingman/                     Umbrella: Claude Code dependencies, Copilot and Codex copies (no Cursor files)
+cursor-src/                      Cursor router and config rules, Cursor stop hook (hand-written; no catalog lists it)
+cursor-plugins/hawkscan/         Cursor-only hawkscan (generated; only the Cursor catalog lists it)
+cursor-plugins/wingman/          Cursor-only wingman (generated; only the Cursor catalog lists it)
 skills/                          Symlinks for Gemini/Copilot discovery
-cursor/                          Generated Cursor .mdc rules
+scripts/generate-cursor-adapter.py  Builds the Cursor plugin manifests and cursor-plugins/
+scripts/measure-cursor-context.py   Measures the Cursor context load of an install
 scripts/install.sh               Installer for Cursor and Copilot (macOS/Linux)
 scripts/install.ps1              Installer for Cursor and Copilot (Windows)
 scripts/generate-marketplace-catalogs.py   Builds local install verification catalogs
 scripts/generate-marketplace-skills.py     Builds local skills CLI verification copies
+scripts/export-marketplace.py      Exports (or --verify checks) the release payload the marketplace publishes
+scripts/check-marketplace-layout.py  Checks that payload and the synced marketplace
+scripts/cursor-hook-probe.py       Runs one plugin hook as Cursor runs it (used by the layout check)
 ```
 
-Released plugins and skills are published through [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace). Its sync script copies the tagged Claude plugin folders, generates platform catalogs, and vendors standalone skills for `npx skills add`. The release workflow validates the sync and pushes it to marketplace `main`.
+Released plugins and skills are published through [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace). The release exports the payload of its tag (Claude plugin snapshots, the wingman bundle, the Cursor-only hawkscan, the Cursor catalog and installers), and the marketplace sync script publishes it, generates platform catalogs, and vendors standalone skills for `npx skills add`. The release workflow validates the sync and pushes it to marketplace `main`.
 
 ### Platform Support
 
@@ -308,7 +382,7 @@ Released plugins and skills are published through [stackhawk/agent-skills-market
 | Gemini CLI | `gemini extensions install` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 | GitHub Copilot | `copilot plugin install wingman@stackhawk` (or per-plugin) | hawkscan, stackhawk-api, stackhawk-data-seed, stackhawk-optimize (+ hawkscan-ci via per-plugin install) |
 | OpenCode | Copy to `.opencode/skills/` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
-| Cursor | `install.sh --platform cursor` | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
+| Cursor | `install.sh --platform cursor` (or a Cursor plugin) | hawkscan, stackhawk-api, hawkscan-ci, stackhawk-data-seed, stackhawk-optimize |
 
 ---
 

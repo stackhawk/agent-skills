@@ -4,6 +4,8 @@ scripts/
 
 # Platform-specific generated output
 cursor/
+cursor-plugins/
+cursor-src/
 
 # Local settings
 .claude/

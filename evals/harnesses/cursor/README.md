@@ -1,43 +1,37 @@
 # Cursor Eval Harness
 
-Interactive manual harness for Cursor IDE. Results are saved in the standard
-format for cross-platform comparison.
-
-## Headless CLI — investigation needed
-
-A `cursor-agent --headless` CLI has been reported but is unverified. If it
-exists and supports `--output-format stream-json` and `CURSOR_API_KEY` auth,
-this harness could be fully automated. Check `cursor --help` or the Cursor
-docs and open a PR upgrading this to an automated harness if confirmed.
+Runs the eval prompts against the Cursor CLI in headless mode
+(`-p --output-format stream-json`) and saves results in the standard format for
+cross-platform comparison. The adapter launches `cursor-agent`, and falls back to
+`agent` only when `cursor-agent` is not on PATH: another tool's CLI can also be
+named `agent`.
 
 ## Prerequisites
 
-- Cursor IDE installed
-- The agent-skills repo open in Cursor
-- Cursor rules loaded from `cursor/.cursor/rules/` (generated .mdc files)
+- The Cursor CLI: `curl https://cursor.com/install -fsS | bash`
+- `CURSOR_API_KEY` in the environment (never on the command line), or a CLI that
+  can run headless prompts with its login
 
 ## Usage
 
 ```bash
-python3 evals/harnesses/cursor/run-evals.py --skill hawkscan
-python3 evals/harnesses/cursor/run-evals.py --skill api
-python3 evals/harnesses/cursor/run-evals.py --skill hawkscan --id hw-07
-python3 evals/harnesses/cursor/run-evals.py --skill hawkscan --rubric
+uv run evals --harness cursor --skill hawkscan
+uv run evals --harness cursor --skill api
+uv run evals --harness cursor --skill hawkscan --id hw-07
+uv run evals --harness cursor --skill hawkscan --rubric
 ```
 
-## Workflow
+`python3 evals/harnesses/cursor/run-evals.py --skill <skill>` forwards to the same CLI.
 
-1. The script prints each prompt and waits for you to run it in Cursor Agent chat
-2. You record whether the skill triggered (y/n)
-3. If it triggered correctly, you walk through the blocking process checks
-4. Results are saved to `results/<skill>/` in the standard format
+## What each run installs
 
-## Cursor rules
+When the skill is loaded, each run gets a fresh workspace with the layout users
+install: `scripts/install.sh --platform cursor` writes the five skills to
+`.cursor/skills/`, the router and `stackhawk.yml` pointer rules to `.cursor/rules/`,
+and the stop hook. The stop hook stays silent during a run: the Cursor CLI runs
+stop hooks only in interactive sessions, not with `-p`, and the workspace is not a git
+repository. The matrix therefore measures the skills and rules, not the hook.
 
-Skills for Cursor are the generated `.mdc` files in `cursor/.cursor/rules/`.
-They are applied automatically when the repo is open. After editing any SKILL.md,
-regenerate with:
-
-```bash
-bash scripts/generate-cursor-rules.sh
-```
+The published Cursor baseline was measured with the old generated rules only
+(since removed from this repository): no skills and no hook. Run the Cursor matrix again
+before you compare a new result with that baseline.

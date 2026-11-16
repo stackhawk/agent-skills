@@ -28,7 +28,7 @@ Claude will automatically:
 
 ```bash
 # Add the StackHawk marketplace
-/plugin marketplace add stackhawk/agent-skills
+/plugin marketplace add stackhawk/agent-skills-marketplace
 
 # Install the HawkScan skill
 /plugin install hawkscan@stackhawk

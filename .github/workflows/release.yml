@@ -18,8 +18,15 @@ permissions:
 # tree and checks every manifest, skill and generated copy, so a release that cannot be stamped
 # never claims a number. claim marks the number, tag releases it on the merged commit, and the
 # GitHub Release, the marketplace sync and the eval baseline follow the tag. The tree itself keeps a
-# placeholder version (.version-bump.json): the marketplace sync stamps the tag's version into the
-# snapshot it publishes.
+# placeholder version (.version-bump.json): scripts/export-marketplace.py stamps the tag's version
+# into the payload the marketplace sync publishes.
+#
+# validate also exports that payload, runs the marketplace sync on it in a scratch clone and stages
+# the result without a push, so a merge whose sync would fail, write outside the published paths
+# (scripts/ci/stage-marketplace-sync.sh), or publish the Cursor router rule or stop hook twice
+# (scripts/check-marketplace-layout.py) never claims a number. update-marketplace runs the same
+# steps before it pushes. The sync takes the payload with --export (RELEASING.md, "Cursor
+# distribution prerequisites").
 #
 # A run that fails after the claim leaves it: re-run its failed jobs to finish the release, or run
 # Abandon release if the merged change itself breaks it. Every step after the tag is idempotent, so a
@@ -72,22 +79,41 @@ jobs:
         uses: ./../../../../../home/runner/.github/actions/biodome-setup-v2
       - name: Stamp the release version
         run: bash scripts/bump-version.sh "$RELEASE_VERSION"
-      - name: Regenerate the wingman Copilot bundle
+      - name: Regenerate the wingman bundled skills
+        # Also the skill copies of the Cursor-only hawkscan plugin (cursor-plugins/hawkscan/skills/).
         run: bash scripts/generate-wingman-skills.sh
       - name: Validate the stamped tree
+        # The layout check covers direct installs from this repository, which is a Claude Code
+        # and a Cursor marketplace too: no install may load the router rule or the stop hook twice,
+        # also a Claude Code install next to one native Cursor install.
         run: |
           bash scripts/check-version.sh "$RELEASE_VERSION"
           bash scripts/test-wingman-skills.sh
-      - name: Verify Cursor rules are up to date
+          python3 scripts/check-marketplace-layout.py --no-installers .
+      - name: Verify the Cursor adapter is up to date
+        # The stamp adds a version to each .cursor-plugin/plugin.json; the generator keeps it.
+        run: python3 scripts/generate-cursor-adapter.py --check
+      # The export reads the commit, not this stamped working tree, and stamps its own copy.
+      - name: Export the marketplace payload
         run: |
-          bash scripts/generate-cursor-rules.sh
-          git add -N cursor/
-          if ! git diff --quiet cursor/; then
-            echo "ERROR: Cursor rules are out of date. Run 'bash scripts/generate-cursor-rules.sh' and commit."
-            git diff --stat cursor/
-            exit 1
-          fi
-
+          python3 scripts/export-marketplace.py --ref HEAD --version "$RELEASE_VERSION" \
+            --dest "$RUNNER_TEMP/marketplace-export"
+      # The marketplace is public, so this clone needs no token, and nothing here is pushed. The sync
+      # resolves the release commit from the tag, so a local tag is forced onto HEAD for this step and
+      # deleted when it ends; it is never pushed (claim and tag make the real one).
+      - name: Dry-run the marketplace sync
+        run: |
+          tag="v${RELEASE_VERSION}"
+          git tag -f "$tag" HEAD
+          trap 'git tag -d "$tag" >/dev/null' EXIT
+          git clone --quiet --depth 1 --branch main \
+            https://github.com/stackhawk/agent-skills-marketplace.git "$RUNNER_TEMP/marketplace"
+          python3 "$RUNNER_TEMP/marketplace/scripts/sync-agent-skills.py" \
+            --source-repo "$GITHUB_WORKSPACE" --tag "$tag" --export "$RUNNER_TEMP/marketplace-export"
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s "$RUNNER_TEMP/marketplace/tests"
+          python3 scripts/check-marketplace-layout.py --run-installers --version "$RELEASE_VERSION" \
+            "$RUNNER_TEMP/marketplace"
+          bash scripts/ci/stage-marketplace-sync.sh "$RUNNER_TEMP/marketplace"
   # The number is claimed before anything else is written under it. The claim and the tag are made as
   # the release App. Its status functions keep a skipped ancestor from skipping the release unnoticed,
   # and a failed or cancelled validate from claiming a number.
@@ -223,6 +249,7 @@ jobs:
     env:
       CI_ROLES: ${{ vars.CI_ROLES }}
       RELEASE_TAG: v${{ needs.resolve.outputs.version }}
+      RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
     steps:
       ### Biodome setup: every tag, which the sync resolves the release commit from
       - name: Biodome job setup
@@ -243,27 +270,24 @@ jobs:
           echo "MARKETPLACE_TOKEN=$token" >> "$GITHUB_ENV"
       - name: Clone agent-skills-marketplace
         run: git clone --branch main "https://x-access-token:${MARKETPLACE_TOKEN}@github.com/stackhawk/agent-skills-marketplace.git" /tmp/marketplace
-      # The sync takes the version from the tag and stamps it into the snapshot itself: the tagged
-      # tree carries the placeholder.
+      # The tagged tree carries the placeholder: the export stamps the tag's version into the payload,
+      # and the sync checks that the payload is of the tag's commit and version.
+      - name: Export the marketplace payload from the release tag
+        run: |
+          python3 scripts/export-marketplace.py --ref "$RELEASE_TAG" --version "$RELEASE_VERSION" \
+            --dest "$RUNNER_TEMP/marketplace-export"
       - name: Sync marketplace from release tag
         run: |
           python3 /tmp/marketplace/scripts/sync-agent-skills.py \
-            --source-repo "$GITHUB_WORKSPACE" --tag "$RELEASE_TAG"
+            --source-repo "$GITHUB_WORKSPACE" --tag "$RELEASE_TAG" --export "$RUNNER_TEMP/marketplace-export"
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s /tmp/marketplace/tests
+          python3 scripts/check-marketplace-layout.py --run-installers --version "$RELEASE_VERSION" /tmp/marketplace
       - name: Push marketplace sync to main
         run: |
           cd /tmp/marketplace
           git config user.name "hawkdeploy"
           git config user.email "hawkdeploy@stackhawk.com"
-          # Keep these paths in sync with install() in marketplace's sync-agent-skills.py.
-          git add -A -- plugins bundles skills sources.json \
-            .claude-plugin/marketplace.json .github/plugin/marketplace.json \
-            .agents/plugins/marketplace.json .codex-plugin/marketplace.json
-          if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
-            echo "ERROR: Marketplace sync left changes outside the staged paths. Update this list to match install()."
-            git status --short
-            exit 1
-          fi
+          bash "$GITHUB_WORKSPACE/scripts/ci/stage-marketplace-sync.sh" .
           if git diff --cached --quiet; then
             echo "Marketplace already contains ${RELEASE_TAG}"
             exit 0
@@ -273,6 +297,7 @@ jobs:
             git fetch origin main
             git rebase origin/main
             PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests
+            python3 "$GITHUB_WORKSPACE/scripts/check-marketplace-layout.py" --version "$RELEASE_VERSION" .
             if ! git push origin HEAD:main; then
               echo "ERROR: Marketplace main push failed after one fetch-rebase retry."
               exit 1

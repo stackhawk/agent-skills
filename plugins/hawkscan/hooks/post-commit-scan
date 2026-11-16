@@ -5,6 +5,9 @@
 
 set -euo pipefail
 
+# Do nothing when Cursor runs this hook: see skip-under-cursor.
+. "$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/skip-under-cursor"
+
 # The hook system passes the PostToolUse payload on stdin as JSON. The Bash command
 # is at .tool_input.command. The payload also carries the tool's output
 # (.tool_response), which must never be searched for a commit.

@@ -1,0 +1,49 @@
+# Every rule name shipped by the retired generated Cursor rules (from their git history).
+# Older installers copied these into a target's .cursor/rules/. The installers delete
+# exactly these names, including names that later releases stopped generating.
+# Keep this list for upgrades: old installs still carry these files.
+stackhawk-api-auth.mdc
+stackhawk-api-endpoints.mdc
+stackhawk-api-hawk-op.mdc
+stackhawk-api-hawkop.mdc
+stackhawk-api-recipes.mdc
+stackhawk-api.mdc
+stackhawk-bootstrap-cross-repo.mdc
+stackhawk-bootstrap-discovery.mdc
+stackhawk-bootstrap-idempotency.mdc
+stackhawk-bootstrap-manifest.mdc
+stackhawk-bootstrap-walkthrough.mdc
+stackhawk-bootstrap.mdc
+stackhawk-data-seed-cross-repo.mdc
+stackhawk-data-seed-discovery.mdc
+stackhawk-data-seed-idempotency.mdc
+stackhawk-data-seed-manifest.mdc
+stackhawk-data-seed-walkthrough.mdc
+stackhawk-data-seed.mdc
+stackhawk-hawkscan-auth.mdc
+stackhawk-hawkscan-authz-profiles.mdc
+stackhawk-hawkscan-ci-app-startup.mdc
+stackhawk-hawkscan-ci-execution-shapes.mdc
+stackhawk-hawkscan-ci-failure.mdc
+stackhawk-hawkscan-ci.mdc
+stackhawk-hawkscan-cli.mdc
+stackhawk-hawkscan-config.mdc
+stackhawk-hawkscan-docker.mdc
+stackhawk-hawkscan-false-positives.mdc
+stackhawk-hawkscan-findings.mdc
+stackhawk-hawkscan-high-iteration.mdc
+stackhawk-hawkscan-input-vectors.mdc
+stackhawk-hawkscan-install.mdc
+stackhawk-hawkscan-model.mdc
+stackhawk-hawkscan-multi-profile.mdc
+stackhawk-hawkscan-openapi-specs.mdc
+stackhawk-hawkscan-scan-planning.mdc
+stackhawk-hawkscan-scan-policy.mdc
+stackhawk-hawkscan-scan-quality.mdc
+stackhawk-hawkscan.mdc
+stackhawk-optimize-cli.mdc
+stackhawk-optimize-mapping.mdc
+stackhawk-optimize-metrics.mdc
+stackhawk-optimize-trial.mdc
+stackhawk-optimize.mdc
+stackhawk-skill-authoring.mdc

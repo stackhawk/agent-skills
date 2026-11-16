@@ -1,0 +1,17 @@
+---
+description: StackHawk skills router. Names the StackHawk Agent Skills and when each one applies.
+alwaysApply: true
+---
+# StackHawk skills
+
+StackHawk ships these Agent Skills. Use the ones in your skills list. Read a skill's SKILL.md before you act on it. Do not act from this summary.
+
+- hawkscan: the HawkScan DAST loop. Configure, scan, fix ALL findings, rescan.
+  Run it on your own right after you complete a code change (feature, bugfix, refactor).
+  Skip it for documentation-only changes, config edits without a scan, questions about HawkScan, CLI installs, and when the user says to skip.
+- api (stackhawk-api): read-only platform queries: findings, posture, scan history, apps. Never runs a scan.
+- hawkscan-ci: wires HawkScan into a CI pipeline file. Only edits CI config.
+- stackhawk-data-seed: seeds backend data when a scan has nothing to hit. Explicit request or a hawkscan hand-off only.
+- optimize (stackhawk-optimize): tunes scan policy and tech flags. hawkscan runs it in Phase 0c; the user runs it with /optimize.
+
+Routing: "scan", "DAST", "is it fixed" -> hawkscan. "what findings", "posture", "history" -> api. "pipeline", "GitHub Actions", "GitLab CI" -> hawkscan-ci. "no data", "empty scan" -> stackhawk-data-seed. "slow scan", "too noisy" -> optimize.
