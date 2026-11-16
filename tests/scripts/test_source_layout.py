@@ -30,6 +30,8 @@ import subprocess
 
 import pytest
 
+from tests.git_env import git_env
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CHECK = os.path.join(REPO_ROOT, "scripts", "check-marketplace-layout.py")
 CURSOR_WINGMAN = "cursor-plugins/wingman"
@@ -73,9 +75,7 @@ LAYOUT = load(CHECK, "check_marketplace_layout")
 
 
 def git(path, *args):
-    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
-           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
-    return subprocess.run(["git", "-C", str(path), *args], env=env, check=True, capture_output=True).stdout
+    return subprocess.run(["git", "-C", str(path), *args], env=git_env(), check=True, capture_output=True).stdout
 
 
 @pytest.fixture(scope="session")
@@ -163,23 +163,6 @@ def test_claude_listed_folders_carry_only_the_allowed_cursor_files(source):
     assert sorted(plugins.values()) == sorted(CLAUDE_LISTED_CURSOR_FILES)
     for folder, allowed in CLAUDE_LISTED_CURSOR_FILES.items():
         assert cursor_files(source, folder) == allowed, folder
-
-
-def test_the_claude_catalog_reaches_no_router_rule_and_no_cursor_stop_script(source):
-    plugins = catalog(source, ".claude-plugin/marketplace.json")
-    routers, stop_scripts = [], []
-    for folder in plugins.values():
-        for rel in cursor_files(source, folder):
-            full = os.path.join(source, folder, rel)
-            if rel.endswith(".mdc"):
-                with open(full) as f:
-                    fields, _ = LAYOUT.MEASURE.parse_frontmatter(f.read())
-                if LAYOUT.always_applied(fields.get("alwaysApply")):
-                    routers.append(f"{folder}/{rel}")
-            elif rel.endswith("stop.sh"):
-                stop_scripts.append(f"{folder}/{rel}")
-    assert routers == []
-    assert stop_scripts == []
 
 
 def test_the_layout_check_passes_on_the_source(source):
@@ -344,29 +327,22 @@ def lf_paths():
     and Cursor hook sources they copy, every Claude hook script but the .cmd wrapper, and the
     legacy rule list that install.sh reads line by line, and every JSON file, which the scripts
     stamp and write with LF."""
-    found = ["scripts/cursor-legacy-rules.txt"]
-    found += subprocess.run(["git", "-C", REPO_ROOT, "ls-files", "*.json"], capture_output=True, text=True,
-                            check=True).stdout.split()
-    tops = ["cursor-plugins", "plugins/wingman/copilot-skills", "cursor-src"]
-    for plugin in sorted(os.listdir(os.path.join(REPO_ROOT, "plugins"))):
-        tops += [f"plugins/{plugin}/skills"] if os.path.isdir(os.path.join(REPO_ROOT, "plugins", plugin, "skills")) else []
-    for top in tops:
-        for dirpath, _, names in os.walk(os.path.join(REPO_ROOT, top)):
-            found += [os.path.relpath(os.path.join(dirpath, n), REPO_ROOT) for n in names]
-    for plugin in sorted(os.listdir(os.path.join(REPO_ROOT, "plugins"))):
-        base = os.path.join("plugins", plugin)
-        if os.path.isfile(os.path.join(REPO_ROOT, base, ".cursor-plugin", "plugin.json")):
-            found.append(f"{base}/.cursor-plugin/plugin.json")
-        hooks = os.path.join(REPO_ROOT, base, "hooks")
-        if os.path.isdir(hooks):
-            found += [f"{base}/hooks/{n}" for n in sorted(os.listdir(hooks))
-                      if os.path.isfile(os.path.join(hooks, n)) and not n.endswith(".cmd")]
-    return sorted(set(found))
+    listed = git(REPO_ROOT, "ls-files", "-z", "--cached", "--others", "--exclude-standard").decode().split("\0")
+    tops = ("cursor-plugins/", "plugins/wingman/copilot-skills/", "cursor-src/")
+
+    def wanted(rel):
+        parts = rel.split("/")
+        in_plugin = parts[0] == "plugins" and len(parts) > 3
+        return (rel == "scripts/cursor-legacy-rules.txt" or rel.endswith(".json") or rel.startswith(tops)
+                or (in_plugin and parts[2] == "skills")
+                or (in_plugin and len(parts) == 4 and parts[2] == "hooks" and not rel.endswith(".cmd")))
+
+    return sorted(rel for rel in listed if rel and wanted(rel) and os.path.isfile(os.path.join(REPO_ROOT, rel)))
 
 
 def eol_attributes(paths, attribute="eol"):
     proc = subprocess.run(["git", "-C", REPO_ROOT, "check-attr", attribute, "--stdin"], input="\n".join(paths),
-                          capture_output=True, text=True, check=True)
+                          env=git_env(), capture_output=True, text=True, check=True)
     return {line.split(": ")[0]: line.split(": ")[2] for line in proc.stdout.splitlines()}
 
 

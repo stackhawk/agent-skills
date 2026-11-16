@@ -25,6 +25,8 @@ import subprocess
 import pytest
 import yaml
 
+from tests.git_env import git_env
+
 from tests.scripts.test_marketplace_export import git, snapshot_working_tree
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -125,13 +127,17 @@ def job_steps(job, marketplace_url, checkout):
     missing = SKIPPED[job] - {step.get("name") for step in steps}
     assert not missing, f"release.yml {job} has no step {sorted(missing)}"
     picked = []
+    checkout_used = False
     for step in steps:
         if "run" not in step or step["name"] in SKIPPED[job]:
             continue
+        checkout_used = checkout_used or JOB_CHECKOUT in step["run"]
         script = (step["run"].replace(TOKEN_MARKETPLACE, marketplace_url)
                   .replace(PUBLIC_MARKETPLACE, marketplace_url).replace(JOB_CHECKOUT, checkout))
         assert "github.com/stackhawk/agent-skills-marketplace" not in script, (job, step["name"])
+        assert "/tmp/" not in script, (job, step["name"])
         picked.append((step["name"], script))
+    assert checkout_used == (job == "update-marketplace"), f"release.yml {job} moved its marketplace checkout"
     return picked
 
 
@@ -159,7 +165,7 @@ def scratch_marketplace(tmp_path, sync):
     git(work, "add", "-A")
     git(work, "commit", "-q", "-m", "stand-in marketplace")
     bare = tmp_path / "marketplace.git"
-    subprocess.run(["git", "clone", "-q", "--bare", str(work), str(bare)], check=True)
+    subprocess.run(["git", "clone", "-q", "--bare", str(work), str(bare)], env=git_env(), check=True)
     return bare
 
 
@@ -176,7 +182,7 @@ def workspace(source_repo, tmp_path):
     """The runner's checkout of the merged commit, with LF line endings as on the Linux runner."""
     path = tmp_path / "workspace"
     subprocess.run(["git", "clone", "-q", "-c", "core.autocrlf=input", "--no-local",
-                    str(source_repo), str(path)], check=True)
+                    str(source_repo), str(path)], env=git_env(), check=True)
     return path
 
 
@@ -186,7 +192,7 @@ def job_env(tmp_path, workspace, run="run-1"):
     runner = tmp_path / run
     (runner / "runner-temp").mkdir(parents=True)
     (runner / "home").mkdir()
-    return {**os.environ, "HOME": str(runner / "home"), "PYTHONDONTWRITEBYTECODE": "1",
+    return {**git_env(identity=False), "HOME": str(runner / "home"), "PYTHONDONTWRITEBYTECODE": "1",
             "RELEASE_VERSION": VERSION, "RELEASE_TAG": TAG, "RUNNER_TEMP": str(runner / "runner-temp"),
             "GITHUB_WORKSPACE": str(workspace), "SYNC_RECORD": str(tmp_path / "sync-record.jsonl")}
 
@@ -210,7 +216,9 @@ def test_every_release_write_waits_for_validate_through_claim():
     all_jobs = jobs()
     claim = all_jobs["claim"]
     assert "validate" in claim["needs"]
-    assert "!failure()" in claim["if"] and "!cancelled()" in claim["if"]
+    assert "||" not in claim["if"]
+    conditions = {term.strip() for term in claim["if"].split("&&")}
+    assert {"!failure()", "!cancelled()"} <= conditions, claim["if"]
     for job in ("draft-release", "tag", "publish-release", "update-marketplace", "capture-baseline"):
         assert depends_on(job, "claim", all_jobs), job
 

@@ -19,6 +19,8 @@ import sys
 
 import pytest
 
+from tests.git_env import git_env
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 INSTALL_SH = os.path.join(REPO_ROOT, "scripts", "install.sh")
 INSTALL_PS1 = os.path.join(REPO_ROOT, "scripts", "install.ps1")
@@ -43,9 +45,7 @@ INSTALLERS = ["sh"] + (["ps1"] if shutil.which("pwsh") else [])
 
 
 def git(path, *args):
-    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
-           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
-    subprocess.run(["git", *args], cwd=path, env=env, check=True, capture_output=True)
+    subprocess.run(["git", *args], cwd=path, env=git_env(), check=True, capture_output=True)
 
 
 @pytest.fixture
@@ -212,7 +212,7 @@ def test_upgrade_removes_the_legacy_install_only(kind, project, home):
     assert not (dot_cursor / "hooks" / "stop.sh").exists()
     assert hooks(dot_cursor)["hooks"]["stop"] == [PROJECT_ENTRY]
     assert "deprecated" in (proc.stdout + proc.stderr).lower()
-    assert "Removed 29 legacy" in proc.stdout + proc.stderr
+    assert f"Removed {len(os.listdir(LEGACY_RULES_DIR)) + 1} legacy" in proc.stdout + proc.stderr
 
 
 @pytest.mark.parametrize("kind", INSTALLERS)
@@ -263,20 +263,24 @@ def test_a_foreign_skill_folder_is_not_replaced(kind, project, home):
     assert files_under(project / ".cursor") == {"skills/api/SKILL.md"}
 
 
-def test_without_python_a_new_hooks_file_is_still_written(project, home, tmp_path):
+def no_python_bin(tmp_path):
     bindir = tmp_path / "nopython-bin"
     bindir.mkdir()
     for tool in NO_PYTHON_TOOLS:
-        os.symlink(shutil.which(tool), bindir / tool)
+        found = shutil.which(tool)
+        assert found, f"{tool} is not installed"
+        os.symlink(found, bindir / tool)
+    return bindir
+
+
+def test_without_python_a_new_hooks_file_is_still_written(project, home, tmp_path):
+    bindir = no_python_bin(tmp_path)
     install("sh", project, home, path=str(bindir))
     assert hooks(project / ".cursor") == {"version": 1, "hooks": {"stop": [PROJECT_ENTRY]}}
 
 
 def test_without_python_an_existing_hooks_file_is_left_alone(project, home, tmp_path):
-    bindir = tmp_path / "nopython-bin"
-    bindir.mkdir()
-    for tool in NO_PYTHON_TOOLS:
-        os.symlink(shutil.which(tool), bindir / tool)
+    bindir = no_python_bin(tmp_path)
     dot_cursor = project / ".cursor"
     dot_cursor.mkdir()
     original = json.dumps({"version": 1, "hooks": {"sessionStart": [{"command": "./x.sh"}]}})

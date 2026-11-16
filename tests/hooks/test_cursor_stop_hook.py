@@ -16,6 +16,7 @@ plugin run from the workspace root, so the hook finds the project from
 Each case runs the real script against a throwaway git repo with a stop payload shaped
 like the one Cursor sends. The no-jq cases run it with a PATH that has no `jq`.
 """
+import hashlib
 import json
 import os
 import shutil
@@ -23,6 +24,8 @@ import subprocess
 import time
 
 import pytest
+
+from tests.git_env import git_env
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HOOK_DIR = os.path.join(REPO_ROOT, "cursor-src/hooks")  # the hand-written source
@@ -58,15 +61,7 @@ def payload(status="completed", loop_count=0, roots=None, **extra):
 
 def git(path, *args, age_seconds=0):
     stamp = f"{int(time.time()) - age_seconds} +0000"
-    env = {
-        **os.environ,
-        "GIT_AUTHOR_NAME": "t",
-        "GIT_AUTHOR_EMAIL": "t@example.com",
-        "GIT_COMMITTER_NAME": "t",
-        "GIT_COMMITTER_EMAIL": "t@example.com",
-        "GIT_AUTHOR_DATE": stamp,
-        "GIT_COMMITTER_DATE": stamp,
-    }
+    env = git_env(GIT_AUTHOR_DATE=stamp, GIT_COMMITTER_DATE=stamp)
     subprocess.run(["git", *args], cwd=path, env=env, check=True, capture_output=True)
 
 
@@ -183,14 +178,15 @@ def test_project_dir_env_wins_over_working_directory(tmp_path):
     followup(out)
 
 
-def test_workspace_roots_is_the_fallback_project_dir(tmp_path):
+@pytest.mark.parametrize("use_jq", [True, False], ids=["jq", "no-jq"])
+def test_workspace_roots_is_the_fallback_project_dir(tmp_path, use_jq):
+    if use_jq and not shutil.which("jq"):
+        pytest.skip("jq not installed")
     repo = tmp_path / "proj"
     make_repo(str(repo), "modified")
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
-    followup(run(HOOK, payload(roots=[str(repo)], conversation_id="c-jq"), cwd=str(elsewhere)))
-    followup(run(HOOK, payload(roots=[str(repo)], conversation_id="c-nojq"), cwd=str(elsewhere),
-                 path=no_jq_path(tmp_path)))
+    followup(run(HOOK, payload(roots=[str(repo)]), cwd=str(elsewhere), path=None if use_jq else no_jq_path(tmp_path)))
 
 
 @pytest.mark.parametrize("use_jq", [True, False], ids=["jq", "no-jq"])
@@ -200,12 +196,14 @@ def test_one_follow_up_per_conversation(tmp_path, use_jq):
     repo = tmp_path / "proj"
     make_repo(str(repo), "modified")
     path = None if use_jq else no_jq_path(tmp_path)
-    status_before = subprocess.run(["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=False).stdout
+    status_before = subprocess.run(["git", "status", "--porcelain"], cwd=repo, env=git_env(), capture_output=True,
+                                   text=True, check=False).stdout
     followup(run(HOOK, payload(conversation_id="conv/../A b"), cwd=str(repo), path=path))
     # The user sends another message in the same conversation; the tree is still dirty.
     assert run(HOOK, payload(conversation_id="conv/../A b"), cwd=str(repo), path=path) == ""
     followup(run(HOOK, payload(conversation_id="conv-B"), cwd=str(repo), path=path))
-    status_after = subprocess.run(["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=False).stdout
+    status_after = subprocess.run(["git", "status", "--porcelain"], cwd=repo, env=git_env(), capture_output=True,
+                                  text=True, check=False).stdout
     assert status_after == status_before, "the record must not show up in git status"
 
 
@@ -219,16 +217,19 @@ def test_without_a_conversation_id_every_completed_turn_may_ask(tmp_path):
 def test_the_record_stays_bounded(tmp_path):
     repo = tmp_path / "proj"
     make_repo(str(repo), "modified")
-    record = subprocess.run(["git", "rev-parse", "--git-path", "stackhawk/cursor-stop-asked"], cwd=repo,
+    record = subprocess.run(["git", "rev-parse", "--git-path", "stackhawk/cursor-stop-asked"], cwd=repo, env=git_env(),
                             capture_output=True, text=True, check=True).stdout.strip()
     record = os.path.join(repo, record)
     os.makedirs(os.path.dirname(record))
+    old = [f"{i:040x}" for i in range(500)]
     with open(record, "w") as f:
-        f.writelines(f"{i:040x}\n" for i in range(500))
+        f.writelines(f"{key}\n" for key in old)
     followup(run(HOOK, payload(conversation_id="fresh"), cwd=str(repo)))
     with open(record) as f:
         lines = f.read().splitlines()
-    assert len(lines) <= 200
+    # The key of a conversation is its git blob id: sha1 of "blob <size>\0<id>".
+    fresh = hashlib.sha1(b"blob 5\0fresh").hexdigest()
+    assert lines == old[-199:] + [fresh]
     assert run(HOOK, payload(conversation_id="fresh"), cwd=str(repo)) == ""
 
 
@@ -236,7 +237,7 @@ def test_an_unwritable_record_does_not_block_the_follow_up(tmp_path):
     repo = tmp_path / "proj"
     make_repo(str(repo), "modified")
     # A file where the record directory should be: the record cannot be written.
-    blocker = subprocess.run(["git", "rev-parse", "--git-path", "stackhawk"], cwd=repo,
+    blocker = subprocess.run(["git", "rev-parse", "--git-path", "stackhawk"], cwd=repo, env=git_env(),
                              capture_output=True, text=True, check=True).stdout.strip()
     with open(os.path.join(repo, blocker), "w") as f:
         f.write("not a directory")

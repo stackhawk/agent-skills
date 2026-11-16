@@ -9,6 +9,8 @@ import subprocess
 
 import pytest
 
+from tests.git_env import git_env
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci", "stage-marketplace-sync.sh")
 PATHS = ["plugins/hawkscan/SKILL.md", "bundles/wingman/README.md", "cursor-plugins/hawkscan/.cursor-plugin/plugin.json",
@@ -16,8 +18,7 @@ PATHS = ["plugins/hawkscan/SKILL.md", "bundles/wingman/README.md", "cursor-plugi
          "install/install.sh", "sources.json", ".claude-plugin/marketplace.json",
          ".github/plugin/marketplace.json", ".agents/plugins/marketplace.json",
          ".codex-plugin/marketplace.json", ".cursor-plugin/marketplace.json"]
-ENV = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
-       "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
+ENV = git_env()
 
 
 def git(repo, *args):
@@ -53,15 +54,18 @@ def test_a_complete_sync_is_staged(marketplace):
     assert sorted(git(marketplace, "diff", "--cached", "--name-only").split()) == sorted(PATHS)
 
 
-@pytest.mark.parametrize("missing", ["install/install.sh", ".cursor-plugin/marketplace.json",
-                                     "cursor-plugins/hawkscan/.cursor-plugin/plugin.json"])
-def test_a_sync_that_does_not_write_a_published_path_fails(marketplace, missing):
+@pytest.mark.parametrize("missing, published", [
+    ("install/install.sh", "install"),
+    (".cursor-plugin/marketplace.json", ".cursor-plugin/marketplace.json"),
+    ("cursor-plugins/hawkscan/.cursor-plugin/plugin.json", "cursor-plugins"),
+])
+def test_a_sync_that_does_not_write_a_published_path_fails(marketplace, missing, published):
     for rel in PATHS:
         if rel != missing:
             write(marketplace / rel)
     proc = stage(marketplace)
     assert proc.returncode == 1
-    assert missing.split("/")[0] in proc.stdout + proc.stderr
+    assert f"ERROR: the marketplace sync wrote no {published}. " in proc.stderr
 
 
 @pytest.mark.parametrize("stray", ["scripts/sync-agent-skills.py", "notes.txt"])

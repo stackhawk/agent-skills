@@ -29,6 +29,8 @@ import subprocess
 
 import pytest
 
+from tests.git_env import git_env
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PLUGIN = os.path.join(REPO_ROOT, "plugins", "hawkscan")
 GUARD = "skip-under-cursor"
@@ -89,8 +91,7 @@ IDS = [f"{event}-{script}" for event, script, _ in COMMANDS]
 
 
 def git(project, *args):
-    subprocess.run(["git", "-C", str(project), "-c", "user.name=t", "-c", "user.email=t@example.invalid",
-                    "-c", "commit.gpgsign=false", *args], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(project), *args], env=git_env(), check=True, capture_output=True)
 
 
 @pytest.fixture

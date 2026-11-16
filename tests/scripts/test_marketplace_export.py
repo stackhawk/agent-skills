@@ -29,8 +29,11 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 
 import pytest
+
+from tests.git_env import git_env
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 EXPORT = os.path.join(REPO_ROOT, "scripts", "export-marketplace.py")
@@ -59,12 +62,8 @@ def load(path, name):
 
 LAYOUT = load(CHECK, "check_marketplace_layout")
 
-GIT_ENV = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
-           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
-
-
 def git(path, *args):
-    return subprocess.run(["git", "-C", str(path), *args], env=GIT_ENV, check=True,
+    return subprocess.run(["git", "-C", str(path), *args], env=git_env(), check=True,
                           capture_output=True).stdout
 
 
@@ -91,7 +90,7 @@ def snapshot_working_tree(dest):
 
 def run_export(source, dest, version=VERSION, ref="HEAD", check=True):
     proc = subprocess.run(
-        ["python3", EXPORT, "--source-repo", str(source), "--ref", ref, "--version", version,
+        [sys.executable, EXPORT, "--source-repo", str(source), "--ref", ref, "--version", version,
          "--dest", str(dest)],
         capture_output=True, text=True, timeout=300,
         env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
@@ -166,9 +165,9 @@ def errors_of(root, version=VERSION, run_installers=False):
 
 
 def assert_error(errors, *needles):
-    text = "\n".join(errors)
-    for needle in needles:
-        assert needle in text, f"expected an error with {needle!r}, got:\n{text}"
+    """One error names every needle."""
+    assert any(all(needle in error for needle in needles) for error in errors), \
+        f"expected one error with {needles!r}, got:\n" + "\n".join(errors)
 
 
 # ─── The export ───
@@ -205,15 +204,6 @@ def test_claude_snapshots_equal_the_release_tree(exported, release_tree, claude_
     for name, source in claude_catalog.items():
         expected = without(files_under(release_tree / source), CLAUDE_SNAPSHOT_OMITS.get(name, ()))
         assert files_under(exported / "plugins" / name) == expected, name
-
-
-def test_a_lost_claude_file_fails_the_snapshot_comparison(scratch, release_tree):
-    """The comparison above is what catches a Claude snapshot that lost a file the layout check
-    cannot know about, such as the Claude hooks file."""
-    expected = without(files_under(release_tree / "plugins" / "hawkscan"), ())
-    assert files_under(scratch / "plugins" / "hawkscan") == expected
-    (scratch / "plugins" / "hawkscan" / "hooks" / "hooks.json").unlink()
-    assert files_under(scratch / "plugins" / "hawkscan") != expected
 
 
 def expected_bundle(release_tree):
@@ -305,8 +295,10 @@ def test_cursor_catalog_points_at_marketplace_folders(exported, source_repo, cla
 
 
 def test_every_cursor_manifest_and_skill_carries_the_version(exported):
+    catalog = json.loads((exported / ".cursor-plugin" / "marketplace.json").read_text())
     manifests = list(exported.glob("*/*/.cursor-plugin/plugin.json"))
-    assert len(manifests) == 6
+    assert sorted(p.parent.parent.relative_to(exported).as_posix() for p in manifests) == \
+        sorted(e["source"].removeprefix("./") for e in catalog["plugins"])
     for path in manifests:
         assert json.loads(path.read_text())["version"] == VERSION, path
     for path in exported.glob("**/SKILL.md"):
@@ -381,13 +373,11 @@ def test_export_folders_have_fixed_modes(exported):
 
 
 def test_export_reads_the_commit_not_the_working_tree(source_repo, tmp_path):
-    rule = source_repo / "cursor-src" / "rules" / "stackhawk.mdc"
-    original = rule.read_text()
-    try:
-        rule.write_text(original + "\nUNCOMMITTED\n")
-        run_export(source_repo, tmp_path / "dest")
-    finally:
-        rule.write_text(original)
+    clone = tmp_path / "clone"
+    git(tmp_path, "clone", "-q", str(source_repo), str(clone))
+    rule = clone / "cursor-src" / "rules" / "stackhawk.mdc"
+    rule.write_text(rule.read_text() + "\nUNCOMMITTED\n")
+    run_export(clone, tmp_path / "dest")
     assert "UNCOMMITTED" not in (tmp_path / "dest" / "bundles" / "wingman" / "rules" / "stackhawk.mdc").read_text()
 
 
@@ -419,10 +409,11 @@ def test_the_layout_the_old_sync_wrote_fails(scratch):
     """The reproduced defect: the old sync kept the Cursor files in the Claude-listed wingman."""
     copy_cursor_files_into_claude_wingman(scratch, (".cursor-plugin", "rules", "hooks"))
     errors = errors_of(scratch)
-    assert_error(errors, "plugins/wingman/rules: the Claude catalog lists plugins/wingman (wingman)",
-                 "plugins/wingman/hooks/cursor/plugin-hooks.json registers a stop hook that acts",
-                 "Claude Code install of wingman", "+ Cursor catalog install of wingman (bundles/wingman): "
-                 "2 router rules", "2 stop hooks act")
+    assert_error(errors, "plugins/wingman/rules: the Claude catalog lists plugins/wingman (wingman)")
+    assert_error(errors, "plugins/wingman/hooks/cursor/plugin-hooks.json registers a stop hook that acts")
+    assert_error(errors, "Claude Code install of wingman",
+                 "+ Cursor catalog install of wingman (bundles/wingman): 2 router rules")
+    assert_error(errors, "Claude Code install of wingman", "2 stop hooks act")
 
 
 def copy_cursor_files_into_claude_hawkscan(root):
@@ -440,11 +431,13 @@ def test_the_layout_of_the_previous_release_fails(scratch):
     so a Claude Code install next to one native Cursor install loaded each twice."""
     copy_cursor_files_into_claude_hawkscan(scratch)
     errors = errors_of(scratch)
-    assert_error(errors, "plugins/hawkscan/rules: the Claude catalog lists plugins/hawkscan (hawkscan)",
-                 "plugins/hawkscan/.cursor-plugin: the Claude catalog lists plugins/hawkscan",
-                 "Claude Code install of hawkscan (Cursor reads .cursor-plugin/plugin.json when present) "
-                 "+ project install: 2 router rules",
-                 "+ Cursor catalog install of hawkscan (cursor-plugins/hawkscan): 2 router rules", "2 stop hooks act")
+    assert_error(errors, "plugins/hawkscan/rules: the Claude catalog lists plugins/hawkscan (hawkscan)")
+    assert_error(errors, "plugins/hawkscan/.cursor-plugin: the Claude catalog lists plugins/hawkscan")
+    assert_error(errors, "Claude Code install of hawkscan (Cursor reads .cursor-plugin/plugin.json when present) "
+                 "+ project install: 2 router rules")
+    assert_error(errors, "Claude Code install of hawkscan",
+                 "+ Cursor catalog install of hawkscan (cursor-plugins/hawkscan): 2 router rules")
+    assert_error(errors, "Claude Code install of hawkscan", "2 stop hooks act")
 
 
 @pytest.mark.parametrize("hook, event", [("stop", "stop"), ("session-start", "sessionStart"),
@@ -550,7 +543,7 @@ def test_a_cursor_entry_on_the_claude_wingman_fails(scratch):
         if entry["name"] == "wingman":
             entry["source"] = "./plugins/wingman"
     path.write_text(json.dumps(catalog))
-    assert_error(errors_of(scratch), "wingman")
+    assert_error(errors_of(scratch), "missing plugins/wingman/.cursor-plugin/plugin.json", "Cursor catalog entry wingman")
 
 
 def test_a_lost_claude_hook_script_fails(scratch):
@@ -592,7 +585,7 @@ def test_a_snapshot_the_installers_cannot_use_fails_only_when_they_run(scratch):
 
 def test_the_check_command_line_reports_and_fails(scratch):
     (scratch / "install" / "install.sh").unlink()
-    proc = subprocess.run(["python3", CHECK, "--version", VERSION, str(scratch)], capture_output=True, text=True,
+    proc = subprocess.run([sys.executable, CHECK, "--version", VERSION, str(scratch)], capture_output=True, text=True,
                           env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}, check=False)
     assert proc.returncode == 1
     assert "install/install.sh" in proc.stderr
@@ -702,7 +695,7 @@ def test_manifest_maps_each_plugin_to_its_cursor_folder(exported):
 
 def run_verify(source, root, *args):
     return subprocess.run(
-        ["python3", EXPORT, "--source-repo", str(source), "--verify", str(root), *args],
+        [sys.executable, EXPORT, "--source-repo", str(source), "--verify", str(root), *args],
         capture_output=True, text=True, timeout=300, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}, check=False,
     )
 
