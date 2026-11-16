@@ -190,15 +190,44 @@ git clone https://github.com/stackhawk/agent-skills-marketplace.git
 .\agent-skills-marketplace\install\install.ps1 -Platform cursor -Target .
 ```
 
-This installs the skills into `.cursor/skills/`, `stackhawk.mdc` and `stackhawk-config.mdc` into `.cursor/rules/`, and `.cursor/hooks/stackhawk-stop.sh` with one entry merged into `.cursor/hooks.json`. Your other rules, skills and hooks stay. To upgrade, run the installer again: it replaces only StackHawk files, and it removes the generated rules and the `.cursor/hooks/stop.sh` hook that older versions installed.
+This installs the skills into `.cursor/skills/`, `stackhawk.mdc` and `stackhawk-config.mdc` into `.cursor/rules/`, and `.cursor/hooks/stackhawk-stop.sh` with one entry merged into `.cursor/hooks.json`. Your other rules, skills and hooks stay.
 
 **User-level install** (every project on this machine): give your home directory as the target (`--target ~`; on Windows, leave out `-Target`). This installs the skills into `~/.cursor/skills/` and the stop hook into `~/.cursor/hooks.json`. Cursor has no file-based user rules, so a user-level install has no router rule. For the router rule, use project installs instead of a user-level install, not both: each adds a stop hook.
 
-**Team marketplace:** a Cursor team admin can import `stackhawk/agent-skills-marketplace` as a team marketplace. Its Cursor catalog lists the six plugins; `wingman` installs from `bundles/wingman/`, which bundles its four skills, and `hawkscan` from `cursor-plugins/hawkscan/`. Enable `wingman` or the separate plugins, not both: `hawkscan` and `wingman` each carry the router rule and the stop hook.
+**Team marketplace:** a Cursor team admin can import `stackhawk/agent-skills-marketplace` as a team marketplace. Its Cursor catalog lists the six plugins; `wingman` installs from `bundles/wingman/`, which bundles its four skills, and `hawkscan` from `cursor-plugins/hawkscan/`. Enable `wingman` or the separate plugins, not both: `hawkscan` and `wingman` each carry the router rule and the stop hook. A team marketplace that imports this source repository (`stackhawk/agent-skills`) does not install releases. StackHawk plugins that it installed before the Cursor-only folders existed have no Cursor manifest, so Cursor runs their Claude Code hooks. Import `stackhawk/agent-skills-marketplace` instead, once it has the Cursor catalog.
 
-**One Cursor channel per project.** A project install and a Cursor plugin (`hawkscan` or `wingman`) each bring their own router rule and stop hook, so use one of them in a project, not both. A user-level install is a channel for every project on this machine: its stop hook runs in each of them, so do not combine it with a project install or a Cursor plugin. Cursor does not merge two channels, and the installers do not look for another channel. A Claude Code install can stay: Cursor imports Claude Code plugins from `~/.claude`, but the StackHawk Claude Code plugins carry no Cursor rule, and their hooks do nothing when Cursor runs them. Cursor then lists the StackHawk skills of that Claude Code install next to those of the Cursor channel. In a headless run (`-p`), the Cursor CLI (2026.11.11) loads a plugin's skills but does not give its rules to the agent, and it runs stop hooks only in interactive sessions. For the router rule in headless runs, use a project install.
+**One Cursor channel per project.** A project install and a Cursor plugin (`hawkscan` or `wingman`) each bring their own router rule and stop hook, so use one of them in a project, not both. A user-level install is a channel for every project on this machine: its stop hook runs in each of them, so do not combine it with a project install or a Cursor plugin. Cursor does not merge two channels, and the installers do not look for another channel. A Claude Code install can stay: Cursor imports Claude Code plugins from `~/.claude`, but the StackHawk Claude Code plugins carry no Cursor rule, and their hooks do nothing when Cursor runs them (Claude Code installs of earlier releases need an update first: see "Upgrade"). Cursor then lists the StackHawk skills of that Claude Code install next to those of the Cursor channel. In a headless run (`-p`), the Cursor CLI (2026.11.11) loads a plugin's skills but does not give its rules to the agent, and it runs stop hooks only in interactive sessions. For the router rule in headless runs, use a project install.
 
 The stop hook is a bash script. On Windows, Cursor needs bash (for example Git for Windows) to run it. The generated rules in `cursor/.cursor/rules/` are deprecated: the installers no longer copy them, and `cursor/` will be removed in the next major release.
+
+**Upgrade.**
+
+- A project install or a user-level install: update the clone that you install from (`git pull`), then run its installer again with the same target. The installer replaces the StackHawk skills, rules and stop hook. It also removes what older versions installed: the generated `stackhawk-*.mdc` rules (it prints how many) and the old `hooks/stop.sh` hook with its `hooks.json` entry. Your other rules, skills and hooks stay, and a second run changes nothing. To move from a development build to the released build, run `install/install.sh` (or `install.ps1`) of a marketplace clone with the same target: it replaces the same files.
+- An install from the earlier Windows instructions (`install.ps1 -Platform cursor`, before `-Target` existed) is a user-level install. Run `install.ps1 -Platform cursor` again to upgrade it, or remove it before you make project installs (see the table below).
+- A Claude Code install: Claude Code installs of releases before the Cursor-only folders have no Cursor guard in their hooks, so Cursor runs them, and their session-start hook adds the StackHawk scan context to Cursor sessions. Update the marketplace and `hawkscan` (a `wingman` install has it as a dependency), then restart Claude Code and Cursor:
+
+  ```bash
+  claude plugin marketplace update stackhawk
+  claude plugin update hawkscan@stackhawk
+  ```
+
+**Move to another channel.** Remove the old channel first, so that each project has one:
+
+| Channel | Remove |
+|---|---|
+| Project install | The skill folders `hawkscan`, `api`, `hawkscan-ci`, `stackhawk-data-seed` and `optimize` in `.cursor/skills/`; `stackhawk.mdc` and `stackhawk-config.mdc` in `.cursor/rules/`; `.cursor/hooks/stackhawk-stop.sh`; the `stop` entry `.cursor/hooks/stackhawk-stop.sh` in `.cursor/hooks.json`. |
+| User-level install | The same five skill folders in `~/.cursor/skills/`; `~/.cursor/hooks/stackhawk-stop.sh`; the `stop` entry `./hooks/stackhawk-stop.sh` in `~/.cursor/hooks.json`. |
+| Either install, from an earlier version | Also `hooks/stop.sh` when its second line is `# Cursor stop hook for hawkscan plugin`, its `stop` entry `.cursor/hooks/stop.sh` in `hooks.json`, and the `stackhawk-*.mdc` files in `rules/`. |
+| Cursor plugin | Turn off the `hawkscan` or `wingman` plugin in Cursor. |
+
+**Troubleshooting.**
+
+- The agent asks for a scan twice, or two StackHawk router rules load: two Cursor channels serve the project. Keep one (see the table).
+- Cursor sessions start with the StackHawk scan context although the project has no Cursor channel that adds it: Cursor imported a Claude Code install of an earlier release. Update it (see "Upgrade").
+- The installer stops with an error about `hooks.json`: the file is not valid JSON, or its `hooks` or `hooks.stop` value has the wrong type. The installer changed nothing. Correct the file, then run the installer again.
+- The stop hook does not ask for a scan: it asks once per conversation, only after a code change with no scan, and only when the turn ends normally. A headless run (`-p`) runs no stop hooks, and on Windows the hook needs bash.
+
+**What is tested.** CI runs both installers (bash and `pwsh`) into scratch projects, including an upgrade over the files of older versions. A layout check runs every StackHawk hook as Cursor runs it, for each Cursor channel alone and for a Claude Code install next to each channel. That check is a model of Cursor, built from the code of the Cursor 3.9.16 app and from live runs of the Cursor CLI. Live headless runs of the Cursor CLI confirmed that the hooks of an imported Claude Code install stay silent. The Cursor desktop app was not run live, and the headless CLI runs no stop hooks, so the stop hook counts come from the model.
 
 #### skills CLI (npx)
 
