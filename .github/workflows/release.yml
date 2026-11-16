@@ -114,16 +114,6 @@ jobs:
           python3 scripts/check-marketplace-layout.py --run-installers --version "$RELEASE_VERSION" \
             "$RUNNER_TEMP/marketplace"
           bash scripts/ci/stage-marketplace-sync.sh "$RUNNER_TEMP/marketplace"
-      - name: Verify Cursor rules are up to date
-        run: |
-          bash scripts/generate-cursor-rules.sh
-          git add -N cursor/
-          if ! git diff --quiet cursor/; then
-            echo "ERROR: Cursor rules are out of date. Run 'bash scripts/generate-cursor-rules.sh' and commit."
-            git diff --stat cursor/
-            exit 1
-          fi
-
   # The number is claimed before anything else is written under it. The claim and the tag are made as
   # the release App. Its status functions keep a skipped ancestor from skipping the release unnoticed,
   # and a failed or cancelled validate from claiming a number.

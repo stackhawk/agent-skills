@@ -3,9 +3,8 @@
 SKILL.md once said both "Repeat until exit 0" (unbounded) and "Max one fix-rescan
 cycle" (capped, with no rescan required after the last fix). An autonomous run could
 satisfy both by fixing the first rescan's findings and stopping, leaving the fixes
-unverified. These checks cover every shipped copy: the source skill, the generated
-wingman/Copilot bundle and the deprecated generated Cursor rules (cursor/, kept for one
-release; drop the CURSOR rows when it is removed).
+unverified. These checks cover every shipped copy: the source skill and the generated
+wingman/Copilot and Cursor bundles.
 
 This is a phrase lock on vocabulary, not a test of loop semantics. A deliberate
 rewording of the rule should update it. It is not run in PR CI.
@@ -22,21 +21,15 @@ SKILL_DIRS = [
     "plugins/wingman/copilot-skills/hawkscan",
     "cursor-plugins/wingman/skills/hawkscan",
 ]
-CURSOR = "cursor/.cursor/rules"
 
 # Each SKILL.md copy. A platform can load SKILL.md without reading autonomous-loop.md,
 # so SKILL.md must carry the whole rule itself.
-SKILL_MD = [f"{d}/SKILL.md" for d in SKILL_DIRS] + [f"{CURSOR}/stackhawk-hawkscan.mdc"]
+SKILL_MD = [f"{d}/SKILL.md" for d in SKILL_DIRS]
 AUTONOMOUS_LOOP = [f"{d}/references/autonomous-loop.md" for d in SKILL_DIRS]
 CROSS_REFS = (
     [f"{d}/references/high-iteration-findings.md" for d in SKILL_DIRS]
     + [f"{d}/references/scan-quality.md" for d in SKILL_DIRS]
     + [f"{d}/references/platform-model.md" for d in SKILL_DIRS]
-    + [
-        f"{CURSOR}/stackhawk-hawkscan-high-iteration.mdc",
-        f"{CURSOR}/stackhawk-hawkscan-scan-quality.mdc",
-        f"{CURSOR}/stackhawk-hawkscan-model.mdc",
-    ]
 )
 ALL_COPIES = SKILL_MD + AUTONOMOUS_LOOP + CROSS_REFS
 

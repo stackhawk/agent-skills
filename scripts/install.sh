@@ -225,9 +225,8 @@ cursor_install_rules() {
   if [ "$removed" -gt 0 ]; then
     echo ""
     echo "WARNING: Removed ${removed} legacy StackHawk rules from ${dot_cursor}/rules/."
-    echo "  The generated rules in cursor/.cursor/rules/ are deprecated and are no longer installed:"
+    echo "  The old generated rules are no longer installed."
     echo "  Cursor now loads the skills on demand and reads one small router rule."
-    echo "  cursor/ will be removed in the next major release."
   fi
 }
 

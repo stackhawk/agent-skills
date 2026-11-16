@@ -169,8 +169,7 @@ cd .cursor/skills/ && ln -s ../../plugins/<name>/skills/<name> <name>
 
 **5. Name the skill in the Cursor router rule** `cursor-src/rules/stackhawk.mdc`: one
 bullet with the skill name and when it applies. The router is always applied in Cursor, so keep
-it under its 2,000-byte budget. Do not add a `scripts/generate-cursor-rules.sh` MAPPINGS entry:
-those generated rules are deprecated and no longer installed.
+it under its 2,000-byte budget.
 
 **6. Add to `.version-bump.json`** — add the Codex manifest (`stamp_only`) and the SKILL.md under
 `files`, and the Claude manifest under `unversioned`:
@@ -215,10 +214,8 @@ After any edit to `SKILL.md` or `references/*.md`:
    # Any hit means a reference file is linking to another file — remove it
    ```
 
-3. **Regenerate the deprecated Cursor rules** (CI checks them until `cursor/` is removed) and
-   check the Cursor adapter:
+3. **Check the Cursor adapter:**
    ```bash
-   bash scripts/generate-cursor-rules.sh && git diff cursor/
    python3 scripts/generate-cursor-adapter.py --check
    ```
 
@@ -252,7 +249,6 @@ into the snapshot. Never edit version numbers manually in individual files.
 - Version placeholder consistency across all manifests (`scripts/check-version.sh`)
 - The Cursor adapter is up to date and within its context budgets
   (`generate-cursor-adapter.py --check`, `measure-cursor-context.py --check`)
-- The deprecated Cursor rules are up to date (no diff after running `generate-cursor-rules.sh`)
 - The bundled skill copies (`plugins/wingman/copilot-skills/`, and the Cursor-only copies in
   `cursor-plugins/wingman/skills/` and `cursor-plugins/hawkscan/skills/`) are up to date (no
   diff after `generate-wingman-skills.sh`)
@@ -266,7 +262,6 @@ The PR will be blocked if any check fails. Fix by running:
 ```bash
 bash scripts/bump-version.sh --placeholder
 bash scripts/generate-wingman-skills.sh
-bash scripts/generate-cursor-rules.sh
 python3 scripts/generate-cursor-adapter.py
-git add plugins/ cursor-src/ cursor-plugins/ cursor/ scripts/ .cursor-plugin/ && git commit --amend --no-edit
+git add plugins/ cursor-src/ cursor-plugins/ scripts/ .cursor-plugin/ && git commit --amend --no-edit
 ```

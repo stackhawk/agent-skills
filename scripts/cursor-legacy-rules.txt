@@ -1,8 +1,7 @@
-# Every rule name that the deprecated scripts/generate-cursor-rules.sh has written into
-# cursor/.cursor/rules/ (from the git history of that directory). Older installers copied
-# these into a target's .cursor/rules/. The installers delete exactly these names, so an
-# upgrade drops the old rules, including names that later releases stopped generating.
-# Keep this list after cursor/ is removed: old installs still carry these files.
+# Every rule name shipped by the retired generated Cursor rules (from their git history).
+# Older installers copied these into a target's .cursor/rules/. The installers delete
+# exactly these names, including names that later releases stopped generating.
+# Keep this list for upgrades: old installs still carry these files.
 stackhawk-api-auth.mdc
 stackhawk-api-endpoints.mdc
 stackhawk-api-hawk-op.mdc

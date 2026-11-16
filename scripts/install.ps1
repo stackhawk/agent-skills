@@ -216,9 +216,8 @@ function Install-CursorRules([string]$DotCursor, [string]$Scope) {
     if ($removed -gt 0) {
         Write-Host ""
         Write-Host "WARNING: Removed $removed legacy StackHawk rules from $rulesDir/."
-        Write-Host "  The generated rules in cursor/.cursor/rules/ are deprecated and are no longer installed:"
+        Write-Host "  The old generated rules are no longer installed."
         Write-Host "  Cursor now loads the skills on demand and reads one small router rule."
-        Write-Host "  cursor/ will be removed in the next major release."
     }
 }
 

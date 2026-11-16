@@ -25,7 +25,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 INSTALL_SH = os.path.join(REPO_ROOT, "scripts", "install.sh")
 INSTALL_PS1 = os.path.join(REPO_ROOT, "scripts", "install.ps1")
 MEASURE = os.path.join(REPO_ROOT, "scripts", "measure-cursor-context.py")
-LEGACY_RULES_DIR = os.path.join(REPO_ROOT, "cursor", ".cursor", "rules")
+OLD_RELEASE_RULES = os.path.join(REPO_ROOT, "tests", "fixtures", "cursor", "v2.7.5-rule-names.txt")
 SKILLS = {
     "hawkscan": "plugins/hawkscan/skills/hawkscan",
     "api": "plugins/api/skills/api",
@@ -105,17 +105,18 @@ def hooks(dot_cursor):
         return json.load(f)
 
 
-# A rule that an older release generated and today's generator no longer writes.
+# A rule shipped before v2.7.5 that the later release stopped carrying.
 OLD_RELEASE_RULE = "stackhawk-api-hawkop.mdc"
 
 
 def write_legacy_install(dot_cursor):
-    """The rules and hook the old installer left: today's 28 rules, one rule from an
-    older release, and a stop.sh hook with its hooks.json entry."""
+    """The filenames of published v2.7.5, one older name, and its stop hook."""
     rules = dot_cursor / "rules"
     rules.mkdir(parents=True, exist_ok=True)
-    for name in os.listdir(LEGACY_RULES_DIR):
-        shutil.copy(os.path.join(LEGACY_RULES_DIR, name), rules / name)
+    with open(OLD_RELEASE_RULES) as fixture:
+        names = [line.strip() for line in fixture if line.strip() and not line.startswith("#")]
+    for name in names:
+        (rules / name).write_text("---\ndescription: StackHawk old rule\n---\nOld generated rule\n")
     (rules / OLD_RELEASE_RULE).write_text("---\nalwaysApply: false\n---\nhawkop\n")
     (dot_cursor / "hooks").mkdir(exist_ok=True)
     (dot_cursor / "hooks" / "stop.sh").write_text(f"#!/usr/bin/env bash\n{LEGACY_STOP_MARKER}\nexit 0\n")
@@ -207,12 +208,26 @@ def test_upgrade_removes_the_legacy_install_only(kind, project, home):
     write_legacy_install(dot_cursor)
     (dot_cursor / "rules" / "my-team.mdc").write_text("---\nalwaysApply: false\n---\nmine\n")
     (dot_cursor / "rules" / "stackhawk-custom.mdc").write_text("---\nalwaysApply: false\n---\nmine\n")
+    own_skill = dot_cursor / "skills" / "my-team"
+    own_skill.mkdir(parents=True)
+    (own_skill / "SKILL.md").write_text("---\nname: my-team\n---\nmine\n")
+    own_hook = {"command": ".cursor/hooks/my-stop.sh"}
+    (dot_cursor / "hooks" / "my-stop.sh").write_text("#!/bin/sh\nexit 0\n")
+    data = hooks(dot_cursor)
+    data["hooks"]["stop"].append(own_hook)
+    data["hooks"]["sessionStart"] = [{"command": "my-session.sh"}]
+    (dot_cursor / "hooks.json").write_text(json.dumps(data))
     proc = install(kind, project, home)
+    install(kind, project, home)
     assert sorted(os.listdir(dot_cursor / "rules")) == sorted(RULES + ["my-team.mdc", "stackhawk-custom.mdc"])
+    assert (own_skill / "SKILL.md").exists()
+    assert (dot_cursor / "hooks" / "my-stop.sh").exists()
     assert not (dot_cursor / "hooks" / "stop.sh").exists()
-    assert hooks(dot_cursor)["hooks"]["stop"] == [PROJECT_ENTRY]
-    assert "deprecated" in (proc.stdout + proc.stderr).lower()
-    assert f"Removed {len(os.listdir(LEGACY_RULES_DIR)) + 1} legacy" in proc.stdout + proc.stderr
+    assert hooks(dot_cursor)["hooks"] == {"stop": [own_hook, PROJECT_ENTRY],
+                                            "sessionStart": [{"command": "my-session.sh"}]}
+    with open(OLD_RELEASE_RULES) as fixture:
+        old_count = sum(bool(line.strip()) and not line.startswith("#") for line in fixture)
+    assert f"Removed {old_count + 1} legacy" in proc.stdout + proc.stderr
 
 
 @pytest.mark.parametrize("kind", INSTALLERS)
@@ -306,15 +321,25 @@ def test_project_hook_command_runs_from_the_project_root(project, home):
 def test_user_level_install(kind, project, home):
     dot_cursor = home / ".cursor"
     write_legacy_install(dot_cursor)
+    (dot_cursor / "rules" / "my-team.mdc").write_text("---\nalwaysApply: false\n---\nmine\n")
+    own_skill = dot_cursor / "skills" / "my-team"
+    own_skill.mkdir(parents=True)
+    (own_skill / "SKILL.md").write_text("---\nname: my-team\n---\nmine\n")
+    own_hook = {"command": "./hooks/my-stop.sh"}
+    (dot_cursor / "hooks" / "my-stop.sh").write_text("#!/bin/sh\nexit 0\n")
     data = hooks(dot_cursor)
+    data["hooks"]["stop"].append(own_hook)
     data["hooks"]["sessionStart"] = [{"command": "./hooks/captain-session.sh"}]
     (dot_cursor / "hooks.json").write_text(json.dumps(data))
     install(kind, home, home)
+    install(kind, home, home)
     assert expected_skill_files() <= files_under(dot_cursor)
-    assert os.listdir(dot_cursor / "rules") == [], "user level installs no rules and removes the legacy ones"
+    assert os.listdir(dot_cursor / "rules") == ["my-team.mdc"], "user level installs no rules and removes the legacy ones"
+    assert (own_skill / "SKILL.md").exists()
+    assert (dot_cursor / "hooks" / "my-stop.sh").exists()
     merged = hooks(dot_cursor)
     assert merged["hooks"]["sessionStart"] == [{"command": "./hooks/captain-session.sh"}]
-    assert merged["hooks"]["stop"] == [USER_ENTRY]
+    assert merged["hooks"]["stop"] == [own_hook, USER_ENTRY]
     assert not (dot_cursor / "hooks" / "stop.sh").exists()
     # Cursor runs user hooks from ~/.cursor/ and gives the project in CURSOR_PROJECT_DIR.
     with open(project / "src" / "app.py", "a") as f:

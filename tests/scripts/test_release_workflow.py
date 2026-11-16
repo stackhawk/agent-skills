@@ -237,6 +237,24 @@ def test_validate_passes_the_format_2_export_of_the_commit_to_the_sync(workspace
     assert git(marketplace, "rev-parse", "main") == main_before, "validate pushed to the marketplace"
 
 
+def test_validate_succeeds_after_the_deprecated_cursor_tree_is_removed(workspace, tmp_path):
+    """The real validate steps must accept a source commit without the old rule tree.
+
+    This models the follow-up commit and runs the release consumer rather than checking
+    whether its workflow text happens to mention the retired generator.
+    """
+    subprocess.run(["git", "rm", "-r", "--ignore-unmatch", "cursor", "scripts/generate-cursor-rules.sh"],
+                   cwd=workspace, env=git_env(), check=True, capture_output=True)
+    if git(workspace, "diff", "--cached", "--name-only"):
+        git(workspace, "commit", "-q", "-m", "remove deprecated Cursor rules")
+    marketplace = scratch_marketplace(tmp_path, FORMAT_2_SYNC)
+    steps = job_steps("validate", f"file://{marketplace}", str(tmp_path / "unused"))
+    results = run_steps(steps, workspace, job_env(tmp_path, workspace))
+
+    assert [name for name, _ in results] == [name for name, _ in steps], report(results)
+    assert all(proc.returncode == 0 for _, proc in results), report(results)
+
+
 def test_validate_stops_the_release_when_the_sync_takes_no_export(workspace, tmp_path):
     marketplace = scratch_marketplace(tmp_path, OLD_SYNC)
     steps = job_steps("validate", f"file://{marketplace}", str(tmp_path / "unused"))

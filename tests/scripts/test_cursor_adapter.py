@@ -29,6 +29,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 GENERATOR = os.path.join(REPO_ROOT, "scripts", "generate-cursor-adapter.py")
 MEASURE = os.path.join(REPO_ROOT, "scripts", "measure-cursor-context.py")
 LEGACY_LIST = os.path.join(REPO_ROOT, "scripts", "cursor-legacy-rules.txt")
+OLD_RELEASE_RULES = os.path.join(REPO_ROOT, "tests", "fixtures", "cursor", "v2.7.5-rule-names.txt")
 SOURCES = "cursor-src"
 ROUTER = f"{SOURCES}/rules/stackhawk.mdc"
 POINTER = f"{SOURCES}/rules/stackhawk-config.mdc"
@@ -591,16 +592,19 @@ def test_canonical_skills_carry_no_cursor_keys(name):
 # ---------------------------------------------------------------- legacy rules
 
 
-def test_legacy_rule_list_covers_the_deprecated_generator():
+def test_legacy_rule_list_covers_the_published_release():
     """Installers delete exactly these names; the list must outlive cursor/ itself.
 
     It holds every name the old generator ever wrote (45, from git history), not only the
-    28 it writes today: an install from an older release still carries the others.
+    28 shipped in v2.7.5: an install from an older release still carries the others.
     """
     with open(LEGACY_LIST) as f:
         listed = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+    with open(OLD_RELEASE_RULES) as f:
+        old_release = [line.strip() for line in f if line.strip() and not line.startswith("#")]
     assert len(listed) == len(set(listed)) == 45
-    assert set(os.listdir(path("cursor/.cursor/rules"))) <= set(listed)
+    assert len(old_release) == 28
+    assert set(old_release) <= set(listed)
     assert all(re.fullmatch(r"stackhawk-[a-z0-9-]+\.mdc", name) for name in listed)
     assert not set(listed) & set(RULE_NAMES)
 
