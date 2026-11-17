@@ -10,36 +10,21 @@ See `SKILL.md` for the full workflow.
 ## Setup (once) {#setup-once}
 
 **Install the combined `hawk` CLI** — a single self-contained binary (no Java needed).
+Pick the first method that fits the machine:
 
-macOS — Homebrew (recommended):
-
-```bash
-brew tap stackhawk/cli
-brew trust stackhawk/cli
-brew install hawk
-```
-
-Otherwise resolve the binary from the manifest (the source of truth for the version
-and every download URL, `https://download.stackhawk.com/hawkdocs/hawk.manifest.json`):
+- **Windows:** 1. MSI installer (requires admin) from https://docs.stackhawk.com/downloads/
+  2. install script: `irm https://download.stackhawk.com/hawk/install.ps1 | iex` 3. Docker
+- **macOS:** 1. Homebrew (`brew tap stackhawk/cli && brew trust stackhawk/cli && brew install hawk`)
+  2. `.pkg` installer from https://docs.stackhawk.com/downloads/ 3. install script (below) 4. Docker
+- **Linux:** 1. install script (below) 2. Docker
 
 ```bash
-# macOS / Linux — resolve the right binary from the manifest, then install
-MANIFEST=https://download.stackhawk.com/hawkdocs/hawk.manifest.json
-case "$(uname -s)/$(uname -m)" in
-  Darwin/arm64)              GROUP=darwin-arm64 ;;
-  Darwin/x86_64)             GROUP=darwin-x64 ;;
-  Linux/x86_64)              GROUP=linux-x64 ;;
-  Linux/aarch64|Linux/arm64) GROUP=linux-aarch64 ;;
-esac
-url=$(curl -fsSL "$MANIFEST" | jq -r --arg g "$GROUP" \
-  '.latest.assets[] | select(.asset.group == $g and (.url | endswith("/hawk"))) | .url')
-curl -fsSL "$url" -o hawk && chmod +x hawk && sudo mv hawk /usr/local/bin/hawk
+curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"   # the script updates PATH for new shells only
 ```
 
-URL pattern: `https://download.stackhawk.com/hawk/<version>/<group>/hawk[.pkg|.exe|.msi]`
-(`<group>`: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-aarch64`, `windows-x64`,
-`windows-arm64`). macOS `.pkg` and Windows `.msi` installers are also available —
-see `https://docs.stackhawk.com/downloads/`.
+Run the install scripts with their defaults. Full guide, including CI: the hawkscan
+skill's `references/installation.md`.
 
 ```bash
 hawk init --browser    # Browser device-flow auth; writes ~/.hawk/hawk.properties

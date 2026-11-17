@@ -169,8 +169,8 @@ Four tiers, prefer highest the provider supports:
 |---|---|---|
 | 1. Native action | `stackhawk/hawkscan-action@v2` | GitHub Actions |
 | 2. Azure extension | StackHawk Azure Extension | Azure Pipelines |
-| 3. Install script | `curl -fsSL https://download.stackhawk.com/hawk/install.sh \| sh`, then `export PATH="$HOME/.local/bin:$PATH"` | Bare shell runners with no Docker, or when the native tiers don't fit |
-| 4. Docker image | `stackhawk/hawkscan:latest` | Anywhere with Docker (GitLab, Jenkins, CircleCI, Bitbucket, Buildkite, AWS CodeBuild, and Kube-native platforms) |
+| 3. Install script | `curl -fsSL https://download.stackhawk.com/hawk/install.sh \| sh`, then `export PATH="$HOME/.local/bin:$PATH"` | Every other provider: GitLab, Jenkins, CircleCI, Azure Pipelines (when the extension doesn't fit), Bitbucket, Buildkite, Travis, AWS CodeBuild |
+| 4. Docker image | `stackhawk/hawkscan:latest` | Fallback: container-only runners, or when the user asks for Docker; the only option on Kubernetes, ArgoCD and other Kube-native platforms |
 
 **Track the latest stable scanner:**
 - Image: use **`stackhawk/hawkscan:latest`** — HawkScan is a security scanner, so CI should run the newest stable build for the freshest checks.

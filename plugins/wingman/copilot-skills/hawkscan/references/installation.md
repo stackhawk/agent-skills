@@ -36,6 +36,17 @@ to `~/.local/bin` (`%USERPROFILE%\.local\bin` on Windows) and add that folder to
 your PATH. Do not override the install folder or version with environment variables, and do
 not build download URLs by hand.
 
+The PATH change reaches new shells only. To run `hawk` in the same session right after
+the install script, add the folder to PATH there too, or open a new shell:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"                     # macOS / Linux
+```
+
+```powershell
+$env:Path = "$env:USERPROFILE\.local\bin;$env:Path"    # Windows PowerShell
+```
+
 Pick the first method that fits the machine, in the order listed for it.
 
 ### Windows workstation

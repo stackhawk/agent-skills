@@ -131,7 +131,7 @@ Don't retry blindly. If retry succeeds, the original failure was a flake. If ret
 
 ## Caching Strategy
 
-**Do cache:** the `hawk` CLI binary (when using the install script), the HawkScan Docker image layer (when the runner supports image caching).
+**Do cache:** the HawkScan Docker image layer (when the runner supports image caching). Do not cache the `hawk` CLI binary; see [Installing the CLI](#installing-the-cli-install-script).
 
 **Do NOT cache:**
 - Scan output / findings. Each scan must be independent — caching findings between runs defeats the purpose.
