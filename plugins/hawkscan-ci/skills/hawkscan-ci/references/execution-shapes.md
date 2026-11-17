@@ -1,14 +1,15 @@
 # Execution Shapes Reference
 
-This reference covers the three ways CI pipelines invoke HawkScan, per-provider quick-reference recipes for setting the API key secret, and provider-specific gotchas.
+This reference covers the four ways CI pipelines invoke HawkScan, per-provider quick-reference recipes for setting the API key secret, and provider-specific gotchas.
 
-## The Three Tiers
+## The Four Tiers
 
 | Tier | Mechanism | Pros | Cons | When to use |
 |---|---|---|---|---|
 | **1. Native action** | `stackhawk/hawkscan-action@vX.Y.Z` | Richest input surface (SARIF upload, PR comments, Code Scanning, `commitShaCheck`, multi-file overlays). One-line invocation. Network plumbing for localhost handled automatically. | GitHub Actions only. | GitHub Actions runners. |
-| **2. Docker image** | `docker run stackhawk/hawkscan:latest` | Works in any runner with Docker. Same binary as production scans. `:latest` tracks the newest stable scanner. | Networking-to-localhost requires `--network host` (Linux) or `host.docker.internal` (Mac/Windows runners). DinD setup on GitLab. | Anywhere Docker is available — GitLab, Jenkins, CircleCI, Azure, Bitbucket, Buildkite, AWS CodeBuild. |
-| **3. Binary download** | resolve the platform URL from `hawk.manifest.json`, then `curl -fsSL "$url" -o hawk && chmod +x hawk` | No Docker required. Lightest footprint. **Self-contained binary — no Java needed.** | Must resolve the platform URL from the manifest. Slower bootstrap than image pull on warm cache. | Bare shell runners with no Docker — some Travis configs, restricted Spinnaker stages, locked-down corporate runners. |
+| **2. Azure extension** | StackHawk Azure Extension (Marketplace) | GUI task in the Azure task library; wraps the same Docker invocation. | Azure Pipelines only. | Azure Pipelines teams that prefer task-library installs. |
+| **3. Install script** | `curl -fsSL https://download.stackhawk.com/hawk/install.sh \| sh`, then `export PATH="$HOME/.local/bin:$PATH"` | No Docker required. Lightest footprint. **Self-contained binary — no Java needed.** Run with its defaults. | The script leaves PATH alone in CI, so a PATH line must follow it. Slower bootstrap than image pull on warm cache. | Bare shell runners with no Docker — some Travis configs, restricted Spinnaker stages, locked-down corporate runners. |
+| **4. Docker image** | `docker run stackhawk/hawkscan:latest` | Works in any runner with Docker. Same binary as production scans. `:latest` tracks the newest stable scanner. | Networking-to-localhost requires `--network host` (Linux) or `host.docker.internal` (Mac/Windows runners). DinD setup on GitLab. | Anywhere Docker is available — GitLab, Jenkins, CircleCI, Bitbucket, Buildkite, AWS CodeBuild; the only option on Kubernetes, ArgoCD and other Kube-native platforms. |
 
 ## Versioning Strategy
 
@@ -18,7 +19,7 @@ This reference covers the three ways CI pipelines invoke HawkScan, per-provider 
 |---|---|---|
 | Scanner image | `stackhawk/hawkscan:latest` | Newest stable scanner — best detection coverage. |
 | Native action | `stackhawk/hawkscan-action@v2` | Major pin auto-receives the newest action within v2. |
-| Binary download | resolve from `hawk.manifest.json` (`.latest.version` + asset `.url`) | Downloads the current stable single-binary CLI. |
+| Install script | `install.sh` with its defaults | Installs the current stable single-binary CLI. |
 
 **If your org mandates fully reproducible builds**, pin an explicit version instead — `stackhawk/hawkscan:<X.Y.Z>` (resolve the current via the version endpoint), `stackhawk/hawkscan-action@vX.Y.Z`, or an image digest (`stackhawk/hawkscan@sha256:...`, bumped via Dependabot/Renovate). The tradeoff is that a frozen scanner won't pick up newly-added checks until you bump it.
 
@@ -180,7 +181,7 @@ jobs:
 
 **Secret:** `az pipelines variable create --name HAWK_API_KEY --secret true` or add via **Pipeline → Edit → Variables**.
 
-**Recommended execution shape:** Docker image, or the StackHawk Marketplace Extension for guided installation.
+**Recommended execution shape:** the StackHawk Marketplace Extension, or the Docker image.
 
 **Minimal job block (Docker image):**
 

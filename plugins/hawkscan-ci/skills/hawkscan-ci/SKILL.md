@@ -163,18 +163,19 @@ first pipeline run, or the scan will fail with a 401.
 
 ## Step 4: Pick the Execution Shape
 
-Three tiers, prefer highest the provider supports:
+Four tiers, prefer highest the provider supports:
 
 | Tier | Mechanism | When to use |
 |---|---|---|
-| 1. Native action | `stackhawk/hawkscan-action@v2` | GitHub Actions only |
-| 2. Docker image | `stackhawk/hawkscan:latest` | Anywhere with Docker (GitLab, Jenkins, CircleCI, Azure, Bitbucket, Buildkite, AWS CodeBuild) |
-| 3. Binary download | `hawk.manifest.json` → `download.stackhawk.com/hawk/<version>/<platform>/hawk` (self-contained binary) | Bare shell runners (Travis without sudo, some Spinnaker stages) |
+| 1. Native action | `stackhawk/hawkscan-action@v2` | GitHub Actions |
+| 2. Azure extension | StackHawk Azure Extension | Azure Pipelines |
+| 3. Install script | `curl -fsSL https://download.stackhawk.com/hawk/install.sh \| sh`, then `export PATH="$HOME/.local/bin:$PATH"` | Bare shell runners with no Docker, or when the native tiers don't fit |
+| 4. Docker image | `stackhawk/hawkscan:latest` | Anywhere with Docker (GitLab, Jenkins, CircleCI, Bitbucket, Buildkite, AWS CodeBuild, and Kube-native platforms) |
 
 **Track the latest stable scanner:**
 - Image: use **`stackhawk/hawkscan:latest`** — HawkScan is a security scanner, so CI should run the newest stable build for the freshest checks.
 - Action: pin the major (`@v2`) — auto-receives the newest action within v2.
-- CLI: resolve the version + platform binary URL from the manifest (`download.stackhawk.com/hawkdocs/hawk.manifest.json` → `.latest.version` and asset `.url`); it's a single self-contained binary (no Java).
+- CLI: run the install script as shown, with its defaults (no install environment variables). It installs the newest self-contained binary (no Java) to `~/.local/bin` and, in CI, leaves PATH alone, so follow it with a PATH line, then call plain `hawk`. Never build a download URL by hand.
 - **Need fully reproducible builds?** Pin an explicit version (`stackhawk/hawkscan:<X.Y.Z>`, `@vX.Y.Z`, or an image digest) instead — see [`references/execution-shapes.md`](references/execution-shapes.md).
 
 See [`references/execution-shapes.md`](references/execution-shapes.md) for the full per-provider mapping.
