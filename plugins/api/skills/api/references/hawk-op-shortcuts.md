@@ -13,7 +13,7 @@ See `SKILL.md` for the full workflow.
 Pick the first method that fits the machine:
 
 - **Windows:** 1. MSI installer (requires admin) from https://docs.stackhawk.com/downloads/
-  2. install script: `irm https://download.stackhawk.com/hawk/install.ps1 | iex` 3. Docker
+  2. install script (below) 3. Docker
 - **macOS:** 1. Homebrew (`brew tap stackhawk/cli && brew trust stackhawk/cli && brew install hawk`)
   2. `.pkg` installer from https://docs.stackhawk.com/downloads/ 3. install script (below) 4. Docker
 - **Linux:** 1. install script (below) 2. Docker
@@ -21,6 +21,11 @@ Pick the first method that fits the machine:
 ```bash
 curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"   # the script updates PATH for new shells only
+```
+
+```powershell
+irm https://download.stackhawk.com/hawk/install.ps1 | iex
+$env:Path = "$env:USERPROFILE\.local\bin;$env:Path"   # the script updates PATH for new shells only
 ```
 
 Run the install scripts with their defaults. Full guide, including CI: the hawkscan
