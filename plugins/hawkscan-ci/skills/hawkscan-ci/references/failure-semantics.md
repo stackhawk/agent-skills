@@ -131,7 +131,7 @@ Don't retry blindly. If retry succeeds, the original failure was a flake. If ret
 
 ## Caching Strategy
 
-**Do cache:** the `hawk` CLI binary (when using Tier 3), the HawkScan Docker image layer (when the runner supports image caching).
+**Do cache:** the HawkScan Docker image layer (when the runner supports image caching). Do not cache the `hawk` CLI binary; see [Installing the CLI](#installing-the-cli-install-script).
 
 **Do NOT cache:**
 - Scan output / findings. Each scan must be independent — caching findings between runs defeats the purpose.
@@ -141,33 +141,18 @@ Don't retry blindly. If retry succeeds, the original failure was a flake. If ret
 
 GHA's `ubuntu-latest` runners cache popular images automatically. A `stackhawk/hawkscan:latest` pull is ~5 seconds on a warm cache, so an explicit image-cache step is rarely worth it.
 
-### Caching the CLI download (Tier 3)
+### Installing the CLI (install script)
 
-The CLI zip is version-numbered (there's no `hawk-latest.zip`), so resolve the current version first and key the cache on it — that tracks the latest CLI while keeping a stable cache key:
+Run the install script with its defaults; it installs the newest `hawk` to `~/.local/bin`. It leaves PATH alone in CI, so add the folder to PATH on the next line. Caching the binary buys little (the download is small), so do not add a cache step for it:
 
 ```yaml
-- name: Resolve current hawk version + binary URL (from the manifest)
-  id: hawk
+- name: Install hawk
   run: |
-    read -r version url < <(curl -fsSL https://download.stackhawk.com/hawkdocs/hawk.manifest.json \
-      | jq -r '.latest | "\(.version) \(.assets[] | select(.asset.group=="linux-x64" and (.url|endswith("/hawk"))) | .url)"')
-    [ -n "$url" ] || { echo "ERROR: no linux-x64 hawk binary in manifest"; exit 1; }
-    echo "version=$version" >> "$GITHUB_OUTPUT"
-    echo "url=$url" >> "$GITHUB_OUTPUT"
-- name: Cache hawk CLI
-  uses: actions/cache@v4
-  with:
-    path: ~/.local/bin/hawk
-    key: hawk-cli-${{ steps.hawk.outputs.version }}
-- name: Install hawk if not cached
-  run: |
-    if [ ! -x ~/.local/bin/hawk ]; then
-      mkdir -p ~/.local/bin
-      curl -fsSL "${{ steps.hawk.outputs.url }}" -o ~/.local/bin/hawk
-      chmod +x ~/.local/bin/hawk
-    fi
+    curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
     echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 ```
+
+On a runner where steps share one shell, `export PATH="$HOME/.local/bin:$PATH"` works instead of `$GITHUB_PATH`.
 
 ## Scheduled vs PR-Trigger Tradeoffs
 

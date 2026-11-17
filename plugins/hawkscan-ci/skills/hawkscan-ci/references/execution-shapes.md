@@ -1,14 +1,15 @@
 # Execution Shapes Reference
 
-This reference covers the three ways CI pipelines invoke HawkScan, per-provider quick-reference recipes for setting the API key secret, and provider-specific gotchas.
+This reference covers the four ways CI pipelines invoke HawkScan, per-provider quick-reference recipes for setting the API key secret, and provider-specific gotchas.
 
-## The Three Tiers
+## The Four Tiers
 
 | Tier | Mechanism | Pros | Cons | When to use |
 |---|---|---|---|---|
 | **1. Native action** | `stackhawk/hawkscan-action@vX.Y.Z` | Richest input surface (SARIF upload, PR comments, Code Scanning, `commitShaCheck`, multi-file overlays). One-line invocation. Network plumbing for localhost handled automatically. | GitHub Actions only. | GitHub Actions runners. |
-| **2. Docker image** | `docker run stackhawk/hawkscan:latest` | Works in any runner with Docker. Same binary as production scans. `:latest` tracks the newest stable scanner. | Networking-to-localhost requires `--network host` (Linux) or `host.docker.internal` (Mac/Windows runners). DinD setup on GitLab. | Anywhere Docker is available — GitLab, Jenkins, CircleCI, Azure, Bitbucket, Buildkite, AWS CodeBuild. |
-| **3. Binary download** | resolve the platform URL from `hawk.manifest.json`, then `curl -fsSL "$url" -o hawk && chmod +x hawk` | No Docker required. Lightest footprint. **Self-contained binary — no Java needed.** | Must resolve the platform URL from the manifest. Slower bootstrap than image pull on warm cache. | Bare shell runners with no Docker — some Travis configs, restricted Spinnaker stages, locked-down corporate runners. |
+| **2. Azure extension** | StackHawk Azure Extension (Marketplace) | GUI task in the Azure task library; wraps the same Docker invocation. | Azure Pipelines only. | Azure Pipelines teams that prefer task-library installs. |
+| **3. Install script** | `curl -fsSL https://download.stackhawk.com/hawk/install.sh \| sh`, then `export PATH="$HOME/.local/bin:$PATH"` | No Docker required. Lightest footprint. **Self-contained binary — no Java needed.** Run with its defaults. | The script leaves PATH alone in CI, so a PATH line must follow it. Slower bootstrap than image pull on warm cache. | Every provider without a native tier — GitLab, Jenkins, CircleCI, Bitbucket, Buildkite, Travis, AWS CodeBuild — and Azure Pipelines when the extension doesn't fit. |
+| **4. Docker image** | `docker run stackhawk/hawkscan:latest` | Works in any runner with Docker. Same binary as production scans. `:latest` tracks the newest stable scanner. | Networking-to-localhost requires `--network host` (Linux) or `host.docker.internal` (Mac/Windows runners). DinD setup on GitLab. | Fallback: container-only runners, or when the user asks for Docker. The only option on Kubernetes, ArgoCD and other Kube-native platforms. |
 
 ## Versioning Strategy
 
@@ -18,7 +19,7 @@ This reference covers the three ways CI pipelines invoke HawkScan, per-provider 
 |---|---|---|
 | Scanner image | `stackhawk/hawkscan:latest` | Newest stable scanner — best detection coverage. |
 | Native action | `stackhawk/hawkscan-action@v2` | Major pin auto-receives the newest action within v2. |
-| Binary download | resolve from `hawk.manifest.json` (`.latest.version` + asset `.url`) | Downloads the current stable single-binary CLI. |
+| Install script | `install.sh` with its defaults | Installs the current stable single-binary CLI. |
 
 **If your org mandates fully reproducible builds**, pin an explicit version instead — `stackhawk/hawkscan:<X.Y.Z>` (resolve the current via the version endpoint), `stackhawk/hawkscan-action@vX.Y.Z`, or an image digest (`stackhawk/hawkscan@sha256:...`, bumped via Dependabot/Renovate). The tradeoff is that a frozen scanner won't pick up newly-added checks until you bump it.
 
@@ -68,9 +69,26 @@ glab variable set HAWK_API_SECRET bbbbbbbb --masked --protected
 # Reassemble in the job: API_KEY="hawk.${HAWK_API_ID}.${HAWK_API_SECRET}"
 ```
 
-**Recommended execution shape:** Docker image via DinD.
+**Recommended execution shape:** install script.
 
 **Minimal job block:**
+
+```yaml
+hawkscan:
+  image: ubuntu:24.04
+  script:
+    - apt-get update && apt-get install -y curl ca-certificates
+    - curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
+    - export PATH="$HOME/.local/bin:$PATH"
+    - export COMMIT_SHA="${CI_COMMIT_SHA}" BRANCH_NAME="${CI_COMMIT_REF_NAME}"
+    - API_KEY="hawk.${HAWK_API_ID}.${HAWK_API_SECRET}" NO_COLOR=true hawk scan
+  artifacts:
+    when: always
+    paths:
+      - hawkscan/
+```
+
+**Fallback (Docker image)** — for container-only runners, or when the user asks for Docker: Docker via DinD.
 
 ```yaml
 hawkscan:
@@ -96,15 +114,45 @@ hawkscan:
       - hawkscan/
 ```
 
-**Gotchas:** GitLab runners with the Docker executor need `privileged = true` in `config.toml`, plus the `/var/run/docker.sock` and `/builds:/builds` volume mounts.
+**Gotchas:** for the Docker fallback, GitLab runners with the Docker executor need `privileged = true` in `config.toml`, plus the `/var/run/docker.sock` and `/builds:/builds` volume mounts.
 
 ### Jenkins
 
 **Secret:** **Manage Jenkins → Credentials → Add Credentials → "Secret text"**, ID `HAWK_API_KEY`. Jenkins doesn't have a first-class CLI for this; UI only.
 
-**Recommended execution shape:** Docker image (Jenkins host needs Docker daemon access).
+**Recommended execution shape:** install script.
 
 **Declarative pipeline:**
+
+```groovy
+pipeline {
+  agent any
+  environment {
+    HAWK_API_KEY = credentials('HAWK_API_KEY')
+    COMMIT_SHA   = "${env.GIT_COMMIT}"
+    BRANCH_NAME  = "${env.BRANCH_NAME}"
+  }
+  stages {
+    stage('Start app') {
+      steps { sh 'docker compose up -d' }
+    }
+    stage('Run HawkScan') {
+      steps {
+        sh '''
+          curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          API_KEY=$HAWK_API_KEY hawk scan
+        '''
+      }
+      post {
+        always { archiveArtifacts artifacts: 'hawkscan/**', allowEmptyArchive: true }
+      }
+    }
+  }
+}
+```
+
+**Fallback (Docker image)** — for container-only runners, or when the user asks for Docker: the Jenkins host needs Docker daemon access.
 
 ```groovy
 pipeline {
@@ -139,15 +187,37 @@ pipeline {
 }
 ```
 
-**Gotchas:** the `jenkins` user must be in the `docker` group on the controller/agent (`sudo usermod -aG docker jenkins && sudo systemctl restart jenkins`). Otherwise the Docker invocation fails with "permission denied while trying to connect to the Docker daemon socket".
+**Gotchas:** when the pipeline uses Docker (to start the app, or for the fallback), the `jenkins` user must be in the `docker` group on the controller/agent (`sudo usermod -aG docker jenkins && sudo systemctl restart jenkins`). Otherwise the Docker invocation fails with "permission denied while trying to connect to the Docker daemon socket".
 
 ### CircleCI
 
 **Secret:** `circleci context store-secret <context-name> HAWK_API_KEY` (org-scoped Contexts via the CircleCI CLI), or **Project Settings → Environment Variables** (UI). For project-scoped secrets the CLI form is `circleci project secret create <vcs-type> <org> <project>`.
 
-**Recommended execution shape:** Docker image (CircleCI natively runs jobs in containers).
+**Recommended execution shape:** install script.
 
 **Minimal job block:**
+
+```yaml
+jobs:
+  hawkscan:
+    machine:
+      image: ubuntu-2404:current
+    steps:
+      - checkout
+      - run:
+          name: Start app
+          command: docker compose up -d
+      - run:
+          name: Run HawkScan
+          command: |
+            curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
+            export PATH="$HOME/.local/bin:$PATH"
+            API_KEY=$HAWK_API_KEY COMMIT_SHA=$CIRCLE_SHA1 BRANCH_NAME=$CIRCLE_BRANCH hawk scan
+      - store_artifacts:
+          path: hawkscan/
+```
+
+**Fallback (Docker image)** — for container-only runners, or when the user asks for Docker:
 
 ```yaml
 jobs:
@@ -174,15 +244,43 @@ jobs:
           path: hawkscan/
 ```
 
-**Gotchas:** the `machine:` executor runs the app and scanner on the same host, so `--network host` reaches the app. If you instead use the `docker:` executor with `setup_remote_docker`, the app and scanner run on a separate Docker host and `localhost` won't bridge between them — start the app in that same remote-Docker context and target its published port, or stay on the `machine:` executor as shown above.
+**Gotchas:** the `machine:` executor runs the app and scanner on the same host, so the installed `hawk` (or the Docker fallback with `--network host`) reaches the app on `localhost`. If you instead use the `docker:` executor with `setup_remote_docker`, the app and scanner run on a separate Docker host and `localhost` won't bridge between them — start the app in that same remote-Docker context and target its published port, or stay on the `machine:` executor as shown above.
 
 ### Azure Pipelines
 
 **Secret:** `az pipelines variable create --name HAWK_API_KEY --secret true` or add via **Pipeline → Edit → Variables**.
 
-**Recommended execution shape:** Docker image, or the StackHawk Marketplace Extension for guided installation.
+**Recommended execution shape:** the [StackHawk Marketplace Extension](https://marketplace.visualstudio.com/items?itemName=stackhawk.stackhawk-hawkscan-azure-extension), a GUI task in the Azure task library. Where it doesn't fit, use the install script; Docker is the fallback.
 
-**Minimal job block (Docker image):**
+**Minimal job block (install script):**
+
+```yaml
+jobs:
+  - job: hawkscan
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+      - checkout: self
+      - script: docker compose up -d
+        displayName: 'Start app'
+      - script: |
+          curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
+          echo "##vso[task.prependpath]$HOME/.local/bin"
+        displayName: 'Install hawk'
+      - script: hawk scan
+        displayName: 'Run HawkScan'
+        env:
+          API_KEY: $(HAWK_API_KEY)
+          COMMIT_SHA: $(Build.SourceVersion)
+          BRANCH_NAME: $(Build.SourceBranchName)
+      - task: PublishBuildArtifacts@1
+        condition: always()
+        inputs:
+          PathtoPublish: '$(System.DefaultWorkingDirectory)/hawkscan'
+          ArtifactName: 'hawkscan-report'
+```
+
+**Fallback (Docker image)** — for container-only runners, or when the user asks for Docker:
 
 ```yaml
 jobs:
@@ -214,15 +312,32 @@ jobs:
           ArtifactName: 'hawkscan-report'
 ```
 
-**Alternative:** the [StackHawk Marketplace Extension](https://marketplace.visualstudio.com/items?itemName=stackhawk.stackhawk-hawkscan-azure-extension) wraps the same Docker invocation behind a GUI task. Use it if your team prefers task-library installs.
-
 ### Bitbucket Pipelines
 
 **Secret:** **Repository settings → Repository variables → Add variable**, with the "Secured" checkbox.
 
-**Recommended execution shape:** Docker image.
+**Recommended execution shape:** install script.
 
 **Minimal pipeline block:**
+
+```yaml
+pipelines:
+  default:
+    - step:
+        name: HawkScan
+        image: atlassian/default-image:4
+        services: [docker]
+        script:
+          - docker compose up -d
+          - timeout 60 bash -c 'until curl -fsS http://localhost:8080/health; do sleep 2; done'
+          - curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
+          - export PATH="$HOME/.local/bin:$PATH"
+          - API_KEY=$HAWK_API_KEY COMMIT_SHA=$BITBUCKET_COMMIT BRANCH_NAME=$BITBUCKET_BRANCH hawk scan
+        artifacts:
+          - hawkscan/**
+```
+
+**Fallback (Docker image)** — for container-only runners, or when the user asks for Docker:
 
 ```yaml
 pipelines:
@@ -246,13 +361,24 @@ pipelines:
           - hawkscan/**
 ```
 
-**Gotchas:** the step `image:` must include the Docker CLI (`atlassian/default-image:4` does) — the `stackhawk/hawkscan` image is a JVM scanner with no Docker client, so it can't be the step image that runs `docker compose`. Invoke HawkScan as a `docker run` container instead. Bitbucket's `services: [docker]` adds a 1GB memory allocation by default — bump to `step.size: 2x` if scans run out of memory.
+**Gotchas:** the step `image:` must include `curl` and the Docker CLI (`atlassian/default-image:4` has both) — the `stackhawk/hawkscan` image has no Docker client, so it can't be the step image that runs `docker compose`. Bitbucket's `services: [docker]` adds a 1GB memory allocation by default — bump to `step.size: 2x` if scans run out of memory.
 
 ### Buildkite
 
 **Secret:** Buildkite has no built-in secret store — wire to an external secrets manager (AWS Secrets Manager + the `secrets` agent hook is the documented pattern).
 
-**Recommended execution shape:** Docker image via the `docker#v5.x.x` plugin.
+**Recommended execution shape:** install script.
+
+```yaml
+steps:
+  - label: ":lock: HawkScan"
+    command: |
+      curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
+      export PATH="$HOME/.local/bin:$PATH"
+      API_KEY="$HAWK_API_KEY" COMMIT_SHA="$BUILDKITE_COMMIT" BRANCH_NAME="$BUILDKITE_BRANCH" hawk scan
+```
+
+**Fallback (Docker image)** — for container-only runners, or when the user asks for Docker: the `docker#v5.x.x` plugin.
 
 ```yaml
 steps:
@@ -273,7 +399,18 @@ steps:
 
 **Secret:** `travis encrypt HAWK_API_KEY=hawk.aaaa.bbbb --add` (Travis CLI).
 
-**Recommended execution shape:** Docker image (Travis runners support Docker).
+**Recommended execution shape:** install script.
+
+```yaml
+services: [docker]
+script:
+  - docker compose up -d
+  - curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
+  - export PATH="$HOME/.local/bin:$PATH"
+  - API_KEY="$HAWK_API_KEY" COMMIT_SHA="$TRAVIS_COMMIT" BRANCH_NAME="$TRAVIS_BRANCH" hawk scan
+```
+
+**Fallback (Docker image)** — for container-only runners, or when the user asks for Docker:
 
 ```yaml
 services: [docker]
@@ -293,7 +430,26 @@ script:
 
 **Secret:** store in AWS Secrets Manager, reference via the `secrets-manager:` syntax in `buildspec.yml`. CodeBuild also supports `parameter-store:` for SSM.
 
-**Recommended execution shape:** Docker image.
+**Recommended execution shape:** install script.
+
+```yaml
+version: 0.2
+env:
+  secrets-manager:
+    HAWK_API_KEY: "stackhawk/hawk-api-key:HAWK_API_KEY"
+phases:
+  build:
+    commands:
+      - docker compose up -d
+      - curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
+      - export PATH="$HOME/.local/bin:$PATH"
+      - API_KEY=$HAWK_API_KEY COMMIT_SHA=$CODEBUILD_RESOLVED_SOURCE_VERSION BRANCH_NAME=$CODEBUILD_WEBHOOK_HEAD_REF hawk scan
+artifacts:
+  files:
+    - hawkscan/**/*
+```
+
+**Fallback (Docker image)** — for container-only runners, or when the user asks for Docker:
 
 ```yaml
 version: 0.2
@@ -319,7 +475,7 @@ artifacts:
 
 ## Long-Tail Providers
 
-For Bamboo, Concourse, Harness, Spinnaker, and other providers not listed above, defer to the per-provider canonical guides at [docs.stackhawk.com/integrations/ci-cd/](https://docs.stackhawk.com/integrations/ci-cd/). The Docker-image pattern from the table above adapts cleanly to all of them — only the secret-store wiring and artifact-publishing mechanism differ.
+For Bamboo, Concourse, Harness, Spinnaker, and other providers not listed above, defer to the per-provider canonical guides at [docs.stackhawk.com/integrations/ci-cd/](https://docs.stackhawk.com/integrations/ci-cd/). The install-script pattern above (install line, PATH line, then `hawk scan`) adapts cleanly to all of them, with the Docker image as the fallback on container-only runners — only the secret-store wiring and artifact-publishing mechanism differ.
 
 ## Code Scanning / SARIF Upload (GitHub Actions only)
 

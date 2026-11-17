@@ -11,11 +11,11 @@ If `hawk config` is unrecognized, upgrade hawk before running this skill.
 
 ## Contents
 - [CLI Installation](#cli-installation)
-  - [Homebrew (macOS — recommended)](#homebrew-macos--recommended)
-  - [Download the binary (macOS / Linux)](#download-the-binary-macos--linux)
-  - [macOS — .pkg installer](#macos--pkg-installer)
-  - [Windows — .msi installer (PowerShell)](#windows--msi-installer-powershell)
-  - [Pin a specific version](#pin-a-specific-version)
+  - [Windows workstation](#windows-workstation)
+  - [Mac workstation](#mac-workstation)
+  - [Linux workstation](#linux-workstation)
+  - [CI/CD](#cicd)
+  - [Kubernetes and other Kube-native platforms](#kubernetes-and-other-kube-native-platforms)
   - [Prerequisites](#prerequisites)
   - [Verify Installation](#verify-installation)
 - [Post-Install Setup](#post-install-setup)
@@ -28,74 +28,97 @@ If `hawk config` is unrecognized, upgrade hawk before running this skill.
 ## CLI Installation
 
 HawkScan 6 ships as a **single self-contained native binary** per platform — the
-runtime is embedded, so **no separate Java install is needed**. The source of truth
-for the current version and every download URL is the manifest:
+runtime is embedded, so **no separate Java install is needed**.
 
-```
-https://download.stackhawk.com/hawkdocs/hawk.manifest.json
-```
+The install scripts are the simplest way to install on a machine without a package
+manager or installer. Run them as shown, with their defaults: they install `hawk`
+to `~/.local/bin` (`%USERPROFILE%\.local\bin` on Windows) and add that folder to
+your PATH. Do not override the install folder or version with environment variables, and do
+not build download URLs by hand.
 
-URL pattern: `https://download.stackhawk.com/hawk/<version>/<group>/hawk[.pkg|.exe|.msi]`,
-where `<group>` is one of `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-aarch64`,
-`windows-x64`, `windows-arm64`. Always resolve the URL from the manifest rather than
-hand-building it — the version and asset list are authoritative there.
-
-### Homebrew (macOS — recommended)
+The PATH change reaches new shells only. To run `hawk` in the same session right after
+the install script, add the folder to PATH there too, or open a new shell:
 
 ```bash
-brew tap stackhawk/cli
-brew trust stackhawk/cli
-brew install hawk
+export PATH="$HOME/.local/bin:$PATH"                     # macOS / Linux
 ```
-
-### Download the binary (macOS / Linux)
-
-```bash
-MANIFEST=https://download.stackhawk.com/hawkdocs/hawk.manifest.json
-case "$(uname -s)/$(uname -m)" in
-  Darwin/arm64)              GROUP=darwin-arm64 ;;
-  Darwin/x86_64)             GROUP=darwin-x64 ;;
-  Linux/x86_64)              GROUP=linux-x64 ;;
-  Linux/aarch64|Linux/arm64) GROUP=linux-aarch64 ;;
-  *) echo "unsupported platform"; exit 1 ;;
-esac
-url=$(curl -fsSL "$MANIFEST" | jq -r --arg g "$GROUP" \
-  '.latest.assets[] | select(.asset.group == $g and (.url | endswith("/hawk"))) | .url')
-curl -fsSL "$url" -o hawk && chmod +x hawk && sudo mv hawk /usr/local/bin/hawk
-hawk version
-```
-
-### macOS — `.pkg` installer
-
-```bash
-url=$(curl -fsSL https://download.stackhawk.com/hawkdocs/hawk.manifest.json \
-  | jq -r '.latest.assets[] | select(.asset.group == "darwin-arm64" and (.url | endswith(".pkg"))) | .url')   # use darwin-x64 on Intel
-curl -fsSL "$url" -o hawk.pkg && sudo installer -pkg hawk.pkg -target /
-```
-
-### Windows — `.msi` installer (PowerShell)
 
 ```powershell
-$m   = Invoke-RestMethod https://download.stackhawk.com/hawkdocs/hawk.manifest.json
-$url = ($m.latest.assets | Where-Object { $_.asset.group -eq 'windows-x64' -and $_.url.EndsWith('.msi') }).url
-Invoke-WebRequest $url -OutFile hawk.msi
-Start-Process msiexec.exe -ArgumentList "/i hawk.msi /passive" -Wait
+$env:Path = "$env:USERPROFILE\.local\bin;$env:Path"    # Windows PowerShell
 ```
 
-Homebrew and a browser download are also available — see the downloads page:
-https://docs.stackhawk.com/downloads/
+Pick the first method that fits the machine, in the order listed for it.
 
-### Pin a specific version
+### Windows workstation
 
-The snippets above track `.latest`. To pin, replace the version segment:
-`https://download.stackhawk.com/hawk/<X.Y.Z>/<group>/hawk`. The manifest's `supported`
-array lists available versions, and each asset carries a `sha256` for integrity checks.
+1. **MSI installer** (requires admin). Download it from https://docs.stackhawk.com/downloads/
+   and run it.
+2. **Install script** (PowerShell):
+
+   ```powershell
+   irm https://download.stackhawk.com/hawk/install.ps1 | iex
+   ```
+
+   From `cmd.exe`, run `powershell -Command "irm https://download.stackhawk.com/hawk/install.ps1 | iex"`.
+3. **Docker** — see [Docker](#docker-alternative-to-cli).
+
+### Mac workstation
+
+1. **Homebrew:**
+
+   ```bash
+   brew tap stackhawk/cli
+   brew trust stackhawk/cli
+   brew install hawk
+   ```
+
+2. **`.pkg` installer.** Download it from https://docs.stackhawk.com/downloads/ and run it.
+3. **Install script:**
+
+   ```bash
+   curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
+   ```
+
+4. **Docker** — see [Docker](#docker-alternative-to-cli).
+
+### Linux workstation
+
+1. **Install script:**
+
+   ```bash
+   curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
+   ```
+
+2. **Docker** — see [Docker](#docker-alternative-to-cli).
+
+### CI/CD
+
+1. **GitHub Actions:** the HawkScan Action (`stackhawk/hawkscan-action`).
+2. **Azure Pipelines:** the StackHawk Azure Extension.
+3. **Install script.** In CI the script leaves PATH alone, so add the install folder
+   to PATH on the next line, then call plain `hawk`:
+
+   ```bash
+   curl -fsSL https://download.stackhawk.com/hawk/install.sh | sh
+   export PATH="$HOME/.local/bin:$PATH"
+   hawk version
+   ```
+
+   Where later steps do not share a shell, use the CI system's own mechanism instead
+   of `export` (for example `echo "$HOME/.local/bin" >> "$GITHUB_PATH"` on GitHub Actions).
+4. **Docker** — see [Docker](#docker-alternative-to-cli).
+
+The `hawkscan-ci` skill writes the pipeline for a given provider.
+
+### Kubernetes and other Kube-native platforms
+
+Use the Docker image: `stackhawk/hawkscan:latest`.
 
 ### Prerequisites
 
 - **None for the runtime** — the binary bundles everything (no Java install required).
-- The install snippets use `curl` and `jq` (to parse the manifest); both are standard
-  on developer machines and CI runners.
+- The install script for macOS and Linux uses `curl`, which is standard on developer
+  machines and CI runners.
 
 ### Verify Installation
 
