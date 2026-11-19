@@ -67,6 +67,7 @@ jobs:
         run: git clone --quiet --depth 1 --branch main https://github.com/stackhawk/agent-skills-marketplace.git "$RUNNER_TEMP/marketplace"
       - name: Check marketplace release order
         id: order
+        # Record the published pin before the dry-run sync changes this scratch clone.
         run: |
           value="$(python3 scripts/ci/marketplace_release_order.py "$RUNNER_TEMP/marketplace/sources.json" "$RELEASE_TAG" "$RELEASE_SHA")"
           echo "value=$value" >> "$GITHUB_OUTPUT"
@@ -162,6 +163,7 @@ jobs:
         run: git clone --quiet --branch main https://github.com/stackhawk/agent-skills-marketplace.git /tmp/marketplace
       - name: Check marketplace release order
         id: order
+        # A newer tag or a manual sync may have reached marketplace main after validate.
         run: |
           value="$(python3 scripts/ci/marketplace_release_order.py /tmp/marketplace/sources.json "$RELEASE_TAG" "$RELEASE_SHA")"
           echo "value=$value" >> "$GITHUB_OUTPUT"
@@ -188,16 +190,15 @@ jobs:
         run: |
           biodome-rs aws assume ci-agent-skills-publish --profile deploy --source oidc
           echo "AWS_PROFILE=deploy" >> "$GITHUB_ENV"
-      - name: Marketplace App token
-        if: steps.order.outputs.value != 'older'
-        run: |
-          token="$(biodome ci github-app-token --repository agent-skills-marketplace --permission contents=write)"
-          echo "::add-mask::$token"
-          echo "MARKETPLACE_TOKEN=$token" >> "$GITHUB_ENV"
       - name: Push marketplace sync to main
         id: push
         if: steps.order.outputs.value != 'older'
         run: |
+          restore_public_remote() {
+            git -C /tmp/marketplace remote set-url origin https://github.com/stackhawk/agent-skills-marketplace.git || true
+            unset token
+          }
+          trap restore_public_remote EXIT
           git -C /tmp/marketplace config user.name hawkdeploy
           git -C /tmp/marketplace config user.email hawkdeploy@stackhawk.com
           bash "$GITHUB_WORKSPACE/scripts/ci/stage-marketplace-sync.sh" /tmp/marketplace
@@ -208,8 +209,14 @@ jobs:
             exit 0
           fi
           git -C /tmp/marketplace commit -m "chore: sync agent-skills ${RELEASE_TAG}"
-          git -C /tmp/marketplace remote set-url origin "https://x-access-token:${MARKETPLACE_TOKEN}@github.com/stackhawk/agent-skills-marketplace.git"
+          token="$(biodome ci github-app-token --repository agent-skills-marketplace --permission contents=write)"
+          echo "::add-mask::$token"
+          git -C /tmp/marketplace remote set-url origin "https://x-access-token:${token}@github.com/stackhawk/agent-skills-marketplace.git"
           if ! git -C /tmp/marketplace push origin HEAD:main; then
+            # A conflict or second push failure stops safely; rerunning checks the pin again.
+            # Restore the public remote before running any marketplace tests or installers.
+            git -C /tmp/marketplace remote set-url origin https://github.com/stackhawk/agent-skills-marketplace.git
+            unset token
             git -C /tmp/marketplace fetch origin main
             git -C /tmp/marketplace show origin/main:sources.json > "$RUNNER_TEMP/current-sources.json"
             order="$(python3 scripts/ci/marketplace_release_order.py "$RUNNER_TEMP/current-sources.json" "$RELEASE_TAG" "$RELEASE_SHA")"
@@ -221,6 +228,9 @@ jobs:
             git -C /tmp/marketplace rebase origin/main
             PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s /tmp/marketplace/tests
             python3 scripts/check-marketplace-layout.py --run-installers --version "$RELEASE_VERSION" /tmp/marketplace
+            token="$(biodome ci github-app-token --repository agent-skills-marketplace --permission contents=write)"
+            echo "::add-mask::$token"
+            git -C /tmp/marketplace remote set-url origin "https://x-access-token:${token}@github.com/stackhawk/agent-skills-marketplace.git"
             git -C /tmp/marketplace push origin HEAD:main
           fi
           echo 'published=true' >> "$GITHUB_OUTPUT"

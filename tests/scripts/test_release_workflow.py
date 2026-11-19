@@ -7,8 +7,8 @@ support must stop validation before a GitHub Release or marketplace write.
 
 These tests take the `run` steps of a job from release.yml as they are, point every marketplace
 URL at a scratch bare repository, and run the steps in order with `bash -eo pipefail`, as GitHub
-Actions does. Only the steps in SKIPPED, which need the runner's AWS role or a GitHub App token, do
-not run. The scratch marketplace holds a stand-in sync, not the real one:
+Actions does. The role assumption is skipped, and the App token mint in the push step is replaced
+with a local dummy token. The scratch marketplace holds a stand-in sync, not the real one:
   - OLD_SYNC takes only --source-repo and --tag, as the marketplace sync before --export did;
   - FORMAT_2_SYNC checks what the release gives it (the tag names the commit; the export is format 2
     of that commit and version; Cursor installs hawkscan from cursor-plugins/hawkscan and wingman
@@ -30,7 +30,7 @@ from tests.scripts.test_marketplace_export import git, snapshot_working_tree
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 WORKFLOW = os.path.join(REPO_ROOT, ".github", "workflows", "release.yml")
 PUBLIC_MARKETPLACE = "https://github.com/stackhawk/agent-skills-marketplace.git"
-TOKEN_MARKETPLACE = ("https://x-access-token:${MARKETPLACE_TOKEN}"
+TOKEN_MARKETPLACE = ("https://x-access-token:${token}"
                      "@github.com/stackhawk/agent-skills-marketplace.git")
 JOB_CHECKOUT = "/tmp/marketplace"
 VERSION = "9.8.7"
@@ -39,8 +39,7 @@ TAG = f"v{VERSION}"
 # The steps that do not run here, by job. A renamed or removed step fails job_steps.
 SKIPPED = {
     "validate": set(),
-    "update-marketplace": {"Skip an older tag", "CI identity (tag publication role)",
-                           "Marketplace App token"},
+    "update-marketplace": {"Skip an older tag", "CI identity (tag publication role)"},
 }
 
 OLD_SYNC = '''\
@@ -134,6 +133,11 @@ def job_steps(job, marketplace_url, checkout):
         checkout_used = checkout_used or JOB_CHECKOUT in step["run"]
         script = (step["run"].replace(TOKEN_MARKETPLACE, marketplace_url)
                   .replace(PUBLIC_MARKETPLACE, marketplace_url).replace(JOB_CHECKOUT, checkout))
+        if job == "update-marketplace" and step["name"] == "Push marketplace sync to main":
+            token_command = ('token="$(biodome ci github-app-token --repository '
+                             'agent-skills-marketplace --permission contents=write)"')
+            assert script.count(token_command) == 2
+            script = script.replace(token_command, "token=local-test-token")
         assert "github.com/stackhawk/agent-skills-marketplace" not in script, (job, step["name"])
         # Check the workflow text, not the substituted script: on Linux tmp_path is under /tmp/.
         assert "/tmp/" not in step["run"].replace(JOB_CHECKOUT, ""), (job, step["name"])
@@ -253,13 +257,16 @@ def test_marketplace_steps_guard_against_older_tags():
     assert steps["Skip an older tag"]["if"] == "steps.order.outputs.value == 'older'"
     for name in ("Export the marketplace payload from the release commit",
                  "Sync marketplace from release tag", "CI identity (tag publication role)",
-                 "Marketplace App token", "Push marketplace sync to main"):
+                 "Push marketplace sync to main"):
         assert steps[name]["if"] == "steps.order.outputs.value != 'older'", name
     assert "needs.validate.outputs.order != 'older'" in jobs()["draft-release"]["if"]
     assert "needs.update-marketplace.outputs.published == 'true'" in jobs()["publish-release"]["if"]
     push = steps["Push marketplace sync to main"]["run"]
     assert 'show origin/main:sources.json' in push
     assert 'if [ "$order" = older ]; then' in push
+    assert "MARKETPLACE_TOKEN" not in push
+    assert 'trap restore_public_remote EXIT' in push
+    assert push.index('remote set-url origin https://github.com/stackhawk/agent-skills-marketplace.git') < push.index('unittest discover -s /tmp/marketplace/tests')
 
 
 def test_validate_passes_the_format_2_export_of_the_commit_to_the_sync(workspace, tmp_path):
@@ -330,3 +337,27 @@ def test_update_marketplace_publishes_the_export_of_the_release_tag_once(workspa
     assert git(marketplace, "rev-parse", "main") == main_after_first
     head = git(workspace, "rev-parse", "HEAD").decode().strip()
     assert [r["commit"] for r in records(tmp_path)] == [head, head]
+
+
+def test_marketplace_push_race_does_not_roll_back_a_newer_tag(workspace, tmp_path):
+    marketplace = scratch_marketplace(tmp_path, FORMAT_2_SYNC)
+    steps = job_steps("update-marketplace", f"file://{marketplace}", str(tmp_path / "run-1" / "marketplace"))
+    push_index = next(i for i, (name, _) in enumerate(steps) if name == "Push marketplace sync to main")
+    env = job_env(tmp_path, workspace)
+    prepared = run_steps(steps[:push_index], workspace, env)
+    assert all(proc.returncode == 0 for _, proc in prepared), report(prepared)
+
+    concurrent = tmp_path / "concurrent"
+    subprocess.run(["git", "clone", "-q", str(marketplace), str(concurrent)],
+                   env=git_env(), check=True)
+    (concurrent / "sources.json").write_text(json.dumps({"tag": "v9.9.0", "sha": "e" * 40}))
+    git(concurrent, "add", "sources.json")
+    git(concurrent, "commit", "-q", "-m", "publish newer tag")
+    git(concurrent, "push", "-q", "origin", "main")
+    newer = git(marketplace, "rev-parse", "main")
+
+    pushed = run_steps(steps[push_index:], workspace, env)
+    assert all(proc.returncode == 0 for _, proc in pushed), report(pushed)
+    assert "published=false" in (tmp_path / "run-1" / "github-output").read_text()
+    assert git(marketplace, "rev-parse", "main") == newer
+    assert json.loads(git(marketplace, "show", "main:sources.json"))["tag"] == "v9.9.0"
