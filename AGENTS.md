@@ -49,13 +49,13 @@ bash scripts/test-wingman-skills.sh
 
 ## PR Workflow
 
-Do not bump versions in a PR. Every merge to `main` is a release: `release.yml` takes the next number from the latest release tag (`Release: minor` or `Release: major` on a line of the PR description raises it further), checks the tree stamped with it, claims it, tags the merged commit and publishes. `generate-and-validate.yml` checks the tree still carries the placeholder.
+Do not bump versions in a PR. A merge to `main` does not release. A newly created `vX.Y.Z` tag on the intended commit starts `release.yml`, which validates the tree stamped with that tag's version, syncs its exact commit to the marketplace, and publishes the GitHub Release. `generate-and-validate.yml` checks that the source tree still carries the placeholder.
 
 See `RELEASING.md` for the release flow, recovery and the marketplace sync.
 
 ## Manifests and Versioning
 
-Release tags (`vX.Y.Z`) are the source of truth; there is no `VERSION` file. The tree carries the placeholder `0.0.0-dev` (set in `.version-bump.json`) in every version-bearing file, and the manifests whose format allows it (Claude, Codex and Copilot manifests) carry no `version` at all so git-sourced installs track the commit; `gemini-extension.json` requires one and keeps the placeholder. The release job stamps the resolved version into a scratch copy to validate it, and the marketplace sync stamps it into the snapshot it publishes.
+Release tags (`vX.Y.Z`) and their commits are the source of truth; there is no `VERSION` file. The tree carries the placeholder `0.0.0-dev` (set in `.version-bump.json`) in every version-bearing file, and the manifests whose format allows it (Claude, Codex and Copilot manifests) carry no `version` at all so git-sourced installs track the commit; `gemini-extension.json` requires one and keeps the placeholder. The release job stamps the tag's version into a scratch copy to validate it, and the marketplace sync stamps it into the snapshot it publishes.
 
 Skills assume the combined `hawk` binary (`hawk op …`) is installed — no raw-REST fallback.
 
@@ -70,7 +70,7 @@ Skills assume the combined `hawk` binary (`hawk op …`) is installed — no raw
 
 `.version-bump.json` lists every version-bearing file (`files`; `stamp_only` ones carry no version in the tree and get one when stamped) and every manifest that must stay unversioned (`unversioned`). `bump-version.sh` reads it to stamp all files atomically, and `check-version.sh` to verify them. When adding a new plugin, add its manifests and SKILL.md to `.version-bump.json`.
 
-CI (`generate-and-validate.yml`) validates version consistency on every PR. `release.yml` runs on every push to `main` and ends in the marketplace sync. A failed run that already claimed its number is re-run, or freed with `abandon-release.yml`.
+CI (`generate-and-validate.yml`) validates version consistency on every PR. `release.yml` runs for a newly created release tag, then validates and syncs that tag's commit before publishing the GitHub Release. Re-run failed jobs for the same tag; `abandon-release.yml` applies only to claims left by the former main-push flow.
 
 ## Adding a New Plugin
 

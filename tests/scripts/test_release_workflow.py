@@ -1,10 +1,9 @@
-"""The release jobs of .github/workflows/release.yml, run as written against a scratch marketplace.
+"""The tag-selected release jobs, run as written against a scratch marketplace.
 
-Every merge to main is a release. Its validate job exports the payload of the commit and dry-runs
-the marketplace sync on it with --export, before claim takes a number. update-marketplace exports
-the payload of the release tag, syncs it, and pushes it to marketplace main. The sync lives in
-stackhawk/agent-skills-marketplace, so a marketplace whose sync does not take --export (the sync
-before export format 2) must stop the release in validate, before claim, with no tag left.
+A new vX.Y.Z tag selects the exact source commit. validate exports that commit and dry-runs the
+marketplace sync before any write job. update-marketplace repeats the export/sync and pushes once.
+The marketplace sync lives in stackhawk/agent-skills-marketplace, so a version without --export
+support must stop validation before a GitHub Release or marketplace write.
 
 These tests take the `run` steps of a job from release.yml as they are, point every marketplace
 URL at a scratch bare repository, and run the steps in order with `bash -eo pipefail`, as GitHub
@@ -40,7 +39,8 @@ TAG = f"v{VERSION}"
 # The steps that do not run here, by job. A renamed or removed step fails job_steps.
 SKIPPED = {
     "validate": set(),
-    "update-marketplace": {"CI identity (ci-deploy-preprod)", "Marketplace App token"},
+    "update-marketplace": {"Skip an older tag", "CI identity (tag publication role)",
+                           "Marketplace App token"},
 }
 
 OLD_SYNC = '''\
@@ -86,13 +86,14 @@ for name in EXPORTED + ("skills",):
 for name in EXPORTED:
     shutil.copytree(os.path.join(args.export, name), os.path.join(ROOT, name), symlinks=True)
 catalog = {"name": "stackhawk", "owner": {"name": "StackHawk"},
-           "plugins": [{"name": n, "source": "./plugins/" + n} for n in sorted(manifest["plugins"])]}
+           "plugins": [{"name": n, "source": "./plugins/" + n, "version": args.tag[1:]}
+                       for n in sorted(manifest["plugins"])]}
 outputs = {
     ".claude-plugin/marketplace.json": catalog,
     ".github/plugin/marketplace.json": catalog,
     ".agents/plugins/marketplace.json": catalog,
     ".codex-plugin/marketplace.json": catalog,
-    "sources.json": {"tag": args.tag, "commit": commit},
+    "sources.json": {"tag": args.tag, "sha": commit},
     "skills/stand-in.json": {"tag": args.tag},
 }
 for rel, data in outputs.items():
@@ -161,6 +162,7 @@ def scratch_marketplace(tmp_path, sync):
     (work / "tests").mkdir()
     (work / "scripts" / "sync-agent-skills.py").write_text(sync)
     (work / "tests" / "test_stand_in.py").write_text(STAND_IN_TESTS)
+    (work / "sources.json").write_text(json.dumps({"tag": "v9.8.6", "sha": "f" * 40}))
     git(work, "init", "-q", "-b", "main")
     git(work, "add", "-A")
     git(work, "commit", "-q", "-m", "stand-in marketplace")
@@ -174,6 +176,7 @@ def source_repo(tmp_path_factory):
     path = tmp_path_factory.mktemp("release-source") / "agent-skills"
     path.mkdir()
     snapshot_working_tree(path)
+    git(path, "tag", TAG)
     return path
 
 
@@ -194,7 +197,9 @@ def job_env(tmp_path, workspace, run="run-1"):
     (runner / "home").mkdir()
     return {**git_env(identity=False), "HOME": str(runner / "home"), "PYTHONDONTWRITEBYTECODE": "1",
             "RELEASE_VERSION": VERSION, "RELEASE_TAG": TAG, "RUNNER_TEMP": str(runner / "runner-temp"),
-            "GITHUB_WORKSPACE": str(workspace), "SYNC_RECORD": str(tmp_path / "sync-record.jsonl")}
+            "RELEASE_SHA": git(workspace, "rev-parse", TAG).decode().strip(),
+            "GITHUB_OUTPUT": str(runner / "github-output"), "GITHUB_WORKSPACE": str(workspace),
+            "SYNC_RECORD": str(tmp_path / "sync-record.jsonl")}
 
 
 def records(tmp_path):
@@ -212,28 +217,69 @@ def depends_on(job, ancestor, all_jobs):
     return ancestor in needs or any(depends_on(n, ancestor, all_jobs) for n in needs)
 
 
-def test_every_release_write_waits_for_validate_through_claim():
+def test_only_created_release_tags_can_reach_publication():
     all_jobs = jobs()
-    claim = all_jobs["claim"]
-    assert "validate" in claim["needs"]
-    assert "||" not in claim["if"]
-    conditions = {term.strip() for term in claim["if"].split("&&")}
-    assert {"!failure()", "!cancelled()"} <= conditions, claim["if"]
-    for job in ("draft-release", "tag", "publish-release", "update-marketplace", "capture-baseline"):
-        assert depends_on(job, "claim", all_jobs), job
+    with open(WORKFLOW) as f:
+        workflow = yaml.safe_load(f)
+    triggers = workflow.get("on", workflow.get(True))
+    assert triggers == {"push": {"tags": ["v*"]}}
+    assert "claim" not in all_jobs and "tag" not in all_jobs
+    assert "github.event.created == true" in all_jobs["resolve"]["if"]
+    assert "github.ref_type == 'tag'" in all_jobs["resolve"]["if"]
+    assert "github.event.deleted == false" in all_jobs["resolve"]["if"]
+    for job in ("draft-release", "update-marketplace", "publish-release", "capture-baseline"):
+        assert depends_on(job, "validate", all_jobs), job
+        assert "github.event.created == true" in all_jobs[job]["if"], job
+        assert "github.ref_type == 'tag'" in all_jobs[job]["if"], job
+        assert "github.event.deleted == false" in all_jobs[job]["if"], job
+        assert "startsWith(github.ref, 'refs/tags/v')" in all_jobs[job]["if"], job
+    assert depends_on("publish-release", "update-marketplace", all_jobs)
+    assert depends_on("capture-baseline", "publish-release", all_jobs)
+    text = open(WORKFLOW).read()
+    assert "biodome-rs ci version" not in text
+    assert "git tag -f" not in text
+    assert 'gh release create "$RELEASE_TAG" --draft --verify-tag --target "$RELEASE_SHA"' in text
+    assert text.count('scripts/export-marketplace.py --ref "$RELEASE_SHA"') == 2
+    assert text.count('--tag "$RELEASE_TAG" --export') == 2
+    assert 'gh workflow run capture-baseline.yml -f tag="$RELEASE_TAG"' in text
+    assert all_jobs["update-marketplace"]["outputs"]["published"]
+    for job in ("update-marketplace", "capture-baseline"):
+        assert "biodome-rs aws assume ci-agent-skills-publish" in str(all_jobs[job]["steps"])
+        assert "ci-deploy-preprod" not in str(all_jobs[job]["steps"])
+
+
+def test_marketplace_steps_guard_against_older_tags():
+    steps = {step["name"]: step for step in jobs()["update-marketplace"]["steps"]}
+    assert steps["Skip an older tag"]["if"] == "steps.order.outputs.value == 'older'"
+    for name in ("Export the marketplace payload from the release commit",
+                 "Sync marketplace from release tag", "CI identity (tag publication role)",
+                 "Marketplace App token", "Push marketplace sync to main"):
+        assert steps[name]["if"] == "steps.order.outputs.value != 'older'", name
+    assert "needs.validate.outputs.order != 'older'" in jobs()["draft-release"]["if"]
+    assert "needs.update-marketplace.outputs.published == 'true'" in jobs()["publish-release"]["if"]
+    push = steps["Push marketplace sync to main"]["run"]
+    assert 'show origin/main:sources.json' in push
+    assert 'if [ "$order" = older ]; then' in push
 
 
 def test_validate_passes_the_format_2_export_of_the_commit_to_the_sync(workspace, tmp_path):
     marketplace = scratch_marketplace(tmp_path, FORMAT_2_SYNC)
     main_before = git(marketplace, "rev-parse", "main")
+    released = git(workspace, "rev-parse", TAG).decode().strip()
+    (workspace / "unreleased-file").write_text("new main content\n")
+    git(workspace, "add", "unreleased-file")
+    git(workspace, "commit", "-q", "-m", "unreleased main")
+    advanced_main = git(workspace, "rev-parse", "HEAD").decode().strip()
+    git(workspace, "update-ref", "refs/remotes/origin/main", advanced_main)
+    git(workspace, "checkout", "-q", "--detach", TAG)
     steps = job_steps("validate", f"file://{marketplace}", str(tmp_path / "unused"))
     results = run_steps(steps, workspace, job_env(tmp_path, workspace))
 
     assert [name for name, _ in results] == [name for name, _ in steps], report(results)
     assert all(proc.returncode == 0 for _, proc in results), report(results)
-    head = git(workspace, "rev-parse", "HEAD").decode().strip()
-    assert records(tmp_path) == [{"tag": TAG, "commit": head, "format": 2, "version": VERSION}]
-    assert git(workspace, "tag", "-l", TAG) == b"", "the dry run left its tag"
+    assert records(tmp_path) == [{"tag": TAG, "commit": released, "format": 2, "version": VERSION}]
+    assert released != advanced_main
+    assert git(workspace, "rev-parse", TAG).decode().strip() == released
     assert git(marketplace, "rev-parse", "main") == main_before, "validate pushed to the marketplace"
 
 
@@ -246,12 +292,17 @@ def test_validate_stops_the_release_when_the_sync_takes_no_export(workspace, tmp
     assert failed == "Dry-run the marketplace sync", report(results)
     assert "unrecognized arguments: --export" in proc.stderr, report(results)
     assert all(p.returncode == 0 for _, p in results[:-1]), report(results)
-    assert git(workspace, "tag", "-l", TAG) == b"", "the failed dry run left its tag"
+    assert git(workspace, "tag", "-l", TAG).decode().strip() == TAG
 
 
 def test_update_marketplace_publishes_the_export_of_the_release_tag_once(workspace, tmp_path):
     marketplace = scratch_marketplace(tmp_path, FORMAT_2_SYNC)
-    git(workspace, "tag", TAG, "HEAD")  # what the tag job does
+    released = git(workspace, "rev-parse", TAG).decode().strip()
+    (workspace / "unreleased-file").write_text("new main content\n")
+    git(workspace, "add", "unreleased-file")
+    git(workspace, "commit", "-q", "-m", "unreleased main")
+    git(workspace, "update-ref", "refs/remotes/origin/main", "HEAD")
+    git(workspace, "checkout", "-q", "--detach", TAG)
     first = run_steps(job_steps("update-marketplace", f"file://{marketplace}", str(tmp_path / "run-1" / "marketplace")),
                       workspace, job_env(tmp_path, workspace, "run-1"))
     assert all(proc.returncode == 0 for _, proc in first), report(first)
@@ -259,6 +310,13 @@ def test_update_marketplace_publishes_the_export_of_the_release_tag_once(workspa
     assert git(marketplace, "log", "-1", "--format=%s", "main").decode().strip() == f"chore: sync agent-skills {TAG}"
     manifest = json.loads(git(marketplace, "show", "main:cursor-plugins/hawkscan/.cursor-plugin/plugin.json"))
     assert manifest["version"] == VERSION
+    sources = json.loads(git(marketplace, "show", "main:sources.json"))
+    assert sources == {"tag": TAG, "sha": released}
+    catalog = json.loads(git(marketplace, "show", "main:.claude-plugin/marketplace.json"))
+    assert {item["version"] for item in catalog["plugins"]} == {VERSION}
+    skill = git(marketplace, "show", "main:plugins/hawkscan/skills/hawkscan/SKILL.md").decode()
+    assert f"version: {VERSION}" in skill.split("---", 2)[1]
+    assert "unreleased-file" not in git(marketplace, "ls-tree", "-r", "--name-only", "main").decode()
     listed = git(marketplace, "ls-tree", "-r", "--name-only", "main").decode().splitlines()
     assert not [p for p in listed if p.startswith(("plugins/hawkscan/.cursor-plugin/", "plugins/hawkscan/hooks/cursor/"))]
     assert ".cursor-plugin/marketplace.json" in listed and "install/install.sh" in listed
