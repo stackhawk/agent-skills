@@ -239,9 +239,11 @@ jobs:
       # The marketplace's own code (sync, tests, installers) ran in the clone at /tmp/marketplace, so
       # nothing it left in that clone's .git (hooks, config) may meet the role or the token. The commit
       # is made here, before the role exists, with hooks, fsmonitor, credential helpers and commit
-      # signing switched off as defense in depth; it is then fetched into a pristine repository, and
-      # from the role on every git command runs there. This does not sandbox the marketplace's code
-      # from the job: it could still change what runs through GITHUB_ENV, GITHUB_PATH or the workspace.
+      # signing switched off as defense in depth; it is then fetched into a new repository made without
+      # a template, and from the role on every git command runs there, with git's global and system
+      # config switched off too (the runner user's own config is as writable as the clone's). This does
+      # not sandbox the marketplace's code from the job: it could still change what runs through
+      # GITHUB_ENV, GITHUB_PATH or the workspace.
       - name: Commit the marketplace sync
         if: steps.order.outputs.value != 'older'
         run: |
@@ -250,9 +252,11 @@ jobs:
           export GIT_CONFIG_KEY_1=core.fsmonitor GIT_CONFIG_VALUE_1=false
           export GIT_CONFIG_KEY_2=credential.helper GIT_CONFIG_VALUE_2=
           export GIT_CONFIG_KEY_3=commit.gpgsign GIT_CONFIG_VALUE_3=false
-          # A git older than 2.31 ignores these variables without a word.
-          if [ "$(git -C /tmp/marketplace config --get core.hooksPath)" != /dev/null ]; then
-            echo "::error::this git does not read GIT_CONFIG_COUNT; the clone's hooks would run"
+          export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1
+          # A git older than 2.32 ignores GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM and GIT_CONFIG_COUNT without a word.
+          version="$(git version | sed -e 's/^git version //' -e 's/[^0-9.].*$//')"
+          if [ "$(printf '%s\n' 2.32 "$version" | sort -V | head -n 1)" != 2.32 ]; then
+            echo "::error::git ${version} is too old to switch off its global config and hooks (needs 2.32)"
             exit 1
           fi
           git -C /tmp/marketplace config user.name hawkdeploy
@@ -264,7 +268,8 @@ jobs:
             exit 0
           fi
           git -C /tmp/marketplace commit -q -m "chore: sync agent-skills ${RELEASE_TAG}"
-          git init -q "$RUNNER_TEMP/marketplace-push"
+          # No template: a template from a global config would copy hooks into the new repository.
+          git init -q --template= "$RUNNER_TEMP/marketplace-push"
           git -C "$RUNNER_TEMP/marketplace-push" fetch -q /tmp/marketplace HEAD
       - name: CI identity (ci-deploy-preprod)
         if: steps.order.outputs.value != 'older'
@@ -273,11 +278,17 @@ jobs:
           echo "AWS_PROFILE=deploy" >> "$GITHUB_ENV"
       # The App's token replaces the retired Terraform GitHub token. It writes the marketplace repo
       # only, and exists only while this push runs: never in GITHUB_ENV, never written into any git
-      # config (the push goes to the URL), and only ever used by a push from the pristine repository.
+      # config (the push goes to the URL), and only ever used by a push from the new repository.
       - name: Push marketplace sync to main
         id: push
         if: steps.order.outputs.value != 'older'
         run: |
+          export GIT_CONFIG_COUNT=4
+          export GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null
+          export GIT_CONFIG_KEY_1=core.fsmonitor GIT_CONFIG_VALUE_1=false
+          export GIT_CONFIG_KEY_2=credential.helper GIT_CONFIG_VALUE_2=
+          export GIT_CONFIG_KEY_3=commit.gpgsign GIT_CONFIG_VALUE_3=false
+          export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1
           push="$RUNNER_TEMP/marketplace-push"
           if [ ! -d "$push" ]; then
             echo "Marketplace already contains ${RELEASE_TAG}"

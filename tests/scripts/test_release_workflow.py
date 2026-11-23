@@ -374,9 +374,13 @@ def test_marketplace_steps_guard_against_older_tags():
                     "export GIT_CONFIG_KEY_1=core.fsmonitor GIT_CONFIG_VALUE_1=false",
                     "export GIT_CONFIG_KEY_2=credential.helper GIT_CONFIG_VALUE_2=",
                     "export GIT_CONFIG_KEY_3=commit.gpgsign GIT_CONFIG_VALUE_3=false",
-                    "export GIT_CONFIG_COUNT=4"):
+                    "export GIT_CONFIG_COUNT=4",
+                    "export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1"):
         assert setting in commit, setting
+        assert setting in push, setting  # the push step has the same hardening, for the pristine repository too
     assert commit.index("export GIT_CONFIG_COUNT=4") < commit.index("stage-marketplace-sync.sh") < commit.index("commit -q -m") < commit.index("git init -q")
+    assert "git init -q --template= " in commit, "a global template would copy hooks into the new repository"
+    assert push.index("export GIT_CONFIG_COUNT=4") < push.index("github-app-token")
     assert "github-app-token" not in commit and "x-access-token" not in commit
     assert "/tmp/marketplace" not in push and "remote set-url" not in push
     assert "x-access-token:${token}@" in push and 'push "https://' in push
@@ -588,6 +592,21 @@ def test_hooks_and_config_left_in_the_marketplace_clone_do_not_run_or_redirect_t
     git(clone, "config", "commit.gpgsign", "true")
     git(clone, "config", "gpg.program", str(probe))
     git(clone, "config", "url.file:///planted-redirect/.insteadOf", f"file://{marketplace}")
+    # ... and in the runner user's own git config, which the marketplace's code can write as well:
+    # a URL rewrite, a hooks path and a template that copies a pre-push hook into every new repository.
+    template = tmp_path / "planted-template"
+    (template / "hooks").mkdir(parents=True)
+    (template / "hooks" / "pre-push").write_text(probe.read_text())
+    (template / "hooks" / "pre-push").chmod(0o755)
+    global_hooks = tmp_path / "planted-global-hooks"
+    global_hooks.mkdir()
+    for hook in ("pre-commit", "pre-push"):
+        (global_hooks / hook).write_text(probe.read_text())
+        (global_hooks / hook).chmod(0o755)
+    global_config = tmp_path / "planted-gitconfig"
+    global_config.write_text(f'[url "file:///planted-global-redirect/"]\n\tinsteadOf = file://{marketplace}\n'
+                             f'[core]\n\thooksPath = {global_hooks}\n[init]\n\ttemplateDir = {template}\n')
+    planted_env = {**env, "GIT_CONFIG_GLOBAL": str(global_config)}
 
     # The planted code does run, and the URL is rewritten, when git is not told otherwise.
     control = tmp_path / "control"
@@ -599,13 +618,21 @@ def test_hooks_and_config_left_in_the_marketplace_clone_do_not_run_or_redirect_t
     assert "planted-hooks/commit-msg" in planted and str(probe) in planted
     assert "planted-redirect" in git(control, "ls-remote", "--get-url", f"file://{marketplace}").decode()
     ran.unlink()
+    control_env = {**git_env(), "GIT_CONFIG_GLOBAL": str(global_config)}
+    rewritten = subprocess.run(["git", "ls-remote", "--get-url", f"file://{marketplace}"], env=control_env,
+                               capture_output=True, text=True, check=True).stdout
+    assert "planted-global-redirect" in rewritten
+    subprocess.run(["git", "init", "-q", str(tmp_path / "control-init")], env=control_env, check=True)
+    assert (tmp_path / "control-init" / ".git" / "hooks" / "pre-push").exists()
 
     main_before = git(marketplace, "rev-parse", "main")
-    results = run_steps(steps[commit_index:], tagged_workspace, env)
+    results = run_steps(steps[commit_index:], tagged_workspace, planted_env)
     assert all(proc.returncode == 0 for _, proc in results), report(results)
     assert git(marketplace, "rev-parse", "main") != main_before, "the push did not happen"
     assert "published=true" in (tmp_path / "run-1" / "github-output").read_text()
     assert not ran.exists(), f"planted code ran: {ran.read_text() if ran.exists() else ''}"
+    pushed_from = tmp_path / "run-1" / "runner-temp" / "marketplace-push"
+    assert pushed_from.is_dir() and not (pushed_from / ".git" / "hooks" / "pre-push").exists()
 
 
 # ── The GitHub Release steps, against a stand-in gh ──────────────────────────────────────────────
