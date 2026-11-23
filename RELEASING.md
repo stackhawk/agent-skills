@@ -24,6 +24,8 @@ Every merge to `main` gets the next release number and a `vX.Y.Z` tag, and publi
 
 `.github/workflows/publish-release.yml` (**Publish release**) is started by hand, from `main`, with one input: the tag to publish. In the GitHub UI, choose Actions, Publish release, Run workflow on `main`; or `gh workflow run publish-release.yml --ref main -f tag=vX.Y.Z`. Choose the newest tag whose content users should get: a tag contains everything before it. A tag made before this workflow existed (`v2.7.5` and older) cannot be published, because its tree has no release scripts; resolve stops with an error.
 
+Anyone with write access to this repository can start Publish release; nothing in the workflow limits who runs it, and no `environment:` gate is used, because `ci-deploy-preprod` trusts only runs on `main` and refuses a job in an environment. What the workflow does limit is where it runs (`main`) and what it publishes: an existing stable tag that is on `main`.
+
 Runs are serialized (one `agent-skills-publish` group) and never cancelled. Every job runs only on `main` (`if: github.ref == 'refs/heads/main'`), uses no environment, and no job creates, moves or deletes a tag. The marketplace and baseline jobs assume `ci-deploy-preprod`, as `claim` and `tag` do; publishing needs no other role.
 
 1. **resolve** checks that the tag input is a stable `vX.Y.Z` tag, exists on origin and names a commit on `main`, and outputs that commit. Every later job checks out that commit and checks again that the tag still names it, so a tag that moves mid-run changes nothing. The version is the tag's own name: a `Release: minor` or `Release: major` line only chooses the number a merge gets, and has no effect here.

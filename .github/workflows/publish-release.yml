@@ -130,6 +130,9 @@ jobs:
 
   # The GitHub Release is drafted before the marketplace push, where nobody can see it, and published
   # after it: a failed run must not leave a public release for a tag that users cannot install.
+  # A tag older than the marketplace pin skips this job, and with it, because a job whose `needs`
+  # was skipped is skipped, update-marketplace, publish-release and capture-baseline. The older-tag
+  # step of update-marketplace is a second guard, for a pin that moves after validate.
   draft-release:
     if: github.ref == 'refs/heads/main' && needs.validate.outputs.order != 'older'
     needs: [resolve, validate]
@@ -240,17 +243,19 @@ jobs:
           biodome-rs aws assume ci-deploy-preprod --profile deploy --source oidc
           echo "AWS_PROFILE=deploy" >> "$GITHUB_ENV"
       # The App's token replaces the retired Terraform GitHub token. It writes the marketplace repo
-      # only, and exists only while a push runs: never in GITHUB_ENV, and the remote goes back to the
-      # public URL on every way out of the step.
+      # only, and exists only while the push runs: never in GITHUB_ENV, never written into the
+      # clone's config (the push goes to the URL, not through the clone's remote). The marketplace's
+      # own code (sync, tests, installers) ran in this clone, so every git command of this step
+      # runs with hooks, fsmonitor and credential helpers switched off, whatever that code left in
+      # the clone's .git.
       - name: Push marketplace sync to main
         id: push
         if: steps.order.outputs.value != 'older'
         run: |
-          restore_public_remote() {
-            git -C /tmp/marketplace remote set-url origin https://github.com/stackhawk/agent-skills-marketplace.git || true
-            unset token
-          }
-          trap restore_public_remote EXIT
+          export GIT_CONFIG_COUNT=3
+          export GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null
+          export GIT_CONFIG_KEY_1=core.fsmonitor GIT_CONFIG_VALUE_1=false
+          export GIT_CONFIG_KEY_2=credential.helper GIT_CONFIG_VALUE_2=
           git -C /tmp/marketplace config user.name hawkdeploy
           git -C /tmp/marketplace config user.email hawkdeploy@stackhawk.com
           bash "$GITHUB_WORKSPACE/scripts/ci/stage-marketplace-sync.sh" /tmp/marketplace
@@ -263,12 +268,10 @@ jobs:
           git -C /tmp/marketplace commit -m "chore: sync agent-skills ${RELEASE_TAG}"
           token="$(biodome ci github-app-token --repository agent-skills-marketplace --permission contents=write)"
           echo "::add-mask::$token"
-          git -C /tmp/marketplace remote set-url origin "https://x-access-token:${token}@github.com/stackhawk/agent-skills-marketplace.git"
-          if ! git -C /tmp/marketplace push origin HEAD:main; then
+          if ! git -C /tmp/marketplace push "https://x-access-token:${token}@github.com/stackhawk/agent-skills-marketplace.git" HEAD:main; then
             # Marketplace main moved during the push. No marketplace code runs from here on: an older
             # tag stops with nothing published, and a newer or equal one is re-run, which checks
             # everything again before the role is assumed.
-            git -C /tmp/marketplace remote set-url origin https://github.com/stackhawk/agent-skills-marketplace.git
             unset token
             git -C /tmp/marketplace fetch origin main
             git -C /tmp/marketplace show origin/main:sources.json > "$RUNNER_TEMP/current-sources.json"
