@@ -445,11 +445,59 @@ def test_publish_checks_the_tag_with_the_same_steps_as_every_merge():
 
 def writes(step):
     """Whether a step changes something outside the runner: a marketplace push, a GitHub Release, a
-    dispatch or a tag. A dry-run push does not."""
-    run = step.get("run", "")
-    pushes = any(re.search(r"\bgit(?: -C \S+)? push\b", line) and "--dry-run" not in line for line in run.splitlines())
-    return (any(marker in run for marker in ("gh release create", "--method PATCH", "gh workflow run"))
-            or pushes or re.search(r"\bgit tag\b", run) is not None)
+    dispatch or a tag. A dry-run push does not. Only a command counts, not text that mentions one."""
+    text = re.sub(r"\\\n\s*", " ", step.get("run", ""))  # continuation lines joined
+    for line in text.splitlines():
+        if line.lstrip().startswith("#"):
+            continue
+        for command in re.split(r"&&|\|\||;", line):
+            command = re.sub(r"^\s*(?:(?:if|then|do|while|until|!)\s+)*", "", command)
+            command = re.sub(r'^\w+="?\$\(', "", command)  # existing="$(gh api ...)"
+            command = re.sub(r'^(?:\w+=\S+\s+)+', "", command)  # GH_TOKEN="$t" gh api ...
+            if re.match(r"git(?:\s+(?:-c\s+\S+|-C\s+(?:\"[^\"]*\"|\S+)|--[\w-]+(?:=\S+)?))*\s+push\b", command):
+                if "--dry-run" not in command:
+                    return True
+            elif re.match(r"git\s+tag\b|gh\s+release\s+(?:create|edit|upload|delete)\b|gh\s+workflow\s+run\b", command):
+                return True
+            elif re.match(r"gh\s+api\b", command):
+                if (re.search(r"(?:^|\s)(?:-X|--method)[\s=]+(?!GET\b)\S+", command)
+                        or re.search(r"(?:^|\s)(?:-f|-F|--field|--raw-field|--input)\b", command)):
+                    return True
+    return False
+
+
+@pytest.mark.parametrize("run", [
+    'git -C "$push" push "https://x@github.com/o/r.git" FETCH_HEAD:refs/heads/main',
+    'if ! git -C "$push" push --force "https://x@github.com/o/r.git" HEAD; then exit 1; fi',
+    'git -c http.extraheader=x push origin main',
+    'git --git-dir=/x/.git push origin main',
+    'git -C "a path with space" push origin main',
+    'git \\\n  push origin main',
+    'git push --dry-run origin main && git push origin main',
+    'gh release create v1 --draft',
+    'gh release edit v1 --draft=false',
+    'gh workflow run capture-baseline.yml -f tag=v1',
+    'gh api --method PATCH repos/o/r/releases/1 -F draft=false',
+    'gh api -X DELETE repos/o/r/releases/1',
+    'gh api repos/o/r/dispatches -f event_type=x',
+    'GH_TOKEN="$t" gh api repos/o/r/issues --field title=x',
+    'git tag v1',
+])
+def test_writes_recognises_every_way_a_step_can_write(run):
+    assert writes({"run": run})
+
+
+@pytest.mark.parametrize("run", [
+    'git -C "$push" push --dry-run "https://x@github.com/o/r.git" FETCH_HEAD:refs/heads/main',
+    'git -C "$push" fetch -q /tmp/marketplace HEAD',
+    'git ls-remote "https://x@github.com/o/r.git" refs/heads/main',
+    'existing="$(gh api "repos/o/r/releases" --paginate --jq ".[] | .id")"',
+    'gh api --method GET repos/o/r/releases',
+    'GH_TOKEN="$t" gh api "repos/o/r/actions/workflows/x.yml" --jq .state',
+    '# git push origin main\necho "nothing to push; run git push by hand"',
+])
+def test_writes_does_not_flag_reads(run):
+    assert not writes({"run": run})
 
 
 def test_every_step_that_writes_is_skipped_in_a_rehearsal():
@@ -460,11 +508,9 @@ def test_every_step_that_writes_is_skipped_in_a_rehearsal():
         for step in job["steps"]:
             condition = step.get("if", "")
             if step["name"] in WRITE_STEPS:
-                assert "!inputs.rehearsal" in condition, step["name"]
-                for order in ("newer", "current", "older", ""):
-                    for exists in ("true", "false", ""):
-                        outputs = {("order", "value"): order, ("lookup", "exists"): exists}
-                        assert not condition_holds(condition, outputs, True), (step["name"], outputs)
+                # The guard is one of the terms that must all hold, so no other term can let a rehearsal in.
+                terms = {term.strip() for term in re.sub(r"^\$\{\{|\}\}$", "", condition.strip()).split("&&")}
+                assert "!inputs.rehearsal" in terms, step["name"]
             # A step that needs a rehearsal stands in for a write step and only reads.
             if "inputs.rehearsal" in condition.replace("!inputs.rehearsal", ""):
                 assert step["name"].startswith("Rehearse"), step["name"]
@@ -518,8 +564,15 @@ def test_every_job_output_the_workflows_read_is_declared_by_the_job():
         all_jobs = jobs(path)
         for job, name in set(re.findall(r"needs\.([\w-]+)\.outputs\.(\w+)", text)):
             assert name in all_jobs[job].get("outputs", {}), (os.path.basename(path), job, name)
-        for step_id in {m[0] for m in re.findall(r"steps\.([\w-]+)\.outputs\.(\w+)", text)}:
-            assert any(step.get("id") == step_id for job in all_jobs.values() for step in job["steps"]), step_id
+        for job_name, job in all_jobs.items():
+            by_id = {step["id"]: step for step in job["steps"] if "id" in step}
+            for step_id, name in set(re.findall(r"steps\.([\w-]+)\.outputs\.(\w+)", json.dumps(job))):
+                assert step_id in by_id, (os.path.basename(path), job_name, step_id)
+                run = by_id[step_id].get("run", "")
+                if "GITHUB_OUTPUT" in run:
+                    assert f"{name}=" in run, (os.path.basename(path), job_name, step_id, name)
+                else:  # the outputs of a command that writes them itself
+                    assert run.startswith(("python3 scripts/ci/release_tag.py resolve", "biodome-rs ci version")), (job_name, step_id)
 
 
 def test_a_rehearsal_reaches_the_jobs_a_real_run_reaches_and_no_others():
@@ -726,8 +779,8 @@ def test_a_rehearsal_runs_the_marketplace_job_up_to_the_push_and_pushes_nothing(
     assert all(proc.returncode == 0 for _, proc in results), report(results)
     assert git(marketplace, "rev-parse", "main") == main_before, "the rehearsal pushed to the marketplace"
     assert records(tmp_path) == [{"tag": TAG, "commit": released, "format": 2, "version": VERSION}]
-    # It got as far as a real run does: the sync commit waits in the new repository, and the marketplace
-    # was asked whether it would take it.
+    # It got as far as a real run does: the sync commit waits in the new repository, and a dry-run push
+    # from there found that marketplace main had not moved.
     waiting = tmp_path / "run-1" / "runner-temp" / "marketplace-push"
     assert git(waiting, "log", "-1", "--format=%s", "FETCH_HEAD").decode().strip() == f"chore: sync agent-skills {TAG}"
     assert f"marketplace main has not moved and the sync commit for {TAG} fast-forwards it; nothing was pushed" in results[-1][1].stdout

@@ -40,8 +40,8 @@ permissions:
 # have run and the commit exists; the token is used only by a push from a pristine repository. A push
 # that loses a race to another marketplace commit is re-run, not rebased.
 #
-# With `rehearsal` on, the run does everything that can fail for real reasons (resolve, validate, export,
-# the role, the marketplace token, the sync into the scratch clone, the release lookups, the baseline
+# With `rehearsal` on, the run does everything that needs no write (resolve, validate, export, the
+# role, the marketplace token, the sync into the scratch clone, the release lookups, the baseline
 # token) and skips the four steps that write: the marketplace push, drafting the GitHub Release,
 # publishing it, and dispatching the baseline. Each of those steps has `!inputs.rehearsal` in its
 # `if`; the steps that stand in for them in a rehearsal only read. The last job reports what a real run
