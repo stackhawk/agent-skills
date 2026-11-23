@@ -354,32 +354,37 @@ def test_marketplace_steps_guard_against_older_tags():
     steps = steps_of(PUBLISH, "update-marketplace")
     assert steps["Skip an older tag"]["if"] == "steps.order.outputs.value == 'older'"
     for name in ("Export the marketplace payload from the release commit",
-                 "Sync marketplace from release tag", "CI identity (ci-deploy-preprod)",
-                 "Push marketplace sync to main"):
+                 "Sync marketplace from release tag", "Commit the marketplace sync",
+                 "CI identity (ci-deploy-preprod)", "Push marketplace sync to main"):
         assert steps[name]["if"] == "steps.order.outputs.value != 'older'", name
     all_jobs = jobs(PUBLISH)
     assert "needs.validate.outputs.order != 'older'" in all_jobs["draft-release"]["if"]
     assert "needs.update-marketplace.outputs.published == 'true'" in all_jobs["publish-release"]["if"]
     assert all_jobs["update-marketplace"]["outputs"]["published"]
     push = steps["Push marketplace sync to main"]["run"]
-    assert 'show origin/main:sources.json' in push
+    commit = steps["Commit the marketplace sync"]["run"]
+    assert 'show FETCH_HEAD:sources.json' in push
     assert 'if [ "$order" = older ]; then' in push
     assert "MARKETPLACE_TOKEN" not in push
-    # The token goes straight into the push command and never into the clone's config, and git's
-    # hooks, fsmonitor and credential helpers are off for every command of the step.
-    assert "remote set-url" not in push and "x-access-token:${token}@" in push
+    # The commit is made in the clone that ran the marketplace's code, before the role and the token
+    # exist, with git's hooks, fsmonitor, credential helpers and signing off. The token is used only
+    # by a push from a pristine repository, straight to the URL: no git command of the push step
+    # touches the clone, and the token is never written into a config.
     for setting in ("export GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null",
                     "export GIT_CONFIG_KEY_1=core.fsmonitor GIT_CONFIG_VALUE_1=false",
-                    "export GIT_CONFIG_KEY_2=credential.helper GIT_CONFIG_VALUE_2="):
-        assert setting in push, setting
-    assert "export GIT_CONFIG_COUNT=3" in push
-    assert push.index("export GIT_CONFIG_COUNT=3") < push.index("stage-marketplace-sync.sh") < push.index("commit -m") < push.index("github-app-token")
-    # No marketplace code runs in the step that holds the token, and a lost race is re-run, not rebased.
+                    "export GIT_CONFIG_KEY_2=credential.helper GIT_CONFIG_VALUE_2=",
+                    "export GIT_CONFIG_KEY_3=commit.gpgsign GIT_CONFIG_VALUE_3=false",
+                    "export GIT_CONFIG_COUNT=4"):
+        assert setting in commit, setting
+    assert commit.index("export GIT_CONFIG_COUNT=4") < commit.index("stage-marketplace-sync.sh") < commit.index("commit -q -m") < commit.index("git init -q")
+    assert "github-app-token" not in commit and "x-access-token" not in commit
+    assert "/tmp/marketplace" not in push and "remote set-url" not in push
+    assert "x-access-token:${token}@" in push and 'push "https://' in push
     assert "unittest" not in push and "check-marketplace-layout" not in push and "rebase" not in push
     assert "re-run this job" in push
-    # The role comes after the marketplace's own tests and installers, the token after the role.
     names = list(steps)
-    assert names.index("Sync marketplace from release tag") < names.index("CI identity (ci-deploy-preprod)") < names.index("Push marketplace sync to main")
+    assert (names.index("Sync marketplace from release tag") < names.index("Commit the marketplace sync")
+            < names.index("CI identity (ci-deploy-preprod)") < names.index("Push marketplace sync to main"))
     assert "needs.publish-release.outputs.newly == 'true'" in all_jobs["capture-baseline"]["if"]
 
 
@@ -554,17 +559,18 @@ def test_a_push_that_loses_a_race_to_an_unrelated_commit_is_rerun_not_rebased(ta
     assert git(marketplace, "rev-parse", "main") == moved
 
 
-def test_hooks_and_config_left_in_the_marketplace_clone_do_not_run_in_the_push_step(tagged_workspace, tmp_path):
+def test_hooks_and_config_left_in_the_marketplace_clone_do_not_run_or_redirect_the_push(tagged_workspace, tmp_path):
     marketplace = scratch_marketplace(tmp_path, FORMAT_2_SYNC)
     released = git(tagged_workspace, "rev-parse", TAG).decode().strip()
     steps = job_steps(PUBLISH, "update-marketplace", f"file://{marketplace}", str(tmp_path / "run-1" / "marketplace"))
-    push_index = next(i for i, (name, _) in enumerate(steps) if name == "Push marketplace sync to main")
+    commit_index = next(i for i, (name, _) in enumerate(steps) if name == "Commit the marketplace sync")
     env = job_env(tmp_path, tagged_workspace, sha=released)
-    prepared = run_steps(steps[:push_index], tagged_workspace, env)
+    prepared = run_steps(steps[:commit_index], tagged_workspace, env)
     assert all(proc.returncode == 0 for _, proc in prepared), report(prepared)
 
-    # What the marketplace's own code could leave behind: hooks (the pre-push hook is given the push
-    # URL, which holds the token), a hooks path, an fsmonitor command and a credential helper.
+    # What the marketplace's own code could leave behind in its clone: hooks (the pre-push hook is
+    # given the push URL, which holds the token), a hooks path, an fsmonitor command, a credential
+    # helper, a signing program and a rewrite of the URL the token is pushed to.
     clone = tmp_path / "run-1" / "marketplace"
     ran = tmp_path / "planted-code-ran"
     probe = tmp_path / "probe.sh"
@@ -579,21 +585,27 @@ def test_hooks_and_config_left_in_the_marketplace_clone_do_not_run_in_the_push_s
     git(clone, "config", "core.hooksPath", str(hooks))
     git(clone, "config", "core.fsmonitor", str(probe))
     git(clone, "config", "credential.helper", f"!{probe}")
+    git(clone, "config", "commit.gpgsign", "true")
+    git(clone, "config", "gpg.program", str(probe))
+    git(clone, "config", "url.file:///planted-redirect/.insteadOf", f"file://{marketplace}")
 
-    # The planted code does run when git is not told to ignore it.
+    # The planted code does run, and the URL is rewritten, when git is not told otherwise.
     control = tmp_path / "control"
     shutil.copytree(clone, control, symlinks=True)
-    git(control, "commit", "-q", "--allow-empty", "-m", "control")
+    subprocess.run(["git", "-C", str(control), "commit", "-q", "--allow-empty", "-m", "control"],
+                   env=git_env(), capture_output=True, check=False)
     git(control, "status", "--short")
-    assert "planted-hooks/commit-msg" in ran.read_text() and str(probe) in ran.read_text()
+    planted = ran.read_text()
+    assert "planted-hooks/commit-msg" in planted and str(probe) in planted
+    assert "planted-redirect" in git(control, "ls-remote", "--get-url", f"file://{marketplace}").decode()
     ran.unlink()
 
     main_before = git(marketplace, "rev-parse", "main")
-    pushed = run_steps(steps[push_index:], tagged_workspace, env)
-    assert all(proc.returncode == 0 for _, proc in pushed), report(pushed)
+    results = run_steps(steps[commit_index:], tagged_workspace, env)
+    assert all(proc.returncode == 0 for _, proc in results), report(results)
     assert git(marketplace, "rev-parse", "main") != main_before, "the push did not happen"
     assert "published=true" in (tmp_path / "run-1" / "github-output").read_text()
-    assert not ran.exists(), f"planted code ran in the push step: {ran.read_text() if ran.exists() else ''}"
+    assert not ran.exists(), f"planted code ran: {ran.read_text() if ran.exists() else ''}"
 
 
 # ── The GitHub Release steps, against a stand-in gh ──────────────────────────────────────────────

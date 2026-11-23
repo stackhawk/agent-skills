@@ -31,8 +31,8 @@ permissions:
 # branch does nothing. Marketplace sync and baseline run as the release App, whose key only
 # ci-deploy-preprod may read, so those jobs assume it with the job's OIDC token (main only). The role
 # is assumed, and the marketplace token minted, only after the marketplace's own tests and installers
-# have run; none of that code runs again once they exist. A push that loses a race to another
-# marketplace commit is re-run, not rebased.
+# have run and the commit exists; the token is used only by a push from a pristine repository. A push
+# that loses a race to another marketplace commit is re-run, not rebased.
 #
 # Every job runs on the agent-skills runner: this repo is public, and the biodome-ci-* runners live in a
 # runner group that does not serve public repositories. That image has no `gh`, so the jobs that call it
@@ -236,45 +236,62 @@ jobs:
             --source-repo "$GITHUB_WORKSPACE" --tag "$RELEASE_TAG" --export "$RUNNER_TEMP/marketplace-export"
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s /tmp/marketplace/tests
           python3 scripts/check-marketplace-layout.py --run-installers --version "$RELEASE_VERSION" /tmp/marketplace
-      # Assumed after the marketplace's own code has run, which does not run again in this job.
+      # The marketplace's own code (sync, tests, installers) ran in the clone at /tmp/marketplace, so
+      # nothing it left in that clone's .git (hooks, config) may meet the role or the token. The commit
+      # is made here, before the role exists, with hooks, fsmonitor, credential helpers and commit
+      # signing switched off as defense in depth; it is then fetched into a pristine repository, and
+      # from the role on every git command runs there. This does not sandbox the marketplace's code
+      # from the job: it could still change what runs through GITHUB_ENV, GITHUB_PATH or the workspace.
+      - name: Commit the marketplace sync
+        if: steps.order.outputs.value != 'older'
+        run: |
+          export GIT_CONFIG_COUNT=4
+          export GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null
+          export GIT_CONFIG_KEY_1=core.fsmonitor GIT_CONFIG_VALUE_1=false
+          export GIT_CONFIG_KEY_2=credential.helper GIT_CONFIG_VALUE_2=
+          export GIT_CONFIG_KEY_3=commit.gpgsign GIT_CONFIG_VALUE_3=false
+          # A git older than 2.31 ignores these variables without a word.
+          if [ "$(git -C /tmp/marketplace config --get core.hooksPath)" != /dev/null ]; then
+            echo "::error::this git does not read GIT_CONFIG_COUNT; the clone's hooks would run"
+            exit 1
+          fi
+          git -C /tmp/marketplace config user.name hawkdeploy
+          git -C /tmp/marketplace config user.email hawkdeploy@stackhawk.com
+          bash "$GITHUB_WORKSPACE/scripts/ci/stage-marketplace-sync.sh" /tmp/marketplace
+          python3 scripts/ci/release_tag.py verify
+          rm -rf "$RUNNER_TEMP/marketplace-push"
+          if git -C /tmp/marketplace diff --cached --quiet; then
+            exit 0
+          fi
+          git -C /tmp/marketplace commit -q -m "chore: sync agent-skills ${RELEASE_TAG}"
+          git init -q "$RUNNER_TEMP/marketplace-push"
+          git -C "$RUNNER_TEMP/marketplace-push" fetch -q /tmp/marketplace HEAD
       - name: CI identity (ci-deploy-preprod)
         if: steps.order.outputs.value != 'older'
         run: |
           biodome-rs aws assume ci-deploy-preprod --profile deploy --source oidc
           echo "AWS_PROFILE=deploy" >> "$GITHUB_ENV"
       # The App's token replaces the retired Terraform GitHub token. It writes the marketplace repo
-      # only, and exists only while the push runs: never in GITHUB_ENV, never written into the
-      # clone's config (the push goes to the URL, not through the clone's remote). The marketplace's
-      # own code (sync, tests, installers) ran in this clone, so every git command of this step
-      # runs with hooks, fsmonitor and credential helpers switched off, whatever that code left in
-      # the clone's .git.
+      # only, and exists only while this push runs: never in GITHUB_ENV, never written into any git
+      # config (the push goes to the URL), and only ever used by a push from the pristine repository.
       - name: Push marketplace sync to main
         id: push
         if: steps.order.outputs.value != 'older'
         run: |
-          export GIT_CONFIG_COUNT=3
-          export GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null
-          export GIT_CONFIG_KEY_1=core.fsmonitor GIT_CONFIG_VALUE_1=false
-          export GIT_CONFIG_KEY_2=credential.helper GIT_CONFIG_VALUE_2=
-          git -C /tmp/marketplace config user.name hawkdeploy
-          git -C /tmp/marketplace config user.email hawkdeploy@stackhawk.com
-          bash "$GITHUB_WORKSPACE/scripts/ci/stage-marketplace-sync.sh" /tmp/marketplace
-          python3 scripts/ci/release_tag.py verify
-          if git -C /tmp/marketplace diff --cached --quiet; then
+          push="$RUNNER_TEMP/marketplace-push"
+          if [ ! -d "$push" ]; then
             echo "Marketplace already contains ${RELEASE_TAG}"
             echo 'published=true' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git -C /tmp/marketplace commit -m "chore: sync agent-skills ${RELEASE_TAG}"
           token="$(biodome ci github-app-token --repository agent-skills-marketplace --permission contents=write)"
           echo "::add-mask::$token"
-          if ! git -C /tmp/marketplace push "https://x-access-token:${token}@github.com/stackhawk/agent-skills-marketplace.git" HEAD:main; then
-            # Marketplace main moved during the push. No marketplace code runs from here on: an older
-            # tag stops with nothing published, and a newer or equal one is re-run, which checks
-            # everything again before the role is assumed.
+          if ! git -C "$push" push "https://x-access-token:${token}@github.com/stackhawk/agent-skills-marketplace.git" FETCH_HEAD:refs/heads/main; then
+            # Marketplace main moved during the push. An older tag stops with nothing published, and a
+            # newer or equal one is re-run, which checks everything again before the role is assumed.
             unset token
-            git -C /tmp/marketplace fetch origin main
-            git -C /tmp/marketplace show origin/main:sources.json > "$RUNNER_TEMP/current-sources.json"
+            git -C "$push" fetch -q https://github.com/stackhawk/agent-skills-marketplace.git main
+            git -C "$push" show FETCH_HEAD:sources.json > "$RUNNER_TEMP/current-sources.json"
             order="$(python3 scripts/ci/marketplace_release_order.py "$RUNNER_TEMP/current-sources.json" "$RELEASE_TAG" "$RELEASE_SHA")"
             if [ "$order" = older ]; then
               echo "::warning::Marketplace advanced past ${RELEASE_TAG}; nothing was published and nothing was rolled back"
