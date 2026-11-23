@@ -443,26 +443,54 @@ def test_publish_checks_the_tag_with_the_same_steps_as_every_merge():
         assert merge[name]["run"] == publish[name]["run"], name
 
 
-def writes(step):
-    """Whether a step changes something outside the runner: a marketplace push, a GitHub Release, a
-    dispatch or a tag. A dry-run push does not. Only a command counts, not text that mentions one."""
-    text = re.sub(r"\\\n\s*", " ", step.get("run", ""))  # continuation lines joined
+def commands(step):
+    """The commands of a step's script, one string each: continuation lines joined, comments dropped,
+    split at &&, ||, ; and |, with a leading `if`, `!`, `env`, `{`, `xargs` and a NAME=value prefix removed."""
+    text = re.sub(r"\\\n\s*", " ", step.get("run", ""))
     for line in text.splitlines():
         if line.lstrip().startswith("#"):
             continue
-        for command in re.split(r"&&|\|\||;", line):
-            command = re.sub(r"^\s*(?:(?:if|then|do|while|until|!)\s+)*", "", command)
+        for command in re.split(r"&&|\|\||[;|]", line):
+            command = re.sub(r"^\s*(?:(?:if|then|do|while|until|env|xargs|exec|time|sudo)\s+|[!{(]\s*)*", "", command)
+            command = re.sub(r"""^(?:\w+=(?:"[^"]*"|'[^']*'|\S+)\s+)+""", "", command)  # GH_TOKEN="$(...)" gh api ...
             command = re.sub(r'^\w+="?\$\(', "", command)  # existing="$(gh api ...)"
-            command = re.sub(r'^(?:\w+=\S+\s+)+', "", command)  # GH_TOKEN="$t" gh api ...
-            if re.match(r"git(?:\s+(?:-c\s+\S+|-C\s+(?:\"[^\"]*\"|\S+)|--[\w-]+(?:=\S+)?))*\s+push\b", command):
-                if "--dry-run" not in command:
-                    return True
-            elif re.match(r"git\s+tag\b|gh\s+release\s+(?:create|edit|upload|delete)\b|gh\s+workflow\s+run\b", command):
+            yield command
+
+
+GIT_OPTIONS = r"""(?:\s+(?:-c\s+(?:[^\s"']+=)?(?:"[^"]*"|'[^']*'|\S+)|-C\s+(?:"[^"]*"|\S+)|--(?:git-dir|work-tree)[\s=]\S+|--[\w-]+(?:=\S+)?))*"""
+
+
+def writes(step):
+    """Whether a step changes something outside the runner: a marketplace push, a GitHub Release, a
+    dispatch, a tag. A dry-run push and a GET do not. This reads commands, not text that mentions one, and
+    fails toward "writes": any gh command but a GET api call, any curl, any git push or tag."""
+    for command in commands(step):
+        if re.match(rf"git{GIT_OPTIONS}\s+push\b", command):
+            if "--dry-run" not in command:
                 return True
-            elif re.match(r"gh\s+api\b", command):
-                if (re.search(r"(?:^|\s)(?:-X|--method)[\s=]+(?!GET\b)\S+", command)
-                        or re.search(r"(?:^|\s)(?:-f|-F|--field|--raw-field|--input)\b", command)):
-                    return True
+        elif re.match(rf"git{GIT_OPTIONS}\s+tag\b|curl\s|wget\s", command):
+            return True
+        elif re.match(r"gh\s+api\b", command):
+            if (re.search(r"(?:^|\s)(?:-X|--method)[\s=]*(?!GET\b)\S+", command)
+                    or re.search(r"(?:^|\s)(?:-[fF]\S*|--field\S*|--raw-field\S*|--input\S*)", command)):
+                return True
+        elif re.match(r"gh\s+(?!(?:auth|version|--version)\b)\S", command):
+            return True
+    return False
+
+
+# Steps that reach GitHub or a remote and only read. Any other step that does must be a WRITE_STEP.
+READ_STEPS = {"Look up the GitHub Release", "Rehearse the marketplace push", "Rehearse the baseline dispatch"}
+USES_ALLOWED = ("actions/checkout@", "./../../../../../home/runner/.github/actions/biodome-setup-v2")
+
+
+def reaches_remote(step):
+    """A coarse, fail-closed test: the step runs gh, curl or wget, or has git push or tag as a word."""
+    for line in step.get("run", "").splitlines():
+        if line.lstrip().startswith("#"):
+            continue
+        if re.search(r"(?<![\w./-])(?:gh|curl|wget)\s|\bgit\b[^\n]*\s(?:push|tag)(?:\s|$)", line):
+            return True
     return False
 
 
@@ -482,8 +510,21 @@ def writes(step):
     'gh api repos/o/r/dispatches -f event_type=x',
     'GH_TOKEN="$t" gh api repos/o/r/issues --field title=x',
     'git tag v1',
+    'git -c http.extraheader="AUTHORIZATION: basic $t" push origin main',
+    'git --git-dir /x/.git push origin main',
+    'GH_TOKEN="$(biodome ci github-app-token --repository r --permission contents=write)" gh release create v1',
+    'GH_TOKEN="$(biodome ci github-app-token --repository r)" gh api -X POST repos/o/r/dispatches',
+    'cat body.json | gh api --input - repos/o/r/releases',
+    'ls | xargs gh release delete',
+    'env GH_TOKEN=x gh release create v1',
+    '{ git push origin main; }',
+    'gh api -XPOST repos/o/r/dispatches',
+    'gh api repos/o/r/dispatches -fevent_type=x',
+    'gh workflow enable x.yml',
+    'gh pr create --fill',
+    'curl -X POST https://api.github.com/repos/o/r/releases',
 ])
-def test_writes_recognises_every_way_a_step_can_write(run):
+def test_writes_recognises_these_ways_a_step_can_write(run):
     assert writes({"run": run})
 
 
@@ -509,8 +550,9 @@ def test_every_step_that_writes_is_skipped_in_a_rehearsal():
             condition = step.get("if", "")
             if step["name"] in WRITE_STEPS:
                 # The guard is one of the terms that must all hold, so no other term can let a rehearsal in.
+                # (An `||` would let another term run the step in a rehearsal; `&&` binds tighter.)
                 terms = {term.strip() for term in re.sub(r"^\$\{\{|\}\}$", "", condition.strip()).split("&&")}
-                assert "!inputs.rehearsal" in terms, step["name"]
+                assert "!inputs.rehearsal" in terms and "||" not in condition, step["name"]
             # A step that needs a rehearsal stands in for a write step and only reads.
             if "inputs.rehearsal" in condition.replace("!inputs.rehearsal", ""):
                 assert step["name"].startswith("Rehearse"), step["name"]
@@ -573,6 +615,19 @@ def test_every_job_output_the_workflows_read_is_declared_by_the_job():
                     assert f"{name}=" in run, (os.path.basename(path), job_name, step_id, name)
                 else:  # the outputs of a command that writes them itself
                     assert run.startswith(("python3 scripts/ci/release_tag.py resolve", "biodome-rs ci version")), (job_name, step_id)
+
+
+def test_every_step_that_reaches_github_is_a_known_write_or_a_known_read():
+    """A new step that calls gh or curl, pushes or tags, or uses an action, must be classified here: a
+    write gets the rehearsal guard, and a read is named in READ_STEPS and run against the stand-ins."""
+    for job_name, job in jobs(PUBLISH).items():
+        for step in job["steps"]:
+            if "uses" in step:
+                assert step["uses"].startswith(USES_ALLOWED), (job_name, step["name"], step["uses"])
+            if reaches_remote(step):
+                assert step["name"] in WRITE_STEPS | READ_STEPS, (job_name, step["name"])
+            if step["name"] in READ_STEPS:
+                assert not writes(step), (job_name, step["name"])
 
 
 def test_a_rehearsal_reaches_the_jobs_a_real_run_reaches_and_no_others():
@@ -1064,7 +1119,7 @@ def test_a_rehearsal_looks_everything_up_and_writes_nothing_on_github(tmp_path):
     assert baseline.ran == ["Rehearse the baseline dispatch"]
     assert baseline.biodome_calls == ["ci github-app-token --repository agent-skills --permission actions=write"]
     assert [c.split(" --jq")[0] for c in baseline.calls] == [f"api repos/{REPOSITORY}/actions/workflows/capture-baseline.yml"]
-    assert "nothing was dispatched" in baseline.stdout
+    assert "nothing was dispatched" in baseline.calls[0], "the workflow's own jq text, not the stand-in's output"
     assert not writes_made(baseline)
 
 
@@ -1096,7 +1151,7 @@ def test_the_summary_says_it_was_a_rehearsal_and_what_a_real_run_would_do(tmp_pa
     assert text.startswith(f"## Publish release {TAG}: rehearsal\n") and PLAIN in text
     assert "Release order against the marketplace pin: **newer**" in text
     assert f'- push the sync commit "chore: sync agent-skills {TAG}" to marketplace main' in text
-    assert (f"- draft the GitHub Release with notes since v9.8.5, publish it after the marketplace push, "
+    assert (f"- draft the GitHub Release with notes since v9.8.5, publish it once the marketplace job succeeds, "
             f"then dispatch Capture Eval Baseline for {TAG}") in text
     assert "| Role, marketplace token and sync into the scratch clone | success |" in text
 

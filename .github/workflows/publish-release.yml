@@ -545,7 +545,7 @@ jobs:
                   draft)
                     echo "- publish the existing draft GitHub Release, then dispatch Capture Eval Baseline for ${RELEASE_TAG}" ;;
                   *)
-                    echo "- draft the GitHub Release with notes since ${PREVIOUS_RELEASE:-the first commit}, publish it after the marketplace push, then dispatch Capture Eval Baseline for ${RELEASE_TAG}" ;;
+                    echo "- draft the GitHub Release with notes since ${PREVIOUS_RELEASE:-the first commit}, publish it once the marketplace job succeeds, then dispatch Capture Eval Baseline for ${RELEASE_TAG}" ;;
                 esac
               fi
             fi
