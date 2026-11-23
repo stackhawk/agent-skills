@@ -32,8 +32,8 @@ permissions:
 # steps on the tag it publishes.
 #
 # A run that fails after the claim leaves it: re-run its failed jobs to finish the release, or run
-# Abandon release if the merged change itself breaks it. claim and tag are idempotent, so a re-run of
-# a tagged release picks up where it stopped.
+# Abandon release if the tag job cannot succeed. claim and tag are idempotent, so a re-run of a
+# tagged release picks up where it stopped.
 #
 # Every job runs on the agent-skills runner: this repo is public, and the biodome-ci-* runners live in a
 # runner group that does not serve public repositories.

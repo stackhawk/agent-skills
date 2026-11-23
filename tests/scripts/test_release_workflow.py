@@ -159,7 +159,7 @@ def job_steps(path, job, marketplace_url, checkout, order="newer"):
         if job == "update-marketplace" and step["name"] == "Push marketplace sync to main":
             token_command = ('token="$(biodome ci github-app-token --repository '
                              'agent-skills-marketplace --permission contents=write)"')
-            assert script.count(token_command) == 2
+            assert script.count(token_command) == 1, "the token is minted once, at push time"
             script = script.replace(token_command, "token=local-test-token")
         assert "github.com/stackhawk/agent-skills-marketplace" not in script, (job, step["name"])
         # Check the workflow text, not the substituted script: on Linux tmp_path is under /tmp/.
@@ -365,10 +365,16 @@ def test_marketplace_steps_guard_against_older_tags():
     assert 'if [ "$order" = older ]; then' in push
     assert "MARKETPLACE_TOKEN" not in push
     assert 'trap restore_public_remote EXIT' in push
+    # No marketplace code runs in the step that holds the token, and a lost race is re-run, not rebased.
+    assert "unittest" not in push and "check-marketplace-layout" not in push and "rebase" not in push
+    assert "re-run this job" in push
     # The role comes after the marketplace's own tests and installers, the token after the role.
     names = list(steps)
     assert names.index("Sync marketplace from release tag") < names.index("CI identity (ci-deploy-preprod)") < names.index("Push marketplace sync to main")
-    assert push.index('remote set-url origin https://github.com/stackhawk/agent-skills-marketplace.git') < push.index('unittest discover -s /tmp/marketplace/tests')
+    # The remote goes back to the public URL before the step ends, on a lost race too.
+    retry = push[push.index("if ! git -C /tmp/marketplace push"):]
+    assert retry.index("remote set-url origin https://github.com/stackhawk/agent-skills-marketplace.git") < retry.index("fetch origin main")
+    assert "needs.publish-release.outputs.newly == 'true'" in all_jobs["capture-baseline"]["if"]
 
 
 def test_publish_checks_the_tag_with_the_same_steps_as_every_merge():
@@ -480,6 +486,7 @@ def test_a_tag_older_than_the_published_pin_publishes_nothing(tagged_workspace, 
     checked = run_steps(steps[:3], tagged_workspace, job_env(tmp_path, tagged_workspace, "run-1", released))
     assert all(proc.returncode == 0 for _, proc in checked), report(checked)
     assert (tmp_path / "run-1" / "github-output").read_text().strip() == "value=older"
+    assert "::warning::Marketplace already has a newer release than " in checked[-1][1].stdout
 
     steps = job_steps(PUBLISH, "update-marketplace", f"file://{marketplace}", str(tmp_path / "run-2" / "marketplace"),
                       order="older")
@@ -517,6 +524,33 @@ def test_marketplace_push_race_does_not_roll_back_a_newer_tag(tagged_workspace, 
     assert json.loads(git(marketplace, "show", "main:sources.json"))["tag"] == "v9.9.0"
 
 
+def test_a_push_that_loses_a_race_to_an_unrelated_commit_is_rerun_not_rebased(tagged_workspace, tmp_path):
+    marketplace = scratch_marketplace(tmp_path, FORMAT_2_SYNC)
+    released = git(tagged_workspace, "rev-parse", TAG).decode().strip()
+    steps = job_steps(PUBLISH, "update-marketplace", f"file://{marketplace}", str(tmp_path / "run-1" / "marketplace"))
+    push_index = next(i for i, (name, _) in enumerate(steps) if name == "Push marketplace sync to main")
+    env = job_env(tmp_path, tagged_workspace, sha=released)
+    prepared = run_steps(steps[:push_index], tagged_workspace, env)
+    assert all(proc.returncode == 0 for _, proc in prepared), report(prepared)
+
+    concurrent = tmp_path / "concurrent"
+    subprocess.run(["git", "clone", "-q", str(marketplace), str(concurrent)], env=git_env(), check=True)
+    (concurrent / "unrelated").write_text("another change\n")
+    git(concurrent, "add", "unrelated")
+    git(concurrent, "commit", "-q", "-m", "unrelated marketplace commit")
+    git(concurrent, "push", "-q", "origin", "main")
+    moved = git(marketplace, "rev-parse", "main")
+
+    pushed = run_steps(steps[push_index:], tagged_workspace, env)
+    assert pushed[-1][1].returncode != 0, report(pushed)
+    assert "re-run this job" in pushed[-1][1].stdout
+    assert "published" not in (tmp_path / "run-1" / "github-output").read_text()
+    assert git(marketplace, "rev-parse", "main") == moved
+    remote = subprocess.run(["git", "-C", str(tmp_path / "run-1" / "marketplace"), "remote", "get-url", "origin"],
+                            env=git_env(), capture_output=True, text=True, check=True).stdout.strip()
+    assert "x-access-token" not in remote and "local-test-token" not in remote
+
+
 # ── The GitHub Release steps, against a stand-in gh ──────────────────────────────────────────────
 
 FAKE_GH = """\
@@ -542,46 +576,52 @@ def run_release_step(tmp_path, job, step, **env):
     (fake / "gh").chmod(0o755)
     calls = tmp_path / "gh-calls"
     calls.write_text("")
+    output = tmp_path / "step-output"
+    output.write_text("")
     script = steps_of(PUBLISH, job)[step]["run"]
     proc = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
                           env={**os.environ, "PATH": f"{fake}:{os.environ['PATH']}", "GH_CALLS": str(calls),
-                               "GITHUB_REPOSITORY": REPOSITORY, "RELEASE_TAG": TAG, "RELEASE_SHA": "a" * 40, **env},
+                               "GITHUB_REPOSITORY": REPOSITORY, "RELEASE_TAG": TAG, "RELEASE_SHA": "a" * 40,
+                               "GITHUB_OUTPUT": str(output), **env},
                           capture_output=True, text=True, timeout=60, check=False)
-    return proc, calls.read_text().splitlines()
+    return proc, calls.read_text().splitlines(), output.read_text().splitlines()
 
 
 def test_the_release_is_drafted_for_the_tag_with_notes_since_the_last_release(tmp_path):
-    proc, calls = run_release_step(tmp_path, "draft-release", "Draft the GitHub Release", FAKE_LATEST="v9.8.5")
+    proc, calls, _ = run_release_step(tmp_path, "draft-release", "Draft the GitHub Release", FAKE_LATEST="v9.8.5")
     assert proc.returncode == 0, proc.stderr
     assert calls[-1] == (f"release create {TAG} --draft --verify-tag --target {'a' * 40} --title {TAG} "
                          "--generate-notes --notes-start-tag v9.8.5")
 
 
 def test_the_first_release_is_drafted_without_a_start_tag(tmp_path):
-    proc, calls = run_release_step(tmp_path, "draft-release", "Draft the GitHub Release")
+    proc, calls, _ = run_release_step(tmp_path, "draft-release", "Draft the GitHub Release")
     assert proc.returncode == 0, proc.stderr
     assert calls[-1] == (f"release create {TAG} --draft --verify-tag --target {'a' * 40} --title {TAG} "
                          "--generate-notes")
 
 
 def test_a_release_that_exists_is_not_drafted_again(tmp_path):
-    proc, calls = run_release_step(tmp_path, "draft-release", "Draft the GitHub Release", FAKE_LIST="12345")
+    proc, calls, _ = run_release_step(tmp_path, "draft-release", "Draft the GitHub Release", FAKE_LIST="12345")
     assert proc.returncode == 0, proc.stderr
     assert not [c for c in calls if c.startswith("release create")]
 
 
 def test_a_draft_is_published_and_a_published_release_is_left_alone(tmp_path):
-    proc, calls = run_release_step(tmp_path, "publish-release", "Publish the GitHub Release", FAKE_LIST="12345 true")
+    proc, calls, output = run_release_step(tmp_path, "publish-release", "Publish the GitHub Release", FAKE_LIST="12345 true")
     assert proc.returncode == 0, proc.stderr
     assert calls[-1] == f"api --method PATCH repos/{REPOSITORY}/releases/12345 -F draft=false"
-    proc, calls = run_release_step(tmp_path, "publish-release", "Publish the GitHub Release", FAKE_LIST="12345 false")
+    assert output == ["newly=true"]
+    proc, calls, output = run_release_step(tmp_path, "publish-release", "Publish the GitHub Release", FAKE_LIST="12345 false")
     assert proc.returncode == 0, proc.stderr
     assert "already published" in proc.stdout
     assert not [c for c in calls if "PATCH" in c]
+    assert output == [], "the baseline would be captured again for a release that was already published"
 
 
 def test_a_missing_release_stops_the_publish(tmp_path):
-    proc, calls = run_release_step(tmp_path, "publish-release", "Publish the GitHub Release")
+    proc, calls, output = run_release_step(tmp_path, "publish-release", "Publish the GitHub Release")
     assert proc.returncode != 0
     assert f"no GitHub Release for {TAG}" in proc.stdout
     assert not [c for c in calls if "PATCH" in c]
+    assert output == []

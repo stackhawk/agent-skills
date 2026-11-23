@@ -60,7 +60,8 @@ def resolve():
     version = validate_tag(tag)
     sha = remote_commit(tag)
     verify(tag, sha)
-    git("merge-base", "--is-ancestor", sha, "origin/main")
+    if subprocess.run(["git", "merge-base", "--is-ancestor", sha, "origin/main"]).returncode != 0:
+        raise ValueError(f"{tag} names {sha}, which is not on main")
     for path in RELEASE_SCRIPTS:
         try:
             git("cat-file", "-e", f"{sha}:{path}")

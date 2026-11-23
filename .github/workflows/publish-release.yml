@@ -29,8 +29,10 @@ permissions:
 #
 # Every job runs only on main (`if: github.ref == 'refs/heads/main'`), so a dispatch from another
 # branch does nothing. Marketplace sync and baseline run as the release App, whose key only
-# ci-deploy-preprod may read, so those jobs assume it with the job's OIDC token (main only). The
-# marketplace token is minted at push time, after the marketplace's own tests and installers have run.
+# ci-deploy-preprod may read, so those jobs assume it with the job's OIDC token (main only). The role
+# is assumed, and the marketplace token minted, only after the marketplace's own tests and installers
+# have run; none of that code runs again once they exist. A push that loses a race to another
+# marketplace commit is re-run, not rebased.
 #
 # Every job runs on the agent-skills runner: this repo is public, and the biodome-ci-* runners live in a
 # runner group that does not serve public repositories. That image has no `gh`, so the jobs that call it
@@ -90,6 +92,9 @@ jobs:
         run: |
           value="$(python3 scripts/ci/marketplace_release_order.py "$RUNNER_TEMP/marketplace/sources.json" "$RELEASE_TAG" "$RELEASE_SHA")"
           echo "value=$value" >> "$GITHUB_OUTPUT"
+          if [ "$value" = older ]; then
+            echo "::warning::Marketplace already has a newer release than ${RELEASE_TAG}; this run publishes nothing"
+          fi
       # The next four steps are the validate job of release.yml; tests/scripts/test_release_workflow.py
       # keeps the two in step.
       - name: Stamp the release version
@@ -225,7 +230,7 @@ jobs:
             --source-repo "$GITHUB_WORKSPACE" --tag "$RELEASE_TAG" --export "$RUNNER_TEMP/marketplace-export"
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s /tmp/marketplace/tests
           python3 scripts/check-marketplace-layout.py --run-installers --version "$RELEASE_VERSION" /tmp/marketplace
-      # Assumed after the marketplace's own code has run, so none of it sees the role.
+      # Assumed after the marketplace's own code has run, which does not run again in this job.
       - name: CI identity (ci-deploy-preprod)
         if: steps.order.outputs.value != 'older'
         run: |
@@ -233,7 +238,7 @@ jobs:
           echo "AWS_PROFILE=deploy" >> "$GITHUB_ENV"
       # The App's token replaces the retired Terraform GitHub token. It writes the marketplace repo
       # only, and exists only while a push runs: never in GITHUB_ENV, and the remote goes back to the
-      # public URL before any marketplace code runs again.
+      # public URL on every way out of the step.
       - name: Push marketplace sync to main
         id: push
         if: steps.order.outputs.value != 'older'
@@ -257,8 +262,9 @@ jobs:
           echo "::add-mask::$token"
           git -C /tmp/marketplace remote set-url origin "https://x-access-token:${token}@github.com/stackhawk/agent-skills-marketplace.git"
           if ! git -C /tmp/marketplace push origin HEAD:main; then
-            # A conflict or second push failure stops safely; rerunning checks the pin again.
-            # Restore the public remote before running any marketplace tests or installers.
+            # Marketplace main moved during the push. No marketplace code runs from here on: an older
+            # tag stops with nothing published, and a newer or equal one is re-run, which checks
+            # everything again before the role is assumed.
             git -C /tmp/marketplace remote set-url origin https://github.com/stackhawk/agent-skills-marketplace.git
             unset token
             git -C /tmp/marketplace fetch origin main
@@ -269,13 +275,8 @@ jobs:
               echo 'published=false' >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            git -C /tmp/marketplace rebase origin/main
-            PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s /tmp/marketplace/tests
-            python3 scripts/check-marketplace-layout.py --run-installers --version "$RELEASE_VERSION" /tmp/marketplace
-            token="$(biodome ci github-app-token --repository agent-skills-marketplace --permission contents=write)"
-            echo "::add-mask::$token"
-            git -C /tmp/marketplace remote set-url origin "https://x-access-token:${token}@github.com/stackhawk/agent-skills-marketplace.git"
-            git -C /tmp/marketplace push origin HEAD:main
+            echo "::error::Marketplace main moved while ${RELEASE_TAG} was being pushed; re-run this job"
+            exit 1
           fi
           echo 'published=true' >> "$GITHUB_OUTPUT"
 
@@ -286,6 +287,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+    outputs:
+      newly: ${{ steps.publish.outputs.newly }}
     env:
       RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
       RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
@@ -303,6 +306,7 @@ jobs:
       - name: Install the GitHub CLI
         run: bash scripts/ci/install-gh.sh
       - name: Publish the GitHub Release
+        id: publish
         run: |
           release="$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\") | \"\\(.id) \\(.draft)\"")"
           if [ -z "$release" ]; then
@@ -314,12 +318,15 @@ jobs:
             exit 0
           fi
           gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release% *}" -F draft=false
+          echo 'newly=true' >> "$GITHUB_OUTPUT"
 
-  # Best effort: the release is published once the marketplace has it, so a baseline that cannot be
-  # dispatched warns instead of failing the run. Dispatch Capture Eval Baseline by hand with the tag.
+  # Only for a release this run published: running the tag that is already published again must not
+  # capture its baseline a second time. Best effort: the release is published once the marketplace has
+  # it, so a baseline that cannot be dispatched warns instead of failing the run. Dispatch Capture Eval
+  # Baseline by hand with the tag.
   capture-baseline:
     name: Trigger baseline capture
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && needs.publish-release.outputs.newly == 'true'
     needs: [resolve, publish-release]
     runs-on: agent-skills-amd-4cpu
     timeout-minutes: 10

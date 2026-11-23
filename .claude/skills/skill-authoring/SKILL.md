@@ -219,8 +219,9 @@ After any edit to `SKILL.md` or `references/*.md`:
    python3 scripts/generate-cursor-adapter.py --check
    ```
 
-4. **Choose the release size** — do not bump anything. A merge releases the next patch
-   number from the latest release tag. For new capabilities put a `Release: minor` line in
+4. **Choose the release size** — do not bump anything. A merge takes the next patch
+   number from the latest release tag and tags the commit; publishing a tag is a separate,
+   manual step. For new capabilities put a `Release: minor` line in
    the PR description (`Release: major` for breaking changes).
 
 ---

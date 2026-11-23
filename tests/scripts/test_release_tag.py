@@ -148,9 +148,10 @@ def test_tag_not_reachable_from_main_is_rejected(tagged_repo, tmp_path):
     git(tagged_repo, "commit", "-q", "-m", "branch source")
     git(tagged_repo, "tag", "v9.8.9")
     git(tagged_repo, "push", "-q", "origin", "v9.8.9")
-    proc, _ = run(tagged_repo, tmp_path, RELEASE_TAG="v9.8.9")
+    proc, output = run(tagged_repo, tmp_path, RELEASE_TAG="v9.8.9")
     assert proc.returncode != 0
-    assert "no longer points" not in proc.stderr
+    assert "is not on main" in proc.stderr
+    assert not output.exists()
 
 
 def test_a_tag_that_predates_the_release_scripts_is_rejected(tagged_repo, tmp_path):
