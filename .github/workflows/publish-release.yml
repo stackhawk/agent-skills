@@ -1,0 +1,360 @@
+name: Publish release
+concurrency:
+  # Every publish updates the same marketplace main. Serialize publishes and their retries.
+  group: agent-skills-publish
+  cancel-in-progress: false
+  queue: max
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The release tag to publish, such as v2.7.9. It must exist and be on main.'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+# A merge to main versions and tags the commit (release.yml) and publishes nothing. This workflow is
+# the step a person starts by hand, from main, to put one of those tags in front of users: it syncs the
+# marketplace, publishes the GitHub Release and starts the eval baseline. The tag input chooses both
+# the version and the exact source commit. The source tree carries 0.0.0-dev; validation and export
+# stamp the release version into scratch copies.
+#
+# resolve checks that the tag is a stable vX.Y.Z tag on origin and on main. Every job after it checks
+# out the tag's commit and checks again that the tag still names it. Marketplace main is the consumer
+# pin: an older tag never replaces a newer one, and running the tag that is already published changes
+# nothing. No job here creates, moves, replaces or deletes a tag or a claim.
+#
+# Every job runs only on main (`if: github.ref == 'refs/heads/main'`), so a dispatch from another
+# branch does nothing. Marketplace sync and baseline run as the release App, whose key only
+# ci-deploy-preprod may read, so those jobs assume it with the job's OIDC token (main only). The
+# marketplace token is minted at push time, after the marketplace's own tests and installers have run.
+#
+# Every job runs on the agent-skills runner: this repo is public, and the biodome-ci-* runners live in a
+# runner group that does not serve public repositories. That image has no `gh`, so the jobs that call it
+# install a pinned, checksum-verified copy (scripts/ci/install-gh.sh).
+jobs:
+  resolve:
+    if: github.ref == 'refs/heads/main'
+    runs-on: agent-skills-amd-4cpu
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      sha: ${{ steps.release.outputs.sha }}
+    steps:
+      - name: Check out main with every tag
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve and verify the release tag
+        id: release
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: python3 scripts/ci/release_tag.py resolve
+
+  # Stamps the tag's version into this runner's copy and runs the checks that every merge's release
+  # run makes: nothing here is committed or published.
+  validate:
+    if: github.ref == 'refs/heads/main'
+    needs: [resolve]
+    runs-on: agent-skills-amd-4cpu
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      order: ${{ steps.order.outputs.value }}
+    env:
+      RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
+      RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
+    steps:
+      - name: Check out the release commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify the tag still names the release commit
+        run: python3 scripts/ci/release_tag.py verify
+      - name: Clone the published marketplace
+        run: git clone --quiet --depth 1 --branch main https://github.com/stackhawk/agent-skills-marketplace.git "$RUNNER_TEMP/marketplace"
+      - name: Check marketplace release order
+        id: order
+        # Record the published pin before the dry-run sync changes this scratch clone.
+        run: |
+          value="$(python3 scripts/ci/marketplace_release_order.py "$RUNNER_TEMP/marketplace/sources.json" "$RELEASE_TAG" "$RELEASE_SHA")"
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+      # The next four steps are the validate job of release.yml; tests/scripts/test_release_workflow.py
+      # keeps the two in step.
+      - name: Stamp the release version
+        run: bash scripts/bump-version.sh "$RELEASE_VERSION"
+      - name: Regenerate the wingman bundled skills
+        # Also the skill copies of the Cursor-only hawkscan plugin (cursor-plugins/hawkscan/skills/).
+        run: bash scripts/generate-wingman-skills.sh
+      - name: Validate the stamped tree
+        # The layout check covers direct installs from this repository, which is a Claude Code
+        # and a Cursor marketplace too: no install may load the router rule or the stop hook twice,
+        # also a Claude Code install next to one native Cursor install.
+        run: |
+          bash scripts/check-version.sh "$RELEASE_VERSION"
+          bash scripts/test-wingman-skills.sh
+          python3 scripts/check-marketplace-layout.py --no-installers .
+      - name: Verify the Cursor adapter is up to date
+        # The stamp adds a version to each .cursor-plugin/plugin.json; the generator keeps it.
+        run: python3 scripts/generate-cursor-adapter.py --check
+      # The export reads the commit, not this stamped working tree, and stamps its own copy.
+      - name: Export the marketplace payload
+        run: |
+          python3 scripts/export-marketplace.py --ref "$RELEASE_SHA" --version "$RELEASE_VERSION" \
+            --dest "$RUNNER_TEMP/marketplace-export"
+      # The marketplace is public, so this clone needs no token, and nothing here is pushed.
+      - name: Dry-run the marketplace sync
+        run: |
+          python3 "$RUNNER_TEMP/marketplace/scripts/sync-agent-skills.py" \
+            --source-repo "$GITHUB_WORKSPACE" --tag "$RELEASE_TAG" --export "$RUNNER_TEMP/marketplace-export"
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s "$RUNNER_TEMP/marketplace/tests"
+          python3 scripts/check-marketplace-layout.py --run-installers --version "$RELEASE_VERSION" \
+            "$RUNNER_TEMP/marketplace"
+          bash scripts/ci/stage-marketplace-sync.sh "$RUNNER_TEMP/marketplace"
+
+  # The GitHub Release is drafted before the marketplace push, where nobody can see it, and published
+  # after it: a failed run must not leave a public release for a tag that users cannot install.
+  draft-release:
+    if: github.ref == 'refs/heads/main' && needs.validate.outputs.order != 'older'
+    needs: [resolve, validate]
+    runs-on: agent-skills-amd-4cpu
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+      RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out the release scripts
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          fetch-depth: 0
+          sparse-checkout: scripts/ci
+          persist-credentials: false
+      - name: Verify the tag still names the release commit
+        run: python3 scripts/ci/release_tag.py verify
+      - name: Install the GitHub CLI
+        run: bash scripts/ci/install-gh.sh
+      - name: Draft the GitHub Release
+        run: |
+          # The API list includes drafts, which `gh release view <tag>` does not find.
+          existing="$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\") | .id")"
+          if [ -n "$existing" ]; then
+            echo "GitHub Release already exists for ${RELEASE_TAG}"
+            exit 0
+          fi
+          # Every merge makes a tag, but only a published tag gets a release. The notes cover
+          # everything since the last release, not only the last merge.
+          args=(--draft --verify-tag --target "$RELEASE_SHA" --title "$RELEASE_TAG" --generate-notes)
+          previous="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>/dev/null || true)"
+          if [ -n "$previous" ]; then
+            args+=(--notes-start-tag "$previous")
+          fi
+          gh release create "$RELEASE_TAG" "${args[@]}"
+
+  update-marketplace:
+    name: Sync marketplace
+    if: github.ref == 'refs/heads/main'
+    needs: [resolve, draft-release]
+    runs-on: agent-skills-amd-4cpu
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    outputs:
+      published: ${{ steps.push.outputs.published || steps.older.outputs.published }}
+    env:
+      CI_ROLES: ${{ vars.CI_ROLES }}
+      RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
+      RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
+    steps:
+      ### Biodome setup
+      - name: Biodome job setup
+        uses: ./../../../../../home/runner/.github/actions/biodome-setup-v2
+        with:
+          fetch-depth: 0
+          filter: tree:0
+      - name: Check out the release commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify the tag still names the release commit
+        run: python3 scripts/ci/release_tag.py verify
+      - name: Clone agent-skills-marketplace
+        run: git clone --quiet --branch main https://github.com/stackhawk/agent-skills-marketplace.git /tmp/marketplace
+      - name: Check marketplace release order
+        id: order
+        # A newer tag or a manual sync may have reached marketplace main after validate.
+        run: |
+          value="$(python3 scripts/ci/marketplace_release_order.py /tmp/marketplace/sources.json "$RELEASE_TAG" "$RELEASE_SHA")"
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+      - name: Skip an older tag
+        id: older
+        if: steps.order.outputs.value == 'older'
+        run: |
+          echo "::warning::Marketplace already has a newer release than ${RELEASE_TAG}; nothing was published"
+          echo 'published=false' >> "$GITHUB_OUTPUT"
+      # The tagged tree carries the placeholder: the export stamps the tag's version into the
+      # payload, and the sync checks that the payload is of the tag's commit and version.
+      - name: Export the marketplace payload from the release commit
+        if: steps.order.outputs.value != 'older'
+        run: |
+          python3 scripts/export-marketplace.py --ref "$RELEASE_SHA" --version "$RELEASE_VERSION" \
+            --dest "$RUNNER_TEMP/marketplace-export"
+      - name: Sync marketplace from release tag
+        if: steps.order.outputs.value != 'older'
+        run: |
+          python3 /tmp/marketplace/scripts/sync-agent-skills.py \
+            --source-repo "$GITHUB_WORKSPACE" --tag "$RELEASE_TAG" --export "$RUNNER_TEMP/marketplace-export"
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s /tmp/marketplace/tests
+          python3 scripts/check-marketplace-layout.py --run-installers --version "$RELEASE_VERSION" /tmp/marketplace
+      # Assumed after the marketplace's own code has run, so none of it sees the role.
+      - name: CI identity (ci-deploy-preprod)
+        if: steps.order.outputs.value != 'older'
+        run: |
+          biodome-rs aws assume ci-deploy-preprod --profile deploy --source oidc
+          echo "AWS_PROFILE=deploy" >> "$GITHUB_ENV"
+      # The App's token replaces the retired Terraform GitHub token. It writes the marketplace repo
+      # only, and exists only while a push runs: never in GITHUB_ENV, and the remote goes back to the
+      # public URL before any marketplace code runs again.
+      - name: Push marketplace sync to main
+        id: push
+        if: steps.order.outputs.value != 'older'
+        run: |
+          restore_public_remote() {
+            git -C /tmp/marketplace remote set-url origin https://github.com/stackhawk/agent-skills-marketplace.git || true
+            unset token
+          }
+          trap restore_public_remote EXIT
+          git -C /tmp/marketplace config user.name hawkdeploy
+          git -C /tmp/marketplace config user.email hawkdeploy@stackhawk.com
+          bash "$GITHUB_WORKSPACE/scripts/ci/stage-marketplace-sync.sh" /tmp/marketplace
+          python3 scripts/ci/release_tag.py verify
+          if git -C /tmp/marketplace diff --cached --quiet; then
+            echo "Marketplace already contains ${RELEASE_TAG}"
+            echo 'published=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git -C /tmp/marketplace commit -m "chore: sync agent-skills ${RELEASE_TAG}"
+          token="$(biodome ci github-app-token --repository agent-skills-marketplace --permission contents=write)"
+          echo "::add-mask::$token"
+          git -C /tmp/marketplace remote set-url origin "https://x-access-token:${token}@github.com/stackhawk/agent-skills-marketplace.git"
+          if ! git -C /tmp/marketplace push origin HEAD:main; then
+            # A conflict or second push failure stops safely; rerunning checks the pin again.
+            # Restore the public remote before running any marketplace tests or installers.
+            git -C /tmp/marketplace remote set-url origin https://github.com/stackhawk/agent-skills-marketplace.git
+            unset token
+            git -C /tmp/marketplace fetch origin main
+            git -C /tmp/marketplace show origin/main:sources.json > "$RUNNER_TEMP/current-sources.json"
+            order="$(python3 scripts/ci/marketplace_release_order.py "$RUNNER_TEMP/current-sources.json" "$RELEASE_TAG" "$RELEASE_SHA")"
+            if [ "$order" = older ]; then
+              echo "::warning::Marketplace advanced past ${RELEASE_TAG}; nothing was published and nothing was rolled back"
+              echo 'published=false' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            git -C /tmp/marketplace rebase origin/main
+            PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s /tmp/marketplace/tests
+            python3 scripts/check-marketplace-layout.py --run-installers --version "$RELEASE_VERSION" /tmp/marketplace
+            token="$(biodome ci github-app-token --repository agent-skills-marketplace --permission contents=write)"
+            echo "::add-mask::$token"
+            git -C /tmp/marketplace remote set-url origin "https://x-access-token:${token}@github.com/stackhawk/agent-skills-marketplace.git"
+            git -C /tmp/marketplace push origin HEAD:main
+          fi
+          echo 'published=true' >> "$GITHUB_OUTPUT"
+
+  publish-release:
+    if: github.ref == 'refs/heads/main' && needs.update-marketplace.outputs.published == 'true'
+    needs: [resolve, update-marketplace]
+    runs-on: agent-skills-amd-4cpu
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+      RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out the release scripts
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          fetch-depth: 0
+          sparse-checkout: scripts/ci
+          persist-credentials: false
+      - name: Verify the tag still names the release commit
+        run: python3 scripts/ci/release_tag.py verify
+      - name: Install the GitHub CLI
+        run: bash scripts/ci/install-gh.sh
+      - name: Publish the GitHub Release
+        run: |
+          release="$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\") | \"\\(.id) \\(.draft)\"")"
+          if [ -z "$release" ]; then
+            echo "ERROR: no GitHub Release for ${RELEASE_TAG}"
+            exit 1
+          fi
+          if [ "${release#* }" = false ]; then
+            echo "GitHub Release ${RELEASE_TAG} is already published"
+            exit 0
+          fi
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release% *}" -F draft=false
+
+  # Best effort: the release is published once the marketplace has it, so a baseline that cannot be
+  # dispatched warns instead of failing the run. Dispatch Capture Eval Baseline by hand with the tag.
+  capture-baseline:
+    name: Trigger baseline capture
+    if: github.ref == 'refs/heads/main'
+    needs: [resolve, publish-release]
+    runs-on: agent-skills-amd-4cpu
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      CI_ROLES: ${{ vars.CI_ROLES }}
+      RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+      RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
+    steps:
+      ### Biodome setup
+      - name: Biodome job setup
+        uses: ./../../../../../home/runner/.github/actions/biodome-setup-v2
+      - name: Check out the release scripts
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          fetch-depth: 0
+          sparse-checkout: scripts/ci
+          persist-credentials: false
+      - name: Verify the tag still names the release commit
+        run: python3 scripts/ci/release_tag.py verify
+      - name: CI identity (ci-deploy-preprod)
+        run: |
+          biodome-rs aws assume ci-deploy-preprod --profile deploy --source oidc
+          echo "AWS_PROFILE=deploy" >> "$GITHUB_ENV"
+      - name: Install the GitHub CLI
+        continue-on-error: true
+        run: bash scripts/ci/install-gh.sh
+      - name: Dispatch capture-baseline
+        run: |
+          token="$(biodome ci github-app-token --repository "${GITHUB_REPOSITORY#*/}" --permission actions=write)"
+          echo "::add-mask::$token"
+          if ! GH_TOKEN="$token" gh workflow run capture-baseline.yml -f tag="$RELEASE_TAG"; then
+            echo "::warning::could not dispatch capture-baseline.yml for ${RELEASE_TAG}; run it by hand"
+          fi

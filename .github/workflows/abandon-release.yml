@@ -1,8 +1,7 @@
-# Frees a release number whose publish can't be finished: the merged change itself breaks the release
-# (validate, the GitHub Release or the marketplace sync), so a re-run fails again and every later main
-# This is only for claims left by the former main-push release flow. New tag-driven releases do
-# not claim numbers. Run it with the number that old failed run claimed, then plan a new tag for
-# a corrected source commit.
+# Frees a release number whose tag can't be created: the run claimed the number but its tag job keeps
+# failing, so a re-run fails again and every later main run stops at resolve on the claim. Run it with
+# the number the failed run claimed (the failed run's resolve or claim job log names it), then merge
+# the fix: its main run releases the next number.
 # Make sure the failed run is over first.
 #
 # Only a person starts it (workflow_dispatch), only on main, as ci-deploy-preprod with the release
@@ -13,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'The release number a failed former main run claimed, such as 2.7.2'
+        description: 'The release number a failed main run claimed, such as 2.7.2'
         required: true
         type: string
 concurrency:

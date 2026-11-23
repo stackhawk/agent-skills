@@ -1,37 +1,57 @@
 # Releasing Agent Skills
 
-Merges to `main` do not publish. An authorized creator's new `vX.Y.Z` tag selects the exact source commit and starts the release workflow. Releases follow [Semantic Versioning](https://semver.org/); there is no `VERSION` file or version-bump commit, so do not bump anything in a PR. The source tree carries the development placeholder, while the published marketplace carries the tag's version.
+Every merge to `main` gets the next release number and a `vX.Y.Z` tag, and publishes nothing. A person chooses when a tag reaches users by running **Publish release** from `main` with that tag: it syncs the marketplace, publishes the GitHub Release and starts the eval baseline. Releases follow [Semantic Versioning](https://semver.org/) and are numbered by git tags alone. There is no `VERSION` file and no version-bump commit: do not bump anything in a PR.
 
-## Choosing the tag
+## Choosing the number
 
-Choose the next stable `vX.Y.Z` tag after reviewing the intended source commit. The tag's version and peeled commit are the release inputs; a `Release: minor` or `Release: major` line in a pull request does not select them. Do not move or reuse an existing tag. The marketplace sync currently accepts stable `vX.Y.Z` tags only.
+`release.yml` resolves the next version (`biodome-rs ci version resolve`) as the highest release tag plus one patch. To release more than a patch, put a line in the pull request description (it becomes the squash commit message):
 
-## What a new release tag does
+- `Release: minor` for new skills or significant capability
+- `Release: major` for breaking changes
 
-`.github/workflows/release.yml` runs only for a newly created release-tag push. Tag runs are serialized and never cancelled:
+## What a merge does
 
-1. **resolve** checks the tag name, creation event, remote tag and checked-out commit. It rejects a tag whose commit is not on `main`, and never chooses another version from the latest tag or from newer `main`.
-2. **validate** stamps the tag's version into a scratch checkout, regenerates the wingman bundled skills, and checks the version, source layout and Cursor adapter. It exports the exact tag commit and dry-runs the marketplace sync, tests and layout check in a scratch clone. Nothing is published in this step.
-3. **draft** a GitHub Release for the existing tag after validation. The release command verifies that the tag already exists and cannot mint one.
-4. **sync** the tag's export to marketplace `main`, then **publish** the GitHub Release and dispatch **Capture Eval Baseline** for that tag. The marketplace pin records the tag and commit; a retry of the current tag is idempotent, while an older tag cannot replace a newer pin. The baseline dispatch only warns when it fails; run `Capture Eval Baseline` by hand with the tag.
+`.github/workflows/release.yml` runs on every push to `main`, one run at a time, never cancelled. It numbers and tags the commit; it makes no GitHub Release, pushes nothing to the marketplace and starts no baseline:
 
-Every release job runs on the `agent-skills-amd-4cpu` runner, because the `biodome-ci-*` runners do not serve public repositories. Its image has no `gh`, so the jobs that need it install the pinned, checksum-verified build from `scripts/ci/install-gh.sh`.
+1. **resolve** the version from the remote's tags.
+2. **validate** it on a scratch copy: `scripts/bump-version.sh <version>` stamps every version-bearing file in `.version-bump.json`, the wingman bundled skills are regenerated, and `scripts/check-version.sh <version>`, `scripts/test-wingman-skills.sh` and the source layout check (`scripts/check-marketplace-layout.py --no-installers .`) check the result, as does the Cursor adapter (`scripts/generate-cursor-adapter.py --check`). Then it exports the marketplace payload of the commit (`scripts/export-marketplace.py`) and runs the marketplace sync on it in a scratch clone of the marketplace: the sync, the marketplace tests and `scripts/check-marketplace-layout.py` must pass. Nothing is committed or pushed. A merge whose release could not be published never claims a number.
+3. **claim** the number (`claim/vX.Y.Z`).
+4. **tag** the merged commit `vX.Y.Z` and delete the claim. The tagged tree carries the placeholder version.
 
-Marketplace and baseline jobs assume the dedicated `ci-agent-skills-publish` OIDC role to obtain release App tokens for those two operations. Its separate biodome role/trust change must be reviewed and applied before the first tag-driven release; merging this source workflow alone does not create the role or publish anything.
+`claim` and `tag` run as the release App through `ci-deploy-preprod`, the only role that may read its key; the App's token is what passes the tag ruleset. Every release job runs on the `agent-skills-amd-4cpu` runner, because the `biodome-ci-*` runners do not serve public repositories.
+
+## Publishing a release
+
+`.github/workflows/publish-release.yml` (**Publish release**) is started by hand, from `main`, with one input: the tag to publish. In the GitHub UI, choose Actions, Publish release, Run workflow on `main`; or `gh workflow run publish-release.yml --ref main -f tag=vX.Y.Z`. Choose the newest tag whose content users should get: a tag contains everything before it. A tag made before this workflow existed (`v2.7.5` and older) cannot be published, because its tree has no release scripts; resolve stops with an error.
+
+Runs are serialized (one `agent-skills-publish` group) and never cancelled. Every job runs only on `main` (`if: github.ref == 'refs/heads/main'`), uses no environment, and no job creates, moves or deletes a tag. The marketplace and baseline jobs assume `ci-deploy-preprod`, as `claim` and `tag` do; publishing needs no other role.
+
+1. **resolve** checks that the tag input is a stable `vX.Y.Z` tag, exists on origin and names a commit on `main`, and outputs that commit. Every later job checks out that commit and checks again that the tag still names it, so a tag that moves mid-run changes nothing. The version is the tag's own name: a `Release: minor` or `Release: major` line only chooses the number a merge gets, and has no effect here.
+2. **validate** stamps the tag's version into a scratch checkout and runs the same checks as step 2 of a merge run, on the tag's exact commit. It also reads the published marketplace pin (`sources.json`) and decides whether the tag is newer than, the same as or older than it. Nothing is published in this step.
+3. **draft** a GitHub Release for the existing tag, with generated notes that start at the last published release, so they cover every merge since then and not only the last one. The release is a draft: nobody sees it. Skipped for a tag older than the pin.
+4. **sync** the tag's export to marketplace `main`. The marketplace token is minted at push time, after the marketplace's own tests and installers have run; if `main` advances before the push, the job fetches, checks the pin again and rebases once, only while its tag is still current or newer.
+5. **publish** the GitHub Release after the sync succeeded, then dispatch **Capture Eval Baseline** for the tag. The baseline dispatch only warns when it fails; run `Capture Eval Baseline` by hand with the tag.
+
+The marketplace pin records the tag and its commit. Running the tag that is already published is safe: the sync makes no commit and the GitHub Release is left as it is. An older tag never replaces a newer pin, so it publishes nothing (the run ends with a warning); to undo a bad published release, publish a newer tag.
 
 The tree keeps one placeholder (`0.0.0-dev`, set in `.version-bump.json`) in every version-bearing file, and the manifests whose format allows it carry no `version` (the Claude plugin manifests, `.claude-plugin/marketplace.json`, every Codex and Cursor `plugin.json`, `.cursor-plugin/marketplace.json`, the wingman Copilot manifest and the root `plugin.json`), so clients that install from the repository track the commit. `gemini-extension.json` requires a version and keeps the placeholder. A stamp adds the version to the `stamp_only` manifests and `--placeholder` removes it again. `scripts/check-version.sh` (run by `generate-and-validate.yml` on every PR) keeps it that way.
 
 ## When a release fails
 
-If the cause is transient, re-run the failed jobs for the same tag. Validation and marketplace sync use its original commit, not the latest `main`. A failure before the marketplace push leaves the published marketplace pinned to its previous release; a drafted GitHub Release may remain unpublished. If the tagged source itself is broken, stop and decide how to release a corrected commit under a new version. `abandon-release.yml` is only for claims left by the former automatic-main workflow; the tag workflow creates no claims.
+**A merge run (`release.yml`).** A failure in resolve or validate leaves nothing behind: fix the cause and merge again. A run that fails after the claim leaves `claim/vX.Y.Z` on the remote, and every later run stops at resolve on it.
+
+- If the cause was transient (runner, network), re-run the failed jobs of the run. `claim` and `tag` are idempotent, and a tagged release resumes from where it stopped.
+- If the tag job cannot succeed, run **Abandon release** (`abandon-release.yml`, from `main`) with the claimed number once the failed run is over, then merge the fix: its run releases the next number. An abandoned number is never reused.
+
+**A publish run (`publish-release.yml`).** Re-run the failed jobs for the same tag; validation and the sync use the tag's own commit, not the latest `main`. A failure before the marketplace push leaves the marketplace on its previous release, and a drafted GitHub Release stays a draft that nobody sees. If the tagged source itself is broken, do not publish it: merge a fix and publish the new tag.
 
 ## Recovering a release that was tagged wrongly
 
-Do not repoint, replace or delete a wrong tag as part of a release retry. Stop and have the release owner decide the recovery path.
+Tags are created only by the release App, so a wrong tag is deleted by an org admin. Delete the GitHub Release and the tag, then merge a fix; the next run takes the next number. A tag that was published stays the marketplace pin until a newer tag is published.
 
 ## Updating the Marketplace Catalog
 
-The `update-marketplace` job in `.github/workflows/release.yml` runs for the triggering tag after validation and the release draft. `scripts/export-marketplace.py` exports its exact commit and stamps the tag's version into its plugin manifests, SKILL.md files and generated copies, because the tagged tree carries a placeholder. The job clones [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace), runs that repository's `scripts/sync-agent-skills.py` with `--export` against the release tag, runs the marketplace tests and `scripts/check-marketplace-layout.py` on the result, and commits only the sync outputs to marketplace `main`. A rerun for an already synced tag makes no commit. An older tag cannot overwrite a newer marketplace pin, including after a push race; the job fetches and rebases once only when its tag is still current or newer.
+The `update-marketplace` job in `.github/workflows/publish-release.yml` runs for the tag that Publish release was started with. `scripts/export-marketplace.py` exports the payload of the tag's exact commit and stamps the tag's version into its plugin manifests, SKILL.md files and generated copies, because the tagged tree carries a placeholder. The job clones [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace), runs that repository's `scripts/sync-agent-skills.py` with `--export` against the release tag, runs the marketplace tests and `scripts/check-marketplace-layout.py` on the result, and commits only the sync outputs to marketplace `main`. A rerun for an already synced tag makes no commit. If `main` advances before the push, the job fetches, checks the pin again (an older tag stops with nothing published), rebases once, reruns the marketplace tests, then retries the push without force.
 
 The sync script owns all marketplace release outputs:
 
@@ -42,7 +62,7 @@ The sync script owns all marketplace release outputs:
 
 Review the resulting commit on marketplace `main` after the job succeeds. In its checkout, run `claude plugin validate --strict .`, validate each `plugins/<name>` folder, and run `python3 -m unittest discover -s tests`. The release job runs the marketplace tests before pushing. The separate `Marketplace Install Verify` workflow in this repository tests catalog compatibility and standalone skill discovery from local fixtures.
 
-If the workflow fails, inspect the job logs, fix the cause, and re-run the failed jobs of the release run. Do not hand-edit generated catalogs, plugin snapshots, or standalone skills.
+If the workflow fails, inspect the job logs, fix the cause, and re-run the failed jobs of the publish run. Do not hand-edit generated catalogs, plugin snapshots, or standalone skills.
 
 ## Cursor distribution prerequisites
 
@@ -82,21 +102,21 @@ The installers find each skill by its catalog plugin name in a snapshot (`plugin
 
 ### Rollout order
 
-Merging a source change does not release it. Marketplace importer support for a new export format must land before the source release tag is created. The steps below describe the Cursor export rollout; each still needs its own approval.
+A merge to `main` numbers and tags the commit, and a person publishes a tag, so this change ships in separate steps. Each step needs its own approval, and no step authorizes the next one.
 
 1. **Source pull request.** Open and review this change. An open or approved pull request is not an instruction to merge it.
 2. **Marketplace sync change.** Land the [marketplace change](#marketplace-change) on the marketplace `main`. It changes only the sync script, its tests, its README and its `.gitattributes`. It runs no sync, publishes no plugin content, makes no tag and changes no team catalog. The marketplace keeps the sync without `--export` for older tags, so a release of a commit from before the export still syncs after this step.
-3. **Source merge and release tag.** Merge this change only when all of these are true:
+3. **Source merge and publish.** Merge this change only when all of these are true:
    - the marketplace change is on the remote marketplace `main`, and the dry run below passes against a fresh clone of it;
    - engineering approved this pull request;
    - the release owner gave an explicit instruction to merge it.
 
-   The merge leaves the change unreleased. A separately approved `vX.Y.Z` tag on the intended commit starts `release.yml`; its sync pushes the Cursor catalog, the installers, the Cursor-only `hawkscan`, and Claude `hawkscan` and `wingman` plugins with no Cursor files to marketplace `main`.
+   The merge starts `release.yml`, which numbers and tags the merge commit and publishes nothing. Publishing that tag is a further approval: when the release owner runs Publish release with it, the sync pushes the Cursor catalog, the installers, the Cursor-only `hawkscan`, and Claude `hawkscan` and `wingman` plugins with no Cursor files to the marketplace `main`.
 4. **Downstream documentation.** Update the documentation of other repositories only after that release is on the marketplace. Until then, the README points users at the marketplace, and Cursor users at the development build.
 
-Do not create the source release tag before step 2. The validate job runs the marketplace sync with `--export` and stages its outputs with `scripts/ci/stage-marketplace-sync.sh`, so it needs a sync that accepts that option, reads export format 2 and writes `install/`, `cursor-plugins/` and `.cursor-plugin/marketplace.json`. A sync without `--export` fails at "Dry-run the marketplace sync" with `unrecognized arguments: --export`, and a sync that reads only format 1 fails with `export-manifest.json has an unknown format 2`. Both stop the release before a GitHub Release or marketplace push. Do not remove or skip that validation to release sooner.
+Do not merge before step 2. The validate job of every merge's release run, and of every publish run, runs the marketplace sync with `--export` and stages its outputs with `scripts/ci/stage-marketplace-sync.sh`, so it needs a sync that accepts that option, reads export format 2 and writes `install/`, `cursor-plugins/` and `.cursor-plugin/marketplace.json`. A sync without `--export` fails at "Dry-run the marketplace sync" with `unrecognized arguments: --export`, and a sync that reads only format 1 fails with `export-manifest.json has an unknown format 2`. Both stop the run before claim, so there is no number to abandon, but every merge to `main` stays untagged until step 2 lands. Do not remove or skip that validation to release sooner.
 
-`tests/scripts/test_release_workflow.py` runs the validate and update-marketplace steps against a scratch marketplace and synthetic tag: a sync without `--export` must stop validate, and the format-2 export of the tag's exact commit must reach the sync and be pushed once. It also checks that newer source `main` content does not enter the tagged export. A later change of the export format ships the same way: the marketplace reads the new format first.
+To verify step 2 on the remote, make a disposable clone of this change's head commit. Set `RELEASE_VERSION` to a stand-in version, `RUNNER_TEMP` to an empty scratch directory and `GITHUB_WORKSPACE` to the clone. In the clone, run the `run` commands of the validate job of `release.yml` in order, from "Stamp the release version" through "Dry-run the marketplace sync". The earlier steps stamp the tree and write the export that the dry run reads. The dry run clones the marketplace `main` fresh into `RUNNER_TEMP`, and it deletes its local tag when it ends. Nothing is pushed. `tests/scripts/test_release_workflow.py` runs the `run` steps of validate (in `release.yml` and in `publish-release.yml`) and of update-marketplace (in `publish-release.yml`), as written, against a scratch marketplace with a stand-in sync on every pull request: a sync without `--export` must stop validate, and the format-2 export of the release commit must reach the sync and be pushed once. The same file checks what each workflow may do (a merge publishes nothing, publishing starts only by dispatch from `main` and assumes only `ci-deploy-preprod`, no workflow runs on a tag push), and runs the GitHub Release steps against a stand-in `gh`. A later change of the export format ships the same way: the marketplace reads the new format first.
 
 ### Marketplace change
 

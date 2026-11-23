@@ -102,7 +102,7 @@ The digest contains:
   showing how many prompts move from FAIL→PASS when the skill is active.
 
 Baselines are captured at release tags by `capture-baseline.yml`, which is
-triggered automatically from `release.yml`.
+triggered automatically from `publish-release.yml` once a tag is published.
 
 ## Adding test cases
 
