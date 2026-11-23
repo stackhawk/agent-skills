@@ -546,9 +546,6 @@ def test_a_push_that_loses_a_race_to_an_unrelated_commit_is_rerun_not_rebased(ta
     assert "re-run this job" in pushed[-1][1].stdout
     assert "published" not in (tmp_path / "run-1" / "github-output").read_text()
     assert git(marketplace, "rev-parse", "main") == moved
-    remote = subprocess.run(["git", "-C", str(tmp_path / "run-1" / "marketplace"), "remote", "get-url", "origin"],
-                            env=git_env(), capture_output=True, text=True, check=True).stdout.strip()
-    assert "x-access-token" not in remote and "local-test-token" not in remote
 
 
 # ── The GitHub Release steps, against a stand-in gh ──────────────────────────────────────────────

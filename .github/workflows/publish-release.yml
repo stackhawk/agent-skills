@@ -203,7 +203,10 @@ jobs:
       - name: Verify the tag still names the release commit
         run: python3 scripts/ci/release_tag.py verify
       - name: Clone agent-skills-marketplace
-        run: git clone --quiet --branch main https://github.com/stackhawk/agent-skills-marketplace.git /tmp/marketplace
+        # A re-run on a runner that kept the earlier clone starts from a fresh one.
+        run: |
+          rm -rf /tmp/marketplace
+          git clone --quiet --branch main https://github.com/stackhawk/agent-skills-marketplace.git /tmp/marketplace
       - name: Check marketplace release order
         id: order
         # A newer tag or a manual sync may have reached marketplace main after validate.
