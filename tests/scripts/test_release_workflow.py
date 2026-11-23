@@ -445,16 +445,18 @@ def test_publish_checks_the_tag_with_the_same_steps_as_every_merge():
 
 def commands(step):
     """The commands of a step's script, one string each: continuation lines joined, comments dropped,
-    split at &&, ||, ; and |, with a leading `if`, `!`, `env`, `{`, `xargs` and a NAME=value prefix removed."""
+    split at &&, ||, ; and |, with a leading `if`, `else`, `!`, `env`, `{`, `xargs`, a case label and a
+    NAME=value prefix removed (a command with such a prefix is yielded as both readings of it)."""
     text = re.sub(r"\\\n\s*", " ", step.get("run", ""))
     for line in text.splitlines():
         if line.lstrip().startswith("#"):
             continue
         for command in re.split(r"&&|\|\||[;|]", line):
-            command = re.sub(r"^\s*(?:(?:if|then|do|while|until|env|xargs|exec|time|sudo)\s+|[!{(]\s*)*", "", command)
-            command = re.sub(r"""^(?:\w+=(?:"[^"]*"|'[^']*'|\S+)\s+)+""", "", command)  # GH_TOKEN="$(...)" gh api ...
-            command = re.sub(r'^\w+="?\$\(', "", command)  # existing="$(gh api ...)"
-            yield command
+            command = re.sub(r'''^\s*(?:(?:if|then|else|elif|do|while|until|env|exec|time|sudo)\s+|xargs\s+(?:-\S+\s+(?:\d+\s+)?)*|[!{(]\s*|case\s+(?:"[^"]*"|\S+)\s+in\s+|[\w*-]+\)\s+)*''', "", command)
+            # Both readings of a leading assignment: it captures the command (existing="$(gh api ...)"), or
+            # it sets an env var for it (GH_TOKEN="$(...)" gh api ...).
+            yield re.sub(r'^\w+="?\$\(', "", command)
+            yield re.sub(r"""^(?:\w+=(?:"[^"]*"|'[^']*'|\S+)\s+)+""", "", command)
 
 
 GIT_OPTIONS = r"""(?:\s+(?:-c\s+(?:[^\s"']+=)?(?:"[^"]*"|'[^']*'|\S+)|-C\s+(?:"[^"]*"|\S+)|--(?:git-dir|work-tree)[\s=]\S+|--[\w-]+(?:=\S+)?))*"""
@@ -523,6 +525,13 @@ def reaches_remote(step):
     'gh workflow enable x.yml',
     'gh pr create --fill',
     'curl -X POST https://api.github.com/repos/o/r/releases',
+    'url="$(gh release create v1 --draft)"',
+    'x="$(gh api -X POST repos/o/r/releases)"',
+    'if ! out="$(gh release create v1)"; then exit 1; fi',
+    'case "$s" in draft) gh release edit v1 --draft=false ;; esac',
+    'if [ -z "$x" ]; then echo none; else gh release create v1; fi',
+    'ls | xargs -I{} gh release delete {}',
+    'ls | xargs -n 1 gh release delete',
 ])
 def test_writes_recognises_these_ways_a_step_can_write(run):
     assert writes({"run": run})
