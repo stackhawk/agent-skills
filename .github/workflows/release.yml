@@ -16,28 +16,30 @@ permissions:
 # resolve works out the number once per run (the latest release tag + 1, more for a `Release: minor`
 # or `Release: major` line in a merged pull request). validate stamps it into a scratch copy of the
 # tree and checks every manifest, skill and generated copy, so a release that cannot be stamped
-# never claims a number. claim marks the number, tag releases it on the merged commit, and the
-# GitHub Release, the marketplace sync and the eval baseline follow the tag. The tree itself keeps a
-# placeholder version (.version-bump.json): scripts/export-marketplace.py stamps the tag's version
-# into the payload the marketplace sync publishes.
+# never claims a number. claim marks the number and tag releases it on the merged commit. The tree
+# itself keeps a placeholder version (.version-bump.json).
 #
-# validate also exports that payload, runs the marketplace sync on it in a scratch clone and stages
+# A merge versions and tags the commit and publishes nothing. A person chooses when a tag reaches
+# users by running Publish release (publish-release.yml) from main with that tag: it syncs the
+# marketplace, publishes the GitHub Release and starts the eval baseline.
+#
+# validate also exports the payload the marketplace sync would publish (scripts/export-marketplace.py
+# stamps the tag's version into it), runs the marketplace sync on it in a scratch clone and stages
 # the result without a push, so a merge whose sync would fail, write outside the published paths
 # (scripts/ci/stage-marketplace-sync.sh), or publish the Cursor router rule or stop hook twice
-# (scripts/check-marketplace-layout.py) never claims a number. update-marketplace runs the same
-# steps before it pushes. The sync takes the payload with --export (RELEASING.md, "Cursor
-# distribution prerequisites").
+# (scripts/check-marketplace-layout.py) never claims a number. The sync takes the payload with
+# --export (RELEASING.md, "Cursor distribution prerequisites"). Publish release repeats these
+# steps on the tag it publishes.
 #
 # A run that fails after the claim leaves it: re-run its failed jobs to finish the release, or run
-# Abandon release if the merged change itself breaks it. Every step after the tag is idempotent, so a
-# re-run of a tagged release picks up where it stopped.
+# Abandon release if the tag job cannot succeed. claim and tag are idempotent, so a re-run of a
+# tagged release picks up where it stopped.
 #
 # Every job runs on the agent-skills runner: this repo is public, and the biodome-ci-* runners live in a
-# runner group that does not serve public repositories. That image has no `gh`, so the jobs that call it
-# install a pinned, checksum-verified copy (scripts/ci/install-gh.sh).
+# runner group that does not serve public repositories.
 #
-# claim, tag and the marketplace and baseline steps run as the release App, whose key only
-# ci-deploy-preprod may read, so those jobs assume it with the job's OIDC token (main only).
+# claim and tag run as the release App, whose key only ci-deploy-preprod may read, so those jobs
+# assume it with the job's OIDC token (main only).
 jobs:
 
   resolve:
@@ -146,41 +148,10 @@ jobs:
           echo "::add-mask::$token"
           GH_TOKEN="$token" biodome-rs ci version claim
 
-  # The GitHub Release is drafted before the tag, where nobody can see it, and published after it: the
-  # tag says the release is complete, and a failed run must not leave a public release without one.
-  draft-release:
-    if: github.event_name == 'push' && github.ref_name == 'main'
-    needs: [ resolve, claim ]
-    runs-on: agent-skills-amd-4cpu
-    timeout-minutes: 10
-    permissions:
-      contents: write
-      actions: read
-    env:
-      RELEASE_TAG: v${{ needs.resolve.outputs.version }}
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - name: Check out the CI scripts
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          sparse-checkout: scripts/ci
-          persist-credentials: false
-      - name: Install the GitHub CLI
-        run: bash scripts/ci/install-gh.sh
-      - name: Draft the GitHub Release
-        run: |
-          # The API list includes drafts, which `gh release view <tag>` does not find.
-          existing="$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\") | .id")"
-          if [ -n "$existing" ]; then
-            echo "GitHub Release already exists for ${RELEASE_TAG}"
-            exit 0
-          fi
-          gh release create "$RELEASE_TAG" --draft --target "$GITHUB_SHA" --title "$RELEASE_TAG" --generate-notes
-
   # Idempotent for a commit that is already tagged.
   tag:
     if: github.event_name == 'push' && github.ref_name == 'main'
-    needs: [ resolve, claim, draft-release ]
+    needs: [ resolve, claim ]
     runs-on: agent-skills-amd-4cpu
     timeout-minutes: 10
     permissions:
@@ -203,137 +174,3 @@ jobs:
           token="$(biodome ci github-app-token --repository "${GITHUB_REPOSITORY#*/}" --permission contents=write)"
           echo "::add-mask::$token"
           GH_TOKEN="$token" biodome-rs ci version tag
-
-  publish-release:
-    if: github.event_name == 'push' && github.ref_name == 'main'
-    needs: [ resolve, tag ]
-    runs-on: agent-skills-amd-4cpu
-    timeout-minutes: 10
-    permissions:
-      contents: write
-      actions: read
-    env:
-      RELEASE_TAG: v${{ needs.resolve.outputs.version }}
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - name: Check out the CI scripts
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          sparse-checkout: scripts/ci
-          persist-credentials: false
-      - name: Install the GitHub CLI
-        run: bash scripts/ci/install-gh.sh
-      - name: Publish the GitHub Release
-        run: |
-          release="$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\") | \"\\(.id) \\(.draft)\"")"
-          if [ -z "$release" ]; then
-            echo "ERROR: no GitHub Release for ${RELEASE_TAG}"
-            exit 1
-          fi
-          if [ "${release#* }" = "false" ]; then
-            echo "GitHub Release ${RELEASE_TAG} is already published"
-            exit 0
-          fi
-          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release% *}" -F draft=false
-
-  update-marketplace:
-    name: Sync marketplace
-    if: github.event_name == 'push' && github.ref_name == 'main'
-    needs: [ resolve, tag ]
-    runs-on: agent-skills-amd-4cpu
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      actions: read
-      id-token: write
-    env:
-      CI_ROLES: ${{ vars.CI_ROLES }}
-      RELEASE_TAG: v${{ needs.resolve.outputs.version }}
-      RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
-    steps:
-      ### Biodome setup: every tag, which the sync resolves the release commit from
-      - name: Biodome job setup
-        uses: ./../../../../../home/runner/.github/actions/biodome-setup-v2
-        with:
-          fetch-depth: 0
-          filter: tree:0
-      - name: CI identity (ci-deploy-preprod)
-        run: |
-          biodome-rs aws assume ci-deploy-preprod --profile deploy --source oidc
-          echo "AWS_PROFILE=deploy" >> "$GITHUB_ENV"
-      # The App's token replaces the retired Terraform GitHub token. It writes the marketplace repo
-      # only, so a step that does not push never sees it.
-      - name: Marketplace App token
-        run: |
-          token="$(biodome ci github-app-token --repository agent-skills-marketplace --permission contents=write)"
-          echo "::add-mask::$token"
-          echo "MARKETPLACE_TOKEN=$token" >> "$GITHUB_ENV"
-      - name: Clone agent-skills-marketplace
-        run: git clone --branch main "https://x-access-token:${MARKETPLACE_TOKEN}@github.com/stackhawk/agent-skills-marketplace.git" /tmp/marketplace
-      # The tagged tree carries the placeholder: the export stamps the tag's version into the payload,
-      # and the sync checks that the payload is of the tag's commit and version.
-      - name: Export the marketplace payload from the release tag
-        run: |
-          python3 scripts/export-marketplace.py --ref "$RELEASE_TAG" --version "$RELEASE_VERSION" \
-            --dest "$RUNNER_TEMP/marketplace-export"
-      - name: Sync marketplace from release tag
-        run: |
-          python3 /tmp/marketplace/scripts/sync-agent-skills.py \
-            --source-repo "$GITHUB_WORKSPACE" --tag "$RELEASE_TAG" --export "$RUNNER_TEMP/marketplace-export"
-          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s /tmp/marketplace/tests
-          python3 scripts/check-marketplace-layout.py --run-installers --version "$RELEASE_VERSION" /tmp/marketplace
-      - name: Push marketplace sync to main
-        run: |
-          cd /tmp/marketplace
-          git config user.name "hawkdeploy"
-          git config user.email "hawkdeploy@stackhawk.com"
-          bash "$GITHUB_WORKSPACE/scripts/ci/stage-marketplace-sync.sh" .
-          if git diff --cached --quiet; then
-            echo "Marketplace already contains ${RELEASE_TAG}"
-            exit 0
-          fi
-          git commit -m "chore: sync agent-skills ${RELEASE_TAG}"
-          if ! git push origin HEAD:main; then
-            git fetch origin main
-            git rebase origin/main
-            PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests
-            python3 "$GITHUB_WORKSPACE/scripts/check-marketplace-layout.py" --version "$RELEASE_VERSION" .
-            if ! git push origin HEAD:main; then
-              echo "ERROR: Marketplace main push failed after one fetch-rebase retry."
-              exit 1
-            fi
-          fi
-
-  # Best effort: the release is complete once it is tagged, so a baseline that cannot be dispatched
-  # warns instead of failing the run. Dispatch Capture Eval Baseline by hand with the tag.
-  capture-baseline:
-    name: Trigger baseline capture
-    if: github.event_name == 'push' && github.ref_name == 'main'
-    needs: [ resolve, tag ]
-    runs-on: agent-skills-amd-4cpu
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      actions: read
-      id-token: write
-    env:
-      CI_ROLES: ${{ vars.CI_ROLES }}
-      RELEASE_TAG: v${{ needs.resolve.outputs.version }}
-    steps:
-      ### Biodome setup
-      - name: Biodome job setup
-        uses: ./../../../../../home/runner/.github/actions/biodome-setup-v2
-      - name: CI identity (ci-deploy-preprod)
-        run: |
-          biodome-rs aws assume ci-deploy-preprod --profile deploy --source oidc
-          echo "AWS_PROFILE=deploy" >> "$GITHUB_ENV"
-      - name: Install the GitHub CLI
-        continue-on-error: true
-        run: bash scripts/ci/install-gh.sh
-      - name: Dispatch capture-baseline
-        run: |
-          token="$(biodome ci github-app-token --repository "${GITHUB_REPOSITORY#*/}" --permission actions=write)"
-          echo "::add-mask::$token"
-          if ! GH_TOKEN="$token" gh workflow run capture-baseline.yml -f tag="$RELEASE_TAG"; then
-            echo "::warning::could not dispatch capture-baseline.yml for ${RELEASE_TAG}; run it by hand"
-          fi

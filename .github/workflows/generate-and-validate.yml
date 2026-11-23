@@ -227,8 +227,9 @@ jobs:
           python3 scripts/check-marketplace-layout.py --run-installers --version 0.0.0 "$RUNNER_TEMP/marketplace-export"
           python3 scripts/export-marketplace.py --verify "$RUNNER_TEMP/marketplace-export" --version 0.0.0
 
-      # test_release_workflow.py runs the validate and update-marketplace steps of release.yml
-      # against a scratch marketplace: a sync without --export must stop the release in validate.
+      # test_release_workflow.py runs the validate steps of release.yml and publish-release.yml and
+      # the update-marketplace steps of publish-release.yml against a scratch marketplace: a sync
+      # without --export must stop the release in validate.
       - name: Cursor regression tests (installers under bash and pwsh, hooks, adapter, export, release jobs)
         run: |
           uv run pytest -q tests/scripts/test_cursor_adapter.py tests/scripts/test_install_cursor.py \

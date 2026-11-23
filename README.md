@@ -370,7 +370,7 @@ scripts/check-marketplace-layout.py  Checks that payload and the synced marketpl
 scripts/cursor-hook-probe.py       Runs one plugin hook as Cursor runs it (used by the layout check)
 ```
 
-Released plugins and skills are published through [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace). The release exports the payload of its tag (Claude plugin snapshots, the wingman bundle, the Cursor-only hawkscan, the Cursor catalog and installers), and the marketplace sync script publishes it, generates platform catalogs, and vendors standalone skills for `npx skills add`. The release workflow validates the sync and pushes it to marketplace `main`.
+Released plugins and skills are published through [stackhawk/agent-skills-marketplace](https://github.com/stackhawk/agent-skills-marketplace). The release exports the payload of its tag (Claude plugin snapshots, the wingman bundle, the Cursor-only hawkscan, the Cursor catalog and installers), and the marketplace sync script publishes it, generates platform catalogs, and vendors standalone skills for `npx skills add`. Every merge to `main` validates the sync; `publish-release.yml`, started by hand with a tag, pushes it to marketplace `main`.
 
 ### Platform Support
 
