@@ -356,7 +356,7 @@ def test_publish_runs_only_when_a_person_starts_it_with_a_tag():
     for name in assumed:
         assert re.findall(r"aws assume (\S+)", str(all_jobs[name]["steps"])) == ["ci-deploy-preprod"], name
     assert all("biodome-rs ci version" not in str(job["steps"]) for job in all_jobs.values())
-    assert "git tag" not in text and "git push" not in text.replace("git -C /tmp/marketplace push", "")
+    assert not re.search(r"\bgit tag\b|\bgit push\b", text)
 
 
 def test_nothing_is_published_before_the_tag_has_been_validated():
@@ -447,8 +447,9 @@ def writes(step):
     """Whether a step changes something outside the runner: a marketplace push, a GitHub Release, a
     dispatch or a tag. A dry-run push does not."""
     run = step.get("run", "")
+    pushes = any(re.search(r"\bgit(?: -C \S+)? push\b", line) and "--dry-run" not in line for line in run.splitlines())
     return (any(marker in run for marker in ("gh release create", "--method PATCH", "gh workflow run"))
-            or 'push "https://' in run or re.search(r"\bgit tag\b|\bgit push\b", run) is not None)
+            or pushes or re.search(r"\bgit tag\b", run) is not None)
 
 
 def test_every_step_that_writes_is_skipped_in_a_rehearsal():
@@ -460,6 +461,10 @@ def test_every_step_that_writes_is_skipped_in_a_rehearsal():
             condition = step.get("if", "")
             if step["name"] in WRITE_STEPS:
                 assert "!inputs.rehearsal" in condition, step["name"]
+                for order in ("newer", "current", "older", ""):
+                    for exists in ("true", "false", ""):
+                        outputs = {("order", "value"): order, ("lookup", "exists"): exists}
+                        assert not condition_holds(condition, outputs, True), (step["name"], outputs)
             # A step that needs a rehearsal stands in for a write step and only reads.
             if "inputs.rehearsal" in condition.replace("!inputs.rehearsal", ""):
                 assert step["name"].startswith("Rehearse"), step["name"]
@@ -468,6 +473,53 @@ def test_every_step_that_writes_is_skipped_in_a_rehearsal():
     # The switch is a step condition, never a variable a script branches on.
     assert not any("REHEARSAL" in step.get("run", "") or "REHEARSAL" in str(step.get("env", ""))
                    for job in all_jobs.values() for step in job["steps"])
+
+
+def job_condition(expression, rehearsal, needs, ref="refs/heads/main"):
+    """Evaluates a job-level `if` made of ==, !=, &&, ||, parentheses, always(), inputs.rehearsal and
+    needs.<job>.outputs.<name> (empty when not set). Anything else fails."""
+    code = (expression.replace("&&", " and ").replace("||", " or ").replace("always()", "True")
+            .replace("github.ref", "REF").replace("inputs.rehearsal", "REHEARSAL"))
+    code = re.sub(r"needs\.([\w-]+)\.outputs\.(\w+)", lambda m: f"NEEDS[{m[1]!r}][{m[2]!r}]", code)
+    assert not re.search(r"[A-Za-z_]+\(", code), expression
+    leftover = re.sub(r"'[^']*'|NEEDS\[[^\]]*\]\[[^\]]*\]|REF|REHEARSAL|True|and|or", "", code)
+    assert not re.search(r"[A-Za-z]", leftover), f"unsupported expression {expression!r}"
+    class Outputs(dict):
+        def __missing__(self, key):
+            return ""
+    return bool(eval(code, {"__builtins__": {}}, {"NEEDS": {job: Outputs(o) for job, o in needs.items()},
+                                                   "REF": ref, "REHEARSAL": rehearsal}))
+
+
+def test_job_conditions_of_a_real_run_are_what_they_were_and_a_rehearsal_adds_only_a_look_ahead():
+    all_jobs = jobs(PUBLISH)
+    publish, baseline = all_jobs["publish-release"]["if"], all_jobs["capture-baseline"]["if"]
+    for order in ("newer", "current", "older", ""):
+        for published in ("true", "false", ""):
+            for newly in ("true", ""):
+                needs = {"update-marketplace": {"order": order, "published": published},
+                         "publish-release": {"newly": newly}, "validate": {"order": order}}
+                # A real run: publish when the marketplace job published, the baseline when this run published.
+                assert job_condition(publish, False, needs) == (published == "true"), needs
+                assert job_condition(baseline, False, needs) == (newly == "true"), needs
+                assert not job_condition(publish, False, needs, ref="refs/heads/other")
+                # A rehearsal publishes nothing, so it reaches those jobs when a real run would, unless the pin is newer.
+                assert job_condition(publish, True, needs) == (published == "true" or order != "older"), needs
+                assert job_condition(baseline, True, needs) is True
+                assert not job_condition(baseline, True, needs, ref="refs/heads/other")
+    summary = all_jobs["rehearsal-summary"]["if"]
+    assert job_condition(summary, True, {}) and not job_condition(summary, False, {})
+    assert not job_condition(summary, True, {}, ref="refs/heads/other")
+
+
+def test_every_job_output_the_workflows_read_is_declared_by_the_job():
+    for path in (RELEASE, PUBLISH):
+        text = open(path).read()
+        all_jobs = jobs(path)
+        for job, name in set(re.findall(r"needs\.([\w-]+)\.outputs\.(\w+)", text)):
+            assert name in all_jobs[job].get("outputs", {}), (os.path.basename(path), job, name)
+        for step_id in {m[0] for m in re.findall(r"steps\.([\w-]+)\.outputs\.(\w+)", text)}:
+            assert any(step.get("id") == step_id for job in all_jobs.values() for step in job["steps"]), step_id
 
 
 def test_a_rehearsal_reaches_the_jobs_a_real_run_reaches_and_no_others():
@@ -678,7 +730,7 @@ def test_a_rehearsal_runs_the_marketplace_job_up_to_the_push_and_pushes_nothing(
     # was asked whether it would take it.
     waiting = tmp_path / "run-1" / "runner-temp" / "marketplace-push"
     assert git(waiting, "log", "-1", "--format=%s", "FETCH_HEAD").decode().strip() == f"chore: sync agent-skills {TAG}"
-    assert f"marketplace main would take the sync commit for {TAG}; nothing was pushed" in results[-1][1].stdout
+    assert f"marketplace main has not moved and the sync commit for {TAG} fast-forwards it; nothing was pushed" in results[-1][1].stdout
     assert (tmp_path / "run-1" / "github-output").read_text().strip() == "value=newer", "a rehearsal claimed a publish"
 
 
@@ -699,7 +751,7 @@ def test_a_rehearsal_of_a_tag_the_marketplace_already_has_checks_the_token_and_h
     assert git(marketplace, "rev-parse", "main") == published
 
 
-def test_a_rehearsal_fails_when_the_marketplace_would_refuse_the_push(tagged_workspace, tmp_path):
+def test_a_rehearsal_fails_when_marketplace_main_has_moved_since_the_sync_clone(tagged_workspace, tmp_path):
     marketplace = scratch_marketplace(tmp_path, FORMAT_2_SYNC)
     released = git(tagged_workspace, "rev-parse", TAG).decode().strip()
     steps = job_steps(PUBLISH, "update-marketplace", f"file://{marketplace}", str(tmp_path / "run-1" / "marketplace"),
@@ -1015,9 +1067,10 @@ def test_the_summary_for_an_older_tag_says_a_real_run_publishes_nothing(tmp_path
 def test_the_summary_of_a_failed_rehearsal_says_so_and_promises_nothing(tmp_path):
     text = run_summary(tmp_path, RESULT_MARKETPLACE="failure", RESULT_PUBLISH="skipped", RESULT_BASELINE="skipped",
                        ORDER="newer")
-    assert "**This rehearsal failed." in text and "A real run would have failed in the same place." in text
+    assert "**This rehearsal did not pass." in text and "rehearse again before a real run." in text
+    assert "would have failed" not in text
     assert "was a rehearsal" not in text and "A real run of" not in text
     assert "| Role, marketplace token and sync into the scratch clone | failure |" in text
     text = run_summary(tmp_path, RELEASE_TAG="", RELEASE_SHA="", RESULT_RESOLVE="failure", RESULT_VALIDATE="skipped",
                        ORDER="")
-    assert "## Publish release (tag not resolved): rehearsal" in text and "This rehearsal failed" in text
+    assert "## Publish release (tag not resolved): rehearsal" in text and "This rehearsal did not pass" in text
