@@ -3,15 +3,18 @@
 Two workflows split a release. release.yml runs on every merge to main: it numbers the commit,
 validates it on a scratch copy, claims the number and tags the commit, and publishes nothing.
 publish-release.yml is started by hand from main with a tag: it validates that tag's exact commit,
-syncs the marketplace, publishes the GitHub Release and starts the eval baseline. The marketplace
-sync lives in stackhawk/agent-skills-marketplace, so a version without --export support must stop
-validation before a GitHub Release or marketplace write.
+syncs the marketplace, publishes the GitHub Release and starts the eval baseline. With its
+`rehearsal` input on it does all of that except the four steps that write (the marketplace push,
+drafting and publishing the GitHub Release, the baseline dispatch). The marketplace sync lives in
+stackhawk/agent-skills-marketplace, so a version without --export support must stop validation before
+a GitHub Release or marketplace write.
 
 These tests take the `run` steps of a job from a workflow as they are, point every marketplace
 URL at a scratch bare repository, and run the steps in order with `bash -eo pipefail`, as GitHub
-Actions does. The role assumption is skipped, and the App token mint in the push step is replaced
-with a local dummy token. The GitHub Release steps run against a stand-in `gh` that records its
-calls. The scratch marketplace holds a stand-in sync, not the real one:
+Actions does. A step runs only when its `if` holds (condition_holds knows the few terms the workflows
+use). The role assumption is skipped, and the App token mint in the push steps is replaced with a local
+dummy token. The GitHub Release and baseline steps run against stand-in `gh` and `biodome` that
+record their calls. The scratch marketplace holds a stand-in sync, not the real one:
   - OLD_SYNC takes only --source-repo and --tag, as the marketplace sync before --export did;
   - FORMAT_2_SYNC checks what the release gives it (the tag names the commit; the export is format 2
     of that commit and version; Cursor installs hawkscan from cursor-plugins/hawkscan and wingman
@@ -49,8 +52,13 @@ SKIPPED = {
     "validate": set(),
     "update-marketplace": {"CI identity (ci-deploy-preprod)"},
 }
-OLDER = "steps.order.outputs.value == 'older'"
-NOT_OLDER = "steps.order.outputs.value != 'older'"
+TOKEN_COMMAND = ('token="$(biodome ci github-app-token --repository '
+                 'agent-skills-marketplace --permission contents=write)"')
+# The steps that mint the marketplace token: the push, and the rehearsal's stand-in for it.
+TOKEN_STEPS = ("Push marketplace sync to main", "Rehearse the marketplace push")
+# The steps that write, and no others. Each must be skipped in a rehearsal.
+WRITE_STEPS = {"Draft the GitHub Release", "Push marketplace sync to main", "Publish the GitHub Release",
+               "Dispatch capture-baseline"}
 
 OLD_SYNC = '''\
 """The marketplace sync before export format 2: it takes no --export."""
@@ -138,9 +146,27 @@ def jobs(path):
     return load(path)["jobs"]
 
 
-def job_steps(path, job, marketplace_url, checkout, order="newer"):
-    """(name, script) of every `run` step of the job, with the marketplace URLs and checkout replaced.
-    The only step conditions are the two on the release order; `order` is what the order step finds."""
+def condition_holds(expression, outputs, rehearsal):
+    """Whether a step condition holds. It knows only the terms the workflows use, joined with &&:
+    `inputs.rehearsal`, its negation, and a step output compared with a string. Any other term fails."""
+    text = expression.strip()
+    if text.startswith("${{") and text.endswith("}}"):
+        text = text[3:-2].strip()
+    for term in (term.strip() for term in text.split("&&")):
+        if term in ("inputs.rehearsal", "!inputs.rehearsal"):
+            holds = rehearsal == (term == "inputs.rehearsal")
+        else:
+            match = re.fullmatch(r"steps\.([\w-]+)\.outputs\.(\w+) (==|!=) '([^']*)'", term)
+            assert match, f"unsupported term {term!r} in condition {expression!r}"
+            holds = (outputs.get((match[1], match[2]), "") == match[4]) == (match[3] == "==")
+        if not holds:
+            return False
+    return True
+
+
+def job_steps(path, job, marketplace_url, checkout, order="newer", rehearsal=False):
+    """(name, script) of every `run` step of the job that runs, with the marketplace URLs and checkout
+    replaced. `order` is what the order step finds; `rehearsal` is the rehearsal input."""
     steps = jobs(path)[job]["steps"]
     skipped = SKIPPED[job]
     missing = skipped - {step.get("name") for step in steps}
@@ -150,18 +176,14 @@ def job_steps(path, job, marketplace_url, checkout, order="newer"):
     for step in steps:
         if "run" not in step or step["name"] in skipped:
             continue
-        if "if" in step:
-            assert step["if"] in (OLDER, NOT_OLDER), (job, step["name"], step["if"])
-            if (step["if"] == OLDER) != (order == "older"):
-                continue
+        if "if" in step and not condition_holds(step["if"], {("order", "value"): order}, rehearsal):
+            continue
         checkout_used = checkout_used or JOB_CHECKOUT in step["run"]
         script = (step["run"].replace(TOKEN_MARKETPLACE, marketplace_url)
                   .replace(PUBLIC_MARKETPLACE, marketplace_url).replace(JOB_CHECKOUT, checkout))
-        if job == "update-marketplace" and step["name"] == "Push marketplace sync to main":
-            token_command = ('token="$(biodome ci github-app-token --repository '
-                             'agent-skills-marketplace --permission contents=write)"')
-            assert script.count(token_command) == 1, "the token is minted once, at push time"
-            script = script.replace(token_command, "token=local-test-token")
+        if job == "update-marketplace" and step["name"] in TOKEN_STEPS:
+            assert script.count(TOKEN_COMMAND) == 1, "the token is minted once, at push time"
+            script = script.replace(TOKEN_COMMAND, "token=local-test-token")
         assert "github.com/stackhawk/agent-skills-marketplace" not in script, (job, step["name"])
         # Check the workflow text, not the substituted script: on Linux tmp_path is under /tmp/.
         assert "/tmp/" not in step["run"].replace(JOB_CHECKOUT, ""), (job, step["name"])
@@ -312,12 +334,17 @@ def test_publish_runs_only_when_a_person_starts_it_with_a_tag():
     all_jobs = workflow["jobs"]
     dispatch = triggers(workflow)
     assert list(dispatch) == ["workflow_dispatch"]
-    assert list(dispatch["workflow_dispatch"]["inputs"]) == ["tag"]
+    assert list(dispatch["workflow_dispatch"]["inputs"]) == ["tag", "rehearsal"]
     assert dispatch["workflow_dispatch"]["inputs"]["tag"]["required"] is True
     assert dispatch["workflow_dispatch"]["inputs"]["tag"]["type"] == "string"
-    # The input reaches a job only through an env: it is never pasted into a script.
+    rehearsal = dispatch["workflow_dispatch"]["inputs"]["rehearsal"]
+    assert rehearsal["type"] == "boolean" and rehearsal["default"] is False and rehearsal["required"] is False
+    # The tag input reaches a job only through an env: it is never pasted into a script. The run name
+    # shows it, and whether the run is a rehearsal.
     text = open(PUBLISH).read()
-    assert text.count("inputs.tag") == 1 and "RELEASE_TAG: ${{ inputs.tag }}" in text
+    assert text.count("RELEASE_TAG: ${{ inputs.tag }}") == 1
+    assert text.count("inputs.tag") == 2 and "inputs.tag" in workflow["run-name"]
+    assert "(rehearsal)" in workflow["run-name"] and "inputs.rehearsal" in workflow["run-name"]
     assert all("inputs." not in step.get("run", "") for job in all_jobs.values() for step in job["steps"])
     assert "ci-agent-skills-publish" not in text
     for name, job in all_jobs.items():
@@ -355,8 +382,10 @@ def test_marketplace_steps_guard_against_older_tags():
     assert steps["Skip an older tag"]["if"] == "steps.order.outputs.value == 'older'"
     for name in ("Export the marketplace payload from the release commit",
                  "Sync marketplace from release tag", "Commit the marketplace sync",
-                 "CI identity (ci-deploy-preprod)", "Push marketplace sync to main"):
+                 "CI identity (ci-deploy-preprod)"):
         assert steps[name]["if"] == "steps.order.outputs.value != 'older'", name
+    assert steps["Push marketplace sync to main"]["if"] == "steps.order.outputs.value != 'older' && !inputs.rehearsal"
+    assert steps["Rehearse the marketplace push"]["if"] == "${{ inputs.rehearsal && steps.order.outputs.value != 'older' }}"
     all_jobs = jobs(PUBLISH)
     assert "needs.validate.outputs.order != 'older'" in all_jobs["draft-release"]["if"]
     assert "needs.update-marketplace.outputs.published == 'true'" in all_jobs["publish-release"]["if"]
@@ -386,9 +415,23 @@ def test_marketplace_steps_guard_against_older_tags():
     assert "x-access-token:${token}@" in push and 'push "https://' in push
     assert "unittest" not in push and "check-marketplace-layout" not in push and "rebase" not in push
     assert "re-run this job" in push
+    # The rehearsal's stand-in for the push is hardened the same way, mints the token the same way and
+    # reads from the same new repository. It never pushes: its one push is a dry run.
+    rehearse = steps["Rehearse the marketplace push"]["run"]
+    for setting in ("export GIT_CONFIG_COUNT=4", "export GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null",
+                    "export GIT_CONFIG_KEY_1=core.fsmonitor GIT_CONFIG_VALUE_1=false",
+                    "export GIT_CONFIG_KEY_2=credential.helper GIT_CONFIG_VALUE_2=",
+                    "export GIT_CONFIG_KEY_3=commit.gpgsign GIT_CONFIG_VALUE_3=false",
+                    "export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1"):
+        assert setting in rehearse, setting
+    assert rehearse.index("export GIT_CONFIG_COUNT=4") < rehearse.index("github-app-token")
+    assert TOKEN_COMMAND in rehearse and "/tmp/marketplace" not in rehearse
+    assert rehearse.count('push --dry-run "https://') == 1 and rehearse.count("push ") == 1
+    assert "GITHUB_ENV" not in rehearse and "GITHUB_OUTPUT" not in rehearse
     names = list(steps)
     assert (names.index("Sync marketplace from release tag") < names.index("Commit the marketplace sync")
-            < names.index("CI identity (ci-deploy-preprod)") < names.index("Push marketplace sync to main"))
+            < names.index("CI identity (ci-deploy-preprod)") < names.index("Rehearse the marketplace push")
+            < names.index("Push marketplace sync to main"))
     assert "needs.publish-release.outputs.newly == 'true'" in all_jobs["capture-baseline"]["if"]
 
 
@@ -398,6 +441,59 @@ def test_publish_checks_the_tag_with_the_same_steps_as_every_merge():
     merge, publish = steps_of(RELEASE, "validate"), steps_of(PUBLISH, "validate")
     for name in shared:
         assert merge[name]["run"] == publish[name]["run"], name
+
+
+def writes(step):
+    """Whether a step changes something outside the runner: a marketplace push, a GitHub Release, a
+    dispatch or a tag. A dry-run push does not."""
+    run = step.get("run", "")
+    return (any(marker in run for marker in ("gh release create", "--method PATCH", "gh workflow run"))
+            or 'push "https://' in run or re.search(r"\bgit tag\b|\bgit push\b", run) is not None)
+
+
+def test_every_step_that_writes_is_skipped_in_a_rehearsal():
+    all_jobs = jobs(PUBLISH)
+    found = {step["name"] for job in all_jobs.values() for step in job["steps"] if writes(step)}
+    assert found == WRITE_STEPS, "a step writes that this test does not know, or a known one was renamed"
+    for job_name, job in all_jobs.items():
+        for step in job["steps"]:
+            condition = step.get("if", "")
+            if step["name"] in WRITE_STEPS:
+                assert "!inputs.rehearsal" in condition, step["name"]
+            # A step that needs a rehearsal stands in for a write step and only reads.
+            if "inputs.rehearsal" in condition.replace("!inputs.rehearsal", ""):
+                assert step["name"].startswith("Rehearse"), step["name"]
+                assert not writes(step), step["name"]
+                assert "--method" not in step["run"] and "release create" not in step["run"], step["name"]
+    # The switch is a step condition, never a variable a script branches on.
+    assert not any("REHEARSAL" in step.get("run", "") or "REHEARSAL" in str(step.get("env", ""))
+                   for job in all_jobs.values() for step in job["steps"])
+
+
+def test_a_rehearsal_reaches_the_jobs_a_real_run_reaches_and_no_others():
+    all_jobs = jobs(PUBLISH)
+    reached = "needs.update-marketplace.outputs.order != 'older'"
+    assert all_jobs["publish-release"]["if"] == (
+        f"github.ref == 'refs/heads/main' && (needs.update-marketplace.outputs.published == 'true' "
+        f"|| (inputs.rehearsal && {reached}))")
+    assert all_jobs["capture-baseline"]["if"] == (
+        "github.ref == 'refs/heads/main' && (needs.publish-release.outputs.newly == 'true' || inputs.rehearsal)")
+    # A tag older than the pin skips draft-release, and a job whose needs were skipped is skipped, so
+    # a rehearsal of an older tag stops there too.
+    assert "needs.validate.outputs.order != 'older'" in all_jobs["draft-release"]["if"]
+    assert "inputs.rehearsal" not in all_jobs["draft-release"]["if"]
+    for job in ("update-marketplace", "publish-release", "capture-baseline"):
+        assert not any(term in all_jobs[job]["if"] for term in ("always()", "!cancelled()", "failure()")), job
+
+
+def test_the_rehearsal_summary_runs_after_every_job_and_only_for_a_rehearsal():
+    all_jobs = jobs(PUBLISH)
+    job = all_jobs["rehearsal-summary"]
+    assert job["if"] == "github.ref == 'refs/heads/main' && always() && inputs.rehearsal"
+    assert set(job["needs"]) == set(all_jobs) - {"rehearsal-summary"}
+    assert job["permissions"] == {"contents": "read"}
+    assert "environment" not in job and len(job["steps"]) == 1
+    assert "id-token" not in str(job["permissions"]) and "biodome" not in job["steps"][0]["run"]
 
 
 # ── The merge-time validate job (release.yml) ────────────────────────────────────────────────────
@@ -563,10 +659,74 @@ def test_a_push_that_loses_a_race_to_an_unrelated_commit_is_rerun_not_rebased(ta
     assert git(marketplace, "rev-parse", "main") == moved
 
 
-def test_hooks_and_config_left_in_the_marketplace_clone_do_not_run_or_redirect_the_push(tagged_workspace, tmp_path):
+def test_a_rehearsal_runs_the_marketplace_job_up_to_the_push_and_pushes_nothing(tagged_workspace, tmp_path):
+    marketplace = scratch_marketplace(tmp_path, FORMAT_2_SYNC)
+    released = advance_main(tagged_workspace)
+    main_before = git(marketplace, "rev-parse", "main")
+    steps = job_steps(PUBLISH, "update-marketplace", f"file://{marketplace}", str(tmp_path / "run-1" / "marketplace"),
+                      rehearsal=True)
+    names = [name for name, _ in steps]
+    assert "Push marketplace sync to main" not in names
+    assert names[-2:] == ["Commit the marketplace sync", "Rehearse the marketplace push"]
+    results = run_steps(steps, tagged_workspace, job_env(tmp_path, tagged_workspace, "run-1", released))
+
+    assert [name for name, _ in results] == names, report(results)
+    assert all(proc.returncode == 0 for _, proc in results), report(results)
+    assert git(marketplace, "rev-parse", "main") == main_before, "the rehearsal pushed to the marketplace"
+    assert records(tmp_path) == [{"tag": TAG, "commit": released, "format": 2, "version": VERSION}]
+    # It got as far as a real run does: the sync commit waits in the new repository, and the marketplace
+    # was asked whether it would take it.
+    waiting = tmp_path / "run-1" / "runner-temp" / "marketplace-push"
+    assert git(waiting, "log", "-1", "--format=%s", "FETCH_HEAD").decode().strip() == f"chore: sync agent-skills {TAG}"
+    assert f"marketplace main would take the sync commit for {TAG}; nothing was pushed" in results[-1][1].stdout
+    assert (tmp_path / "run-1" / "github-output").read_text().strip() == "value=newer", "a rehearsal claimed a publish"
+
+
+def test_a_rehearsal_of_a_tag_the_marketplace_already_has_checks_the_token_and_has_nothing_to_push(tagged_workspace, tmp_path):
+    marketplace = scratch_marketplace(tmp_path, FORMAT_2_SYNC)
+    released = advance_main(tagged_workspace)
+    first = run_steps(job_steps(PUBLISH, "update-marketplace", f"file://{marketplace}", str(tmp_path / "run-1" / "marketplace")),
+                      tagged_workspace, job_env(tmp_path, tagged_workspace, "run-1", released))
+    assert all(proc.returncode == 0 for _, proc in first), report(first)
+    published = git(marketplace, "rev-parse", "main")
+
+    steps = job_steps(PUBLISH, "update-marketplace", f"file://{marketplace}", str(tmp_path / "run-2" / "marketplace"),
+                      rehearsal=True)
+    results = run_steps(steps, tagged_workspace, job_env(tmp_path, tagged_workspace, "run-2", released))
+    assert all(proc.returncode == 0 for _, proc in results), report(results)
+    assert (tmp_path / "run-2" / "github-output").read_text().strip() == "value=current"
+    assert f"marketplace already contains {TAG}; there is nothing to push" in results[-1][1].stdout
+    assert git(marketplace, "rev-parse", "main") == published
+
+
+def test_a_rehearsal_fails_when_the_marketplace_would_refuse_the_push(tagged_workspace, tmp_path):
     marketplace = scratch_marketplace(tmp_path, FORMAT_2_SYNC)
     released = git(tagged_workspace, "rev-parse", TAG).decode().strip()
-    steps = job_steps(PUBLISH, "update-marketplace", f"file://{marketplace}", str(tmp_path / "run-1" / "marketplace"))
+    steps = job_steps(PUBLISH, "update-marketplace", f"file://{marketplace}", str(tmp_path / "run-1" / "marketplace"),
+                      rehearsal=True)
+    env = job_env(tmp_path, tagged_workspace, sha=released)
+    prepared = run_steps(steps[:-1], tagged_workspace, env)
+    assert all(proc.returncode == 0 for _, proc in prepared), report(prepared)
+
+    concurrent = tmp_path / "concurrent"
+    subprocess.run(["git", "clone", "-q", str(marketplace), str(concurrent)], env=git_env(), check=True)
+    (concurrent / "unrelated").write_text("another change\n")
+    git(concurrent, "add", "unrelated")
+    git(concurrent, "commit", "-q", "-m", "unrelated marketplace commit")
+    git(concurrent, "push", "-q", "origin", "main")
+    moved = git(marketplace, "rev-parse", "main")
+
+    rehearsed = run_steps(steps[-1:], tagged_workspace, env)
+    assert rehearsed[-1][1].returncode != 0, report(rehearsed)
+    assert git(marketplace, "rev-parse", "main") == moved
+
+
+@pytest.mark.parametrize("rehearsal", [False, True])
+def test_hooks_and_config_left_in_the_marketplace_clone_do_not_run_or_redirect_the_push(tagged_workspace, tmp_path, rehearsal):
+    marketplace = scratch_marketplace(tmp_path, FORMAT_2_SYNC)
+    released = git(tagged_workspace, "rev-parse", TAG).decode().strip()
+    steps = job_steps(PUBLISH, "update-marketplace", f"file://{marketplace}", str(tmp_path / "run-1" / "marketplace"),
+                      rehearsal=rehearsal)
     commit_index = next(i for i, (name, _) in enumerate(steps) if name == "Commit the marketplace sync")
     env = job_env(tmp_path, tagged_workspace, sha=released)
     prepared = run_steps(steps[:commit_index], tagged_workspace, env)
@@ -627,85 +787,237 @@ def test_hooks_and_config_left_in_the_marketplace_clone_do_not_run_or_redirect_t
 
     main_before = git(marketplace, "rev-parse", "main")
     results = run_steps(steps[commit_index:], tagged_workspace, planted_env)
+    # A rewritten URL would send the token, or the dry run, to a repository that does not exist.
     assert all(proc.returncode == 0 for _, proc in results), report(results)
-    assert git(marketplace, "rev-parse", "main") != main_before, "the push did not happen"
-    assert "published=true" in (tmp_path / "run-1" / "github-output").read_text()
+    if rehearsal:
+        assert git(marketplace, "rev-parse", "main") == main_before, "the rehearsal pushed"
+        assert "published" not in (tmp_path / "run-1" / "github-output").read_text()
+    else:
+        assert git(marketplace, "rev-parse", "main") != main_before, "the push did not happen"
+        assert "published=true" in (tmp_path / "run-1" / "github-output").read_text()
     assert not ran.exists(), f"planted code ran: {ran.read_text() if ran.exists() else ''}"
     pushed_from = tmp_path / "run-1" / "runner-temp" / "marketplace-push"
     assert pushed_from.is_dir() and not (pushed_from / ".git" / "hooks" / "pre-push").exists()
 
 
-# ── The GitHub Release steps, against a stand-in gh ──────────────────────────────────────────────
+# ── The GitHub Release and baseline jobs, against a stand-in gh and biodome ──────────────────────
 
 FAKE_GH = """\
 #!/usr/bin/env bash
 # Records every call. FAKE_LIST is what listing the releases of the repository returns, FAKE_LATEST
-# the tag of the latest release (the call fails without one).
+# the tag of the latest release (the call fails without one), FAKE_DISPATCH_FAILS makes a dispatch fail.
 echo "$*" >> "$GH_CALLS"
 case "$*" in
   *"--method PATCH"*) ;;
   *"releases/latest"*) if [ -n "${FAKE_LATEST:-}" ]; then echo "$FAKE_LATEST"; else exit 1; fi ;;
   "api repos/"*"/releases --paginate"*) printf '%s' "${FAKE_LIST:-}" ;;
+  "api repos/"*"/actions/workflows/capture-baseline.yml"*) echo "Rehearsal: capture-baseline.yml is active; nothing was dispatched" ;;
   "release create"*) ;;
+  "workflow run"*) if [ -n "${FAKE_DISPATCH_FAILS:-}" ]; then exit 1; fi ;;
   *) echo "unexpected gh call: $*" >&2; exit 2 ;;
 esac
 """
 
+FAKE_BIODOME = """\
+#!/usr/bin/env bash
+echo "$*" >> "$BIODOME_CALLS"
+echo local-test-token
+"""
 
-def run_release_step(tmp_path, job, step, **env):
-    """Runs one `run` step of a Publish release job with the stand-in gh first on PATH."""
+# The steps of the gh jobs that do not run here: the tag check needs a real tag, the installer a runner.
+NOT_RUN_HERE = {"Verify the tag still names the release commit", "Install the GitHub CLI",
+                "CI identity (ci-deploy-preprod)"}
+
+
+class JobRun:
+    def __init__(self):
+        self.ran, self.outputs, self.failed, self.stdout = [], {}, None, ""
+        self.calls, self.biodome_calls = [], []
+
+
+def run_gh_job(tmp_path, job, rehearsal=False, **env):
+    """Runs the `run` steps of a Publish release job in order, as Actions does: a step runs only when its
+    `if` holds, and the `env` and `if` of a step read the outputs of the steps before it. gh and biodome
+    are stand-ins that record their calls. Stops at the first step that fails."""
     fake = tmp_path / "fake-bin"
     fake.mkdir(exist_ok=True)
-    (fake / "gh").write_text(FAKE_GH)
-    (fake / "gh").chmod(0o755)
-    calls = tmp_path / "gh-calls"
+    for name, body in (("gh", FAKE_GH), ("biodome", FAKE_BIODOME)):
+        (fake / name).write_text(body)
+        (fake / name).chmod(0o755)
+    calls, biodome = tmp_path / "gh-calls", tmp_path / "biodome-calls"
     calls.write_text("")
-    output = tmp_path / "step-output"
-    output.write_text("")
-    script = steps_of(PUBLISH, job)[step]["run"]
-    proc = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
-                          env={**os.environ, "PATH": f"{fake}:{os.environ['PATH']}", "GH_CALLS": str(calls),
-                               "GITHUB_REPOSITORY": REPOSITORY, "RELEASE_TAG": TAG, "RELEASE_SHA": "a" * 40,
-                               "GITHUB_OUTPUT": str(output), **env},
-                          capture_output=True, text=True, timeout=60, check=False)
-    return proc, calls.read_text().splitlines(), output.read_text().splitlines()
+    biodome.write_text("")
+    run = JobRun()
+    for step in jobs(PUBLISH)[job]["steps"]:
+        if "run" not in step or step["name"] in NOT_RUN_HERE:
+            continue
+        if "if" in step and not condition_holds(step["if"], run.outputs, rehearsal):
+            continue
+        step_env = {}
+        for key, value in step.get("env", {}).items():
+            match = re.fullmatch(r"\$\{\{ steps\.([\w-]+)\.outputs\.(\w+) \}\}", value)
+            assert match, f"unsupported env value {value!r} in {step['name']}"
+            step_env[key] = run.outputs.get((match[1], match[2]), "")
+        output = tmp_path / "step-output"
+        output.write_text("")
+        proc = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", step["run"]],
+                              env={**os.environ, "PATH": f"{fake}:{os.environ['PATH']}", "GH_CALLS": str(calls),
+                                   "BIODOME_CALLS": str(biodome), "GITHUB_REPOSITORY": REPOSITORY,
+                                   "RELEASE_TAG": TAG, "RELEASE_SHA": "a" * 40, "GITHUB_OUTPUT": str(output),
+                                   **env, **step_env},
+                              capture_output=True, text=True, timeout=60, check=False)
+        run.ran.append(step["name"])
+        run.stdout += proc.stdout + proc.stderr
+        for line in output.read_text().splitlines():
+            key, _, value = line.partition("=")
+            run.outputs[(step.get("id"), key)] = value
+        if proc.returncode != 0:
+            run.failed = proc
+            break
+    run.calls, run.biodome_calls = calls.read_text().splitlines(), biodome.read_text().splitlines()
+    return run
+
+
+WRITES_IN_CALLS = ("release create", "--method PATCH", "workflow run")
+
+
+def writes_made(run):
+    return [call for call in run.calls if any(marker in call for marker in WRITES_IN_CALLS)]
 
 
 def test_the_release_is_drafted_for_the_tag_with_notes_since_the_last_release(tmp_path):
-    proc, calls, _ = run_release_step(tmp_path, "draft-release", "Draft the GitHub Release", FAKE_LATEST="v9.8.5")
-    assert proc.returncode == 0, proc.stderr
-    assert calls[-1] == (f"release create {TAG} --draft --verify-tag --target {'a' * 40} --title {TAG} "
-                         "--generate-notes --notes-start-tag v9.8.5")
+    run = run_gh_job(tmp_path, "draft-release", FAKE_LATEST="v9.8.5")
+    assert run.failed is None, run.stdout
+    assert run.ran == ["Look up the GitHub Release", "Draft the GitHub Release"]
+    assert run.calls[-1] == (f"release create {TAG} --draft --verify-tag --target {'a' * 40} --title {TAG} "
+                             "--generate-notes --notes-start-tag v9.8.5")
 
 
 def test_the_first_release_is_drafted_without_a_start_tag(tmp_path):
-    proc, calls, _ = run_release_step(tmp_path, "draft-release", "Draft the GitHub Release")
-    assert proc.returncode == 0, proc.stderr
-    assert calls[-1] == (f"release create {TAG} --draft --verify-tag --target {'a' * 40} --title {TAG} "
-                         "--generate-notes")
+    run = run_gh_job(tmp_path, "draft-release")
+    assert run.failed is None, run.stdout
+    assert run.calls[-1] == (f"release create {TAG} --draft --verify-tag --target {'a' * 40} --title {TAG} "
+                             "--generate-notes")
 
 
 def test_a_release_that_exists_is_not_drafted_again(tmp_path):
-    proc, calls, _ = run_release_step(tmp_path, "draft-release", "Draft the GitHub Release", FAKE_LIST="12345")
-    assert proc.returncode == 0, proc.stderr
-    assert not [c for c in calls if c.startswith("release create")]
+    run = run_gh_job(tmp_path, "draft-release", FAKE_LIST="12345", FAKE_LATEST="v9.8.5")
+    assert run.failed is None, run.stdout
+    assert run.ran == ["Look up the GitHub Release"]
+    assert run.outputs[("lookup", "exists")] == "true"
+    assert not writes_made(run)
 
 
 def test_a_draft_is_published_and_a_published_release_is_left_alone(tmp_path):
-    proc, calls, output = run_release_step(tmp_path, "publish-release", "Publish the GitHub Release", FAKE_LIST="12345 true")
-    assert proc.returncode == 0, proc.stderr
-    assert calls[-1] == f"api --method PATCH repos/{REPOSITORY}/releases/12345 -F draft=false"
-    assert output == ["newly=true"]
-    proc, calls, output = run_release_step(tmp_path, "publish-release", "Publish the GitHub Release", FAKE_LIST="12345 false")
-    assert proc.returncode == 0, proc.stderr
-    assert "already published" in proc.stdout
-    assert not [c for c in calls if "PATCH" in c]
-    assert output == [], "the baseline would be captured again for a release that was already published"
+    run = run_gh_job(tmp_path, "publish-release", FAKE_LIST="12345 true")
+    assert run.failed is None, run.stdout
+    assert run.ran == ["Look up the GitHub Release", "Publish the GitHub Release"]
+    assert run.calls[-1] == f"api --method PATCH repos/{REPOSITORY}/releases/12345 -F draft=false"
+    assert run.outputs[("publish", "newly")] == "true"
+    run = run_gh_job(tmp_path, "publish-release", FAKE_LIST="12345 false")
+    assert run.failed is None, run.stdout
+    assert "already published" in run.stdout
+    assert not writes_made(run)
+    assert ("publish", "newly") not in run.outputs, "the baseline would be captured again for a release that was already published"
 
 
 def test_a_missing_release_stops_the_publish(tmp_path):
-    proc, calls, output = run_release_step(tmp_path, "publish-release", "Publish the GitHub Release")
-    assert proc.returncode != 0
-    assert f"no GitHub Release for {TAG}" in proc.stdout
-    assert not [c for c in calls if "PATCH" in c]
-    assert output == []
+    run = run_gh_job(tmp_path, "publish-release")
+    assert run.failed is not None
+    assert f"no GitHub Release for {TAG}" in run.stdout
+    assert not writes_made(run)
+    assert ("publish", "newly") not in run.outputs
+
+
+def test_the_baseline_is_dispatched_for_the_tag_and_a_failed_dispatch_only_warns(tmp_path):
+    run = run_gh_job(tmp_path, "capture-baseline")
+    assert run.failed is None, run.stdout
+    assert run.ran == ["Dispatch capture-baseline"]
+    assert run.calls == [f"workflow run capture-baseline.yml -f tag={TAG}"]
+    assert run.biodome_calls == ["ci github-app-token --repository agent-skills --permission actions=write"]
+    run = run_gh_job(tmp_path, "capture-baseline", FAKE_DISPATCH_FAILS="1")
+    assert run.failed is None, run.stdout
+    assert f"::warning::could not dispatch capture-baseline.yml for {TAG}" in run.stdout
+
+
+def test_a_rehearsal_looks_everything_up_and_writes_nothing_on_github(tmp_path):
+    drafting = run_gh_job(tmp_path, "draft-release", rehearsal=True, FAKE_LATEST="v9.8.5")
+    assert drafting.failed is None, drafting.stdout
+    assert drafting.ran == ["Look up the GitHub Release"]
+    assert drafting.outputs[("lookup", "exists")] == "false" and drafting.outputs[("lookup", "previous")] == "v9.8.5"
+    assert not writes_made(drafting)
+    # The release does not exist yet, because a rehearsal drafts nothing: that is not an error here.
+    for state, listed in (("missing", ""), ("draft", "12345 true"), ("published", "12345 false")):
+        publishing = run_gh_job(tmp_path, "publish-release", rehearsal=True, FAKE_LIST=listed)
+        assert publishing.failed is None, publishing.stdout
+        assert publishing.ran == ["Look up the GitHub Release"]
+        assert publishing.outputs[("lookup", "state")] == state
+        assert ("publish", "newly") not in publishing.outputs
+        assert not writes_made(publishing)
+    baseline = run_gh_job(tmp_path, "capture-baseline", rehearsal=True)
+    assert baseline.failed is None, baseline.stdout
+    assert baseline.ran == ["Rehearse the baseline dispatch"]
+    assert baseline.biodome_calls == ["ci github-app-token --repository agent-skills --permission actions=write"]
+    assert [c.split(" --jq")[0] for c in baseline.calls] == [f"api repos/{REPOSITORY}/actions/workflows/capture-baseline.yml"]
+    assert "nothing was dispatched" in baseline.stdout
+    assert not writes_made(baseline)
+
+
+# ── The rehearsal's report ───────────────────────────────────────────────────────────────────────
+
+SUMMARY_JOBS = ("RESOLVE", "VALIDATE", "DRAFT", "MARKETPLACE", "PUBLISH", "BASELINE")
+
+
+def run_summary(tmp_path, **env):
+    summary = tmp_path / "summary.md"
+    summary.write_text("")
+    base = {"RELEASE_TAG": TAG, "RELEASE_SHA": "a" * 40, "ORDER": "newer", "RELEASE_STATE": "missing",
+            "PREVIOUS_RELEASE": "v9.8.5", **{f"RESULT_{job}": "success" for job in SUMMARY_JOBS}}
+    proc = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c",
+                           steps_of(PUBLISH, "rehearsal-summary")["Report the rehearsal"]["run"]],
+                          env={**os.environ, "GITHUB_STEP_SUMMARY": str(summary), **base, **env},
+                          capture_output=True, text=True, timeout=60, check=False)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == summary.read_text(), "the log and the run summary differ"
+    return summary.read_text()
+
+
+PLAIN = ("**This was a rehearsal. Nothing was pushed to the marketplace, no GitHub Release was created or "
+         "published, and no baseline was dispatched.**")
+
+
+def test_the_summary_says_it_was_a_rehearsal_and_what_a_real_run_would_do(tmp_path):
+    text = run_summary(tmp_path)
+    assert text.startswith(f"## Publish release {TAG}: rehearsal\n") and PLAIN in text
+    assert "Release order against the marketplace pin: **newer**" in text
+    assert f'- push the sync commit "chore: sync agent-skills {TAG}" to marketplace main' in text
+    assert (f"- draft the GitHub Release with notes since v9.8.5, publish it after the marketplace push, "
+            f"then dispatch Capture Eval Baseline for {TAG}") in text
+    assert "| Role, marketplace token and sync into the scratch clone | success |" in text
+
+    text = run_summary(tmp_path, ORDER="current", RELEASE_STATE="draft")
+    assert f"- push nothing to the marketplace: it already has {TAG}" in text
+    assert f"- publish the existing draft GitHub Release, then dispatch Capture Eval Baseline for {TAG}" in text
+
+    text = run_summary(tmp_path, ORDER="current", RELEASE_STATE="published")
+    assert "- leave the GitHub Release as it is, because it is already published, and not dispatch the baseline" in text
+    assert "dispatch Capture Eval Baseline" not in text
+
+
+def test_the_summary_for_an_older_tag_says_a_real_run_publishes_nothing(tmp_path):
+    text = run_summary(tmp_path, ORDER="older", RESULT_DRAFT="skipped", RESULT_MARKETPLACE="skipped",
+                       RESULT_PUBLISH="skipped", RESULT_BASELINE="skipped", RELEASE_STATE="")
+    assert PLAIN in text
+    assert f"- publish nothing: the marketplace already has a newer release than {TAG}" in text
+    assert "GitHub Release" not in text.split("A real run of")[1]
+
+
+def test_the_summary_of_a_failed_rehearsal_says_so_and_promises_nothing(tmp_path):
+    text = run_summary(tmp_path, RESULT_MARKETPLACE="failure", RESULT_PUBLISH="skipped", RESULT_BASELINE="skipped",
+                       ORDER="newer")
+    assert "**This rehearsal failed." in text and "A real run would have failed in the same place." in text
+    assert "was a rehearsal" not in text and "A real run of" not in text
+    assert "| Role, marketplace token and sync into the scratch clone | failure |" in text
+    text = run_summary(tmp_path, RELEASE_TAG="", RELEASE_SHA="", RESULT_RESOLVE="failure", RESULT_VALIDATE="skipped",
+                       ORDER="")
+    assert "## Publish release (tag not resolved): rehearsal" in text and "This rehearsal failed" in text

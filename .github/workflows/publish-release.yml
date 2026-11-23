@@ -1,4 +1,5 @@
 name: Publish release
+run-name: Publish release ${{ inputs.tag }}${{ inputs.rehearsal && ' (rehearsal)' || '' }}
 concurrency:
   # Every publish updates the same marketplace main. Serialize publishes and their retries.
   group: agent-skills-publish
@@ -11,6 +12,11 @@ on:
         description: 'The release tag to publish, such as v2.7.9. It must exist and be on main.'
         required: true
         type: string
+      rehearsal:
+        description: 'Rehearse only: do everything but push to the marketplace, create or publish a GitHub Release, or start the baseline.'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -33,6 +39,13 @@ permissions:
 # is assumed, and the marketplace token minted, only after the marketplace's own tests and installers
 # have run and the commit exists; the token is used only by a push from a pristine repository. A push
 # that loses a race to another marketplace commit is re-run, not rebased.
+#
+# With `rehearsal` on, the run does everything that can fail for real reasons (resolve, validate, export,
+# the role, the marketplace token, the sync into the scratch clone, the release lookups, the baseline
+# token) and skips the four steps that write: the marketplace push, drafting the GitHub Release,
+# publishing it, and dispatching the baseline. Each of those steps has `!inputs.rehearsal` in its
+# `if`; the steps that stand in for them in a rehearsal only read. The last job reports what a real run
+# would have done.
 #
 # Every job runs on the agent-skills runner: this repo is public, and the biodome-ci-* runners live in a
 # runner group that does not serve public repositories. That image has no `gh`, so the jobs that call it
@@ -92,6 +105,7 @@ jobs:
         run: |
           value="$(python3 scripts/ci/marketplace_release_order.py "$RUNNER_TEMP/marketplace/sources.json" "$RELEASE_TAG" "$RELEASE_SHA")"
           echo "value=$value" >> "$GITHUB_OUTPUT"
+          echo "Release order of ${RELEASE_TAG} against the marketplace pin: ${value}"
           if [ "$value" = older ]; then
             echo "::warning::Marketplace already has a newer release than ${RELEASE_TAG}; this run publishes nothing"
           fi
@@ -140,6 +154,9 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+    outputs:
+      exists: ${{ steps.lookup.outputs.exists }}
+      previous: ${{ steps.lookup.outputs.previous }}
     env:
       RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
       RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
@@ -156,20 +173,30 @@ jobs:
         run: python3 scripts/ci/release_tag.py verify
       - name: Install the GitHub CLI
         run: bash scripts/ci/install-gh.sh
-      - name: Draft the GitHub Release
+      - name: Look up the GitHub Release
+        id: lookup
         run: |
           # The API list includes drafts, which `gh release view <tag>` does not find.
           existing="$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\") | .id")"
           if [ -n "$existing" ]; then
             echo "GitHub Release already exists for ${RELEASE_TAG}"
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          echo 'exists=false' >> "$GITHUB_OUTPUT"
           # Every merge makes a tag, but only a published tag gets a release. The notes cover
           # everything since the last release, not only the last merge.
-          args=(--draft --verify-tag --target "$RELEASE_SHA" --title "$RELEASE_TAG" --generate-notes)
           previous="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>/dev/null || true)"
-          if [ -n "$previous" ]; then
-            args+=(--notes-start-tag "$previous")
+          echo "previous=${previous}" >> "$GITHUB_OUTPUT"
+          echo "Release notes start at ${previous:-the first commit}"
+      - name: Draft the GitHub Release
+        if: ${{ !inputs.rehearsal && steps.lookup.outputs.exists != 'true' }}
+        env:
+          PREVIOUS_RELEASE: ${{ steps.lookup.outputs.previous }}
+        run: |
+          args=(--draft --verify-tag --target "$RELEASE_SHA" --title "$RELEASE_TAG" --generate-notes)
+          if [ -n "$PREVIOUS_RELEASE" ]; then
+            args+=(--notes-start-tag "$PREVIOUS_RELEASE")
           fi
           gh release create "$RELEASE_TAG" "${args[@]}"
 
@@ -184,6 +211,7 @@ jobs:
       actions: read
       id-token: write
     outputs:
+      order: ${{ steps.order.outputs.value }}
       published: ${{ steps.push.outputs.published || steps.older.outputs.published }}
     env:
       CI_ROLES: ${{ vars.CI_ROLES }}
@@ -276,12 +304,35 @@ jobs:
         run: |
           biodome-rs aws assume ci-deploy-preprod --profile deploy --source oidc
           echo "AWS_PROFILE=deploy" >> "$GITHUB_ENV"
+      # What a rehearsal does in place of the push: the same token, minted the same way, and the same new
+      # repository, hardened the same way. The token only reads here (ls-remote) and asks the marketplace
+      # whether it would take the push (--dry-run sends nothing), so the run proves the App can write
+      # the marketplace without writing it.
+      - name: Rehearse the marketplace push
+        if: ${{ inputs.rehearsal && steps.order.outputs.value != 'older' }}
+        run: |
+          export GIT_CONFIG_COUNT=4
+          export GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null
+          export GIT_CONFIG_KEY_1=core.fsmonitor GIT_CONFIG_VALUE_1=false
+          export GIT_CONFIG_KEY_2=credential.helper GIT_CONFIG_VALUE_2=
+          export GIT_CONFIG_KEY_3=commit.gpgsign GIT_CONFIG_VALUE_3=false
+          export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1
+          push="$RUNNER_TEMP/marketplace-push"
+          token="$(biodome ci github-app-token --repository agent-skills-marketplace --permission contents=write)"
+          echo "::add-mask::$token"
+          git ls-remote "https://x-access-token:${token}@github.com/stackhawk/agent-skills-marketplace.git" refs/heads/main
+          if [ -d "$push" ]; then
+            git -C "$push" push --dry-run "https://x-access-token:${token}@github.com/stackhawk/agent-skills-marketplace.git" FETCH_HEAD:refs/heads/main
+            echo "Rehearsal: marketplace main would take the sync commit for ${RELEASE_TAG}; nothing was pushed"
+          else
+            echo "Rehearsal: marketplace already contains ${RELEASE_TAG}; there is nothing to push"
+          fi
       # The App's token replaces the retired Terraform GitHub token. It writes the marketplace repo
       # only, and exists only while this push runs: never in GITHUB_ENV, never written into any git
       # config (the push goes to the URL), and only ever used by a push from the new repository.
       - name: Push marketplace sync to main
         id: push
-        if: steps.order.outputs.value != 'older'
+        if: steps.order.outputs.value != 'older' && !inputs.rehearsal
         run: |
           export GIT_CONFIG_COUNT=4
           export GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null
@@ -314,8 +365,10 @@ jobs:
           fi
           echo 'published=true' >> "$GITHUB_OUTPUT"
 
+  # In a rehearsal this job runs when a real run would reach it (the tag is not older than the pin), to
+  # look the release up; it publishes nothing.
   publish-release:
-    if: github.ref == 'refs/heads/main' && needs.update-marketplace.outputs.published == 'true'
+    if: github.ref == 'refs/heads/main' && (needs.update-marketplace.outputs.published == 'true' || (inputs.rehearsal && needs.update-marketplace.outputs.order != 'older'))
     needs: [resolve, update-marketplace]
     runs-on: agent-skills-amd-4cpu
     timeout-minutes: 10
@@ -323,6 +376,7 @@ jobs:
       contents: write
     outputs:
       newly: ${{ steps.publish.outputs.newly }}
+      state: ${{ steps.lookup.outputs.state }}
     env:
       RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
       RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
@@ -339,28 +393,46 @@ jobs:
         run: python3 scripts/ci/release_tag.py verify
       - name: Install the GitHub CLI
         run: bash scripts/ci/install-gh.sh
-      - name: Publish the GitHub Release
-        id: publish
+      - name: Look up the GitHub Release
+        id: lookup
         run: |
           release="$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\") | \"\\(.id) \\(.draft)\"")"
           if [ -z "$release" ]; then
+            state=missing
+          elif [ "${release#* }" = false ]; then
+            state=published
+          else
+            state=draft
+          fi
+          echo "GitHub Release ${RELEASE_TAG}: ${state}"
+          echo "state=${state}" >> "$GITHUB_OUTPUT"
+          echo "id=${release% *}" >> "$GITHUB_OUTPUT"
+      - name: Publish the GitHub Release
+        id: publish
+        if: ${{ !inputs.rehearsal }}
+        env:
+          RELEASE_STATE: ${{ steps.lookup.outputs.state }}
+          RELEASE_ID: ${{ steps.lookup.outputs.id }}
+        run: |
+          if [ "$RELEASE_STATE" = missing ]; then
             echo "ERROR: no GitHub Release for ${RELEASE_TAG}"
             exit 1
           fi
-          if [ "${release#* }" = false ]; then
+          if [ "$RELEASE_STATE" = published ]; then
             echo "GitHub Release ${RELEASE_TAG} is already published"
             exit 0
           fi
-          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release% *}" -F draft=false
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" -F draft=false
           echo 'newly=true' >> "$GITHUB_OUTPUT"
 
   # Only for a release this run published: running the tag that is already published again must not
   # capture its baseline a second time. Best effort: the release is published once the marketplace has
   # it, so a baseline that cannot be dispatched warns instead of failing the run. Dispatch Capture Eval
-  # Baseline by hand with the tag.
+  # Baseline by hand with the tag. A rehearsal runs the job to check the dispatch token and does not
+  # dispatch.
   capture-baseline:
     name: Trigger baseline capture
-    if: github.ref == 'refs/heads/main' && needs.publish-release.outputs.newly == 'true'
+    if: github.ref == 'refs/heads/main' && (needs.publish-release.outputs.newly == 'true' || inputs.rehearsal)
     needs: [resolve, publish-release]
     runs-on: agent-skills-amd-4cpu
     timeout-minutes: 10
@@ -392,10 +464,88 @@ jobs:
       - name: Install the GitHub CLI
         continue-on-error: true
         run: bash scripts/ci/install-gh.sh
+      - name: Rehearse the baseline dispatch
+        if: ${{ inputs.rehearsal }}
+        run: |
+          token="$(biodome ci github-app-token --repository "${GITHUB_REPOSITORY#*/}" --permission actions=write)"
+          echo "::add-mask::$token"
+          GH_TOKEN="$token" gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/capture-baseline.yml" --jq '"Rehearsal: capture-baseline.yml is " + .state + "; nothing was dispatched"'
       - name: Dispatch capture-baseline
+        if: ${{ !inputs.rehearsal }}
         run: |
           token="$(biodome ci github-app-token --repository "${GITHUB_REPOSITORY#*/}" --permission actions=write)"
           echo "::add-mask::$token"
           if ! GH_TOKEN="$token" gh workflow run capture-baseline.yml -f tag="$RELEASE_TAG"; then
             echo "::warning::could not dispatch capture-baseline.yml for ${RELEASE_TAG}; run it by hand"
           fi
+
+  # A rehearsal's report: what ran, and what a real run would have done. It runs whether or not the
+  # rehearsal passed, and only for a rehearsal.
+  rehearsal-summary:
+    name: Rehearsal summary
+    if: github.ref == 'refs/heads/main' && always() && inputs.rehearsal
+    needs: [resolve, validate, draft-release, update-marketplace, publish-release, capture-baseline]
+    runs-on: agent-skills-amd-4cpu
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+      RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
+      ORDER: ${{ needs.update-marketplace.outputs.order || needs.validate.outputs.order }}
+      RELEASE_STATE: ${{ needs.publish-release.outputs.state }}
+      PREVIOUS_RELEASE: ${{ needs.draft-release.outputs.previous }}
+      RESULT_RESOLVE: ${{ needs.resolve.result }}
+      RESULT_VALIDATE: ${{ needs.validate.result }}
+      RESULT_DRAFT: ${{ needs.draft-release.result }}
+      RESULT_MARKETPLACE: ${{ needs.update-marketplace.result }}
+      RESULT_PUBLISH: ${{ needs.publish-release.result }}
+      RESULT_BASELINE: ${{ needs.capture-baseline.result }}
+    steps:
+      - name: Report the rehearsal
+        run: |
+          failed=
+          for result in "$RESULT_RESOLVE" "$RESULT_VALIDATE" "$RESULT_DRAFT" "$RESULT_MARKETPLACE" "$RESULT_PUBLISH" "$RESULT_BASELINE"; do
+            case "$result" in failure|cancelled) failed=yes ;; esac
+          done
+          {
+            echo "## Publish release ${RELEASE_TAG:-(tag not resolved)}: rehearsal"
+            echo
+            if [ -n "$failed" ]; then
+              echo "**This rehearsal failed. Nothing was pushed to the marketplace, no GitHub Release was created or published, and no baseline was dispatched.** A real run would have failed in the same place."
+            else
+              echo "**This was a rehearsal. Nothing was pushed to the marketplace, no GitHub Release was created or published, and no baseline was dispatched.**"
+            fi
+            echo
+            echo "| Job | Rehearsal result |"
+            echo "| --- | --- |"
+            echo "| Resolve and verify the tag | ${RESULT_RESOLVE} |"
+            echo "| Validate and export the tag commit | ${RESULT_VALIDATE} |"
+            echo "| Look up the GitHub Release | ${RESULT_DRAFT} |"
+            echo "| Role, marketplace token and sync into the scratch clone | ${RESULT_MARKETPLACE} |"
+            echo "| Look up the GitHub Release again | ${RESULT_PUBLISH} |"
+            echo "| Baseline dispatch token | ${RESULT_BASELINE} |"
+            echo
+            if [ -z "$failed" ]; then
+              echo "Release order against the marketplace pin: **${ORDER:-unknown}**. A real run of ${RELEASE_TAG} (${RELEASE_SHA}) would:"
+              echo
+              case "$ORDER" in
+                older)
+                  echo "- publish nothing: the marketplace already has a newer release than ${RELEASE_TAG}" ;;
+                current)
+                  echo "- push nothing to the marketplace: it already has ${RELEASE_TAG}" ;;
+                *)
+                  echo "- push the sync commit \"chore: sync agent-skills ${RELEASE_TAG}\" to marketplace main" ;;
+              esac
+              if [ "$ORDER" != older ]; then
+                case "$RELEASE_STATE" in
+                  published)
+                    echo "- leave the GitHub Release as it is, because it is already published, and not dispatch the baseline" ;;
+                  draft)
+                    echo "- publish the existing draft GitHub Release, then dispatch Capture Eval Baseline for ${RELEASE_TAG}" ;;
+                  *)
+                    echo "- draft the GitHub Release with notes since ${PREVIOUS_RELEASE:-the first commit}, publish it after the marketplace push, then dispatch Capture Eval Baseline for ${RELEASE_TAG}" ;;
+                esac
+              fi
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
