@@ -487,7 +487,6 @@ permissions:
   security-events: write   # Required to upload SARIF
 steps:
   - uses: stackhawk/hawkscan-action@v3
-    continue-on-error: true
     with:
       apiKey: ${{ secrets.HAWK_API_KEY }}
       args: |
