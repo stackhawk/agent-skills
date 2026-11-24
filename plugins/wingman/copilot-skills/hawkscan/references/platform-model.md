@@ -38,7 +38,7 @@ The long-lived object representing "the thing you're scanning." Each App:
 
 - Has a stable UUID (shown as `applicationId` in configs, APIs, everywhere)
 - Has a name (human-readable — used for `hawk op app list` lookups)
-- Has a team ownership assignment
+- Belongs to a team, or to none (see "Choosing a team for a new App")
 - Has **technology flags** that shape scan rule selection (see §5)
 - Is scanned across one or more Environments
 
