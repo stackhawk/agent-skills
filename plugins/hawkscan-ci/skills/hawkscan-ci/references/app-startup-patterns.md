@@ -72,7 +72,7 @@ jobs:
           --health-retries 12
     steps:
       - uses: actions/checkout@v4
-      - uses: stackhawk/hawkscan-action@v2.5.0
+      - uses: stackhawk/hawkscan-action@v3
         with:
           apiKey: ${{ secrets.HAWK_API_KEY }}
 ```
@@ -135,7 +135,7 @@ If the pipeline deploys to an ephemeral environment before scanning (preview URL
 
 ```yaml
 - name: Run HawkScan against preview
-  uses: stackhawk/hawkscan-action@v2.5.0
+  uses: stackhawk/hawkscan-action@v3
   env:
     APP_HOST: ${{ steps.deploy.outputs.preview_url }}
   with:

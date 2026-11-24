@@ -6,7 +6,7 @@ This reference covers the four ways CI pipelines invoke HawkScan, per-provider q
 
 | Tier | Mechanism | Pros | Cons | When to use |
 |---|---|---|---|---|
-| **1. Native action** | `stackhawk/hawkscan-action@vX.Y.Z` | Richest input surface (SARIF upload, PR comments, Code Scanning, `commitShaCheck`, multi-file overlays). One-line invocation. Network plumbing for localhost handled automatically. | GitHub Actions only. | GitHub Actions runners. |
+| **1. Native action** | `stackhawk/hawkscan-action@vX.Y.Z` | Richest input surface (SARIF upload, PR comments, Code Scanning via `--sarif-ghas`, `commitShaCheck`, multi-file overlays). One-line invocation. Network plumbing for localhost handled automatically. | GitHub Actions only. | GitHub Actions runners. |
 | **2. Azure extension** | StackHawk Azure Extension (Marketplace) | GUI task in the Azure task library; wraps the same Docker invocation. | Azure Pipelines only. | Azure Pipelines teams that prefer task-library installs. |
 | **3. Install script** | `curl -fsSL https://download.stackhawk.com/hawk/install.sh \| sh`, then `export PATH="$HOME/.local/bin:$PATH"` | No Docker required. Lightest footprint. **Self-contained binary — no Java needed.** Run with its defaults. | The script leaves PATH alone in CI, so a PATH line must follow it. Slower bootstrap than image pull on warm cache. | Every provider without a native tier — GitLab, Jenkins, CircleCI, Bitbucket, Buildkite, Travis, AWS CodeBuild — and Azure Pipelines when the extension doesn't fit. |
 | **4. Docker image** | `docker run stackhawk/hawkscan:latest` | Works in any runner with Docker. Same binary as production scans. `:latest` tracks the newest stable scanner. | Networking-to-localhost requires `--network host` (Linux) or `host.docker.internal` (Mac/Windows runners). DinD setup on GitLab. | Fallback: container-only runners, or when the user asks for Docker. The only option on Kubernetes, ArgoCD and other Kube-native platforms. |
@@ -18,7 +18,7 @@ This reference covers the four ways CI pipelines invoke HawkScan, per-provider q
 | Mechanism | Recommended | Notes |
 |---|---|---|
 | Scanner image | `stackhawk/hawkscan:latest` | Newest stable scanner — best detection coverage. |
-| Native action | `stackhawk/hawkscan-action@v2` | Major pin auto-receives the newest action within v2. |
+| Native action | `stackhawk/hawkscan-action@v3` | Major pin auto-receives the newest action within v3. |
 | Install script | `install.sh` with its defaults | Installs the current stable single-binary CLI. |
 
 **If your org mandates fully reproducible builds**, pin an explicit version instead — `stackhawk/hawkscan:<X.Y.Z>` (resolve the current via the version endpoint), `stackhawk/hawkscan-action@vX.Y.Z`, or an image digest (`stackhawk/hawkscan@sha256:...`, bumped via Dependabot/Renovate). The tradeoff is that a frozen scanner won't pick up newly-added checks until you bump it.
@@ -29,7 +29,7 @@ This reference covers the four ways CI pipelines invoke HawkScan, per-provider q
 
 **Secret:** `gh secret set HAWK_API_KEY` (interactive paste), or **Settings → Secrets and variables → Actions → New repository secret**.
 
-**Recommended execution shape:** native action (`stackhawk/hawkscan-action@v2.5.0`).
+**Recommended execution shape:** native action (`stackhawk/hawkscan-action@v3`).
 
 **Minimal job block:**
 
@@ -42,7 +42,7 @@ jobs:
       - name: Start app
         run: docker compose up -d
       - name: Run HawkScan
-        uses: stackhawk/hawkscan-action@v2.5.0
+        uses: stackhawk/hawkscan-action@v3
         env:
           COMMIT_SHA: ${{ github.sha }}
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
@@ -479,4 +479,21 @@ For Bamboo, Concourse, Harness, Spinnaker, and other providers not listed above,
 
 ## Code Scanning / SARIF Upload (GitHub Actions only)
 
-The `stackhawk/hawkscan-action` supports SARIF upload to GitHub Code Scanning via `codeScanningAlerts: true` + the `githubToken` input. Opt-in only; not enabled by default. See the action's [README](https://github.com/stackhawk/hawkscan-action) for details. This skill does not add the input automatically — the user can enable it post-write.
+The v3 `stackhawk/hawkscan-action` deprecates its `codeScanningAlerts` input. To raise one GitHub Code Scanning alert per finding, pass `--sarif-ghas` (HawkScan 6.6.0 and later) in `args`, then upload `stackhawk-ghas.sarif` with `github/codeql-action/upload-sarif`. Opt-in only; not enabled by default. See the action's [README](https://github.com/stackhawk/hawkscan-action) for details. This skill does not add these steps automatically — the user can enable them post-write.
+
+```yaml
+permissions:
+  contents: read
+  security-events: write   # Required to upload SARIF
+steps:
+  - uses: stackhawk/hawkscan-action@v3
+    with:
+      apiKey: ${{ secrets.HAWK_API_KEY }}
+      args: |
+        --sarif-ghas
+  - uses: github/codeql-action/upload-sarif@v4
+    if: always()
+    with:
+      sarif_file: stackhawk-ghas.sarif
+      category: stackhawk
+```
