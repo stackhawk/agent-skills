@@ -62,7 +62,7 @@ The `api` skill wraps read-only StackHawk platform lookups via the `hawk` CLI (`
 | Check if Env exists           | `hawk op env list --app <NAME\|UUID> --format json`                               |
 | Get findings with triage      | `hawk op scan get --app <NAME\|UUID> --detail full --format json`                 |
 | List ASM repos                | `hawk op repo list --format json`                                                 |
-| Link app to ASM repo          | `hawk op repo link --repo-id <ID> --app-id <ID>`                                  |
+| Link app to ASM repo          | `hawk op repo link --repo <BARE_NAME> --app-id <ID>` (6.7.4+)                     |
 | Get tech flags                | `hawk op app tech-flags get --app <NAME\|UUID> --format json`                     |
 | Disable all tech flags        | `hawk op app tech-flags disable-all --app <NAME\|UUID> --yes`                     |
 | Set specific tech flags       | `hawk op app tech-flags set --app <NAME\|UUID> Key=true`                          |
@@ -119,11 +119,12 @@ Run Phase 0 whenever a `stackhawk.yml` is being **created** — a new applicatio
 app with a fresh config. Do NOT run on every scan (0a/0b are idempotent; 0c is non-destructive).
 
 **Phase 0a — Repo Linking:** Associate the app with its source repo in Attack Surface
-Management. Get the git remote URL, normalize it (lowercase, strip `.git`, strip host prefix
-to `owner/repo`), match against `hawk op repo list --format json` output, and run
-`hawk op repo link --repo-id <UUID> --app-id <UUID>`. If no match, inject a `git_origin` tag
-into `stackhawk.yml`.
-→ Full normalization rules and SSH/HTTPS edge cases: [`references/repo-linking.md`](references/repo-linking.md)
+Management. Reduce the git remote to `owner/repo`, take the last segment as the bare repo
+name, and run `hawk op repo link --repo <BARE_NAME> --app-id <UUID>` (exit 0 means linked).
+On "Ambiguous", link the `hawk op repo list --format json` row whose `git_org/name` equals
+`owner/repo` with `--repo-id <row.id>`. On "No repository found", or hawk older than 6.7.4
+(print a one-line upgrade note), inject a `git_origin` tag into `stackhawk.yml`.
+→ Version guard, full normalization rules and SSH/HTTPS edge cases: [`references/repo-linking.md`](references/repo-linking.md)
 
 **Phase 0b — Agent Tagging:** Add the `_STACKHAWK_AGENT` tag to `stackhawk.yml` once if missing:
 ```yaml
