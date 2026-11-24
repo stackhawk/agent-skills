@@ -192,11 +192,11 @@ strategy, frontend-vs-backend scenarios, and config templates:
    `_` and `-` equivalent). Exactly one match → use its `applicationId`. Multiple matches →
    pick by host if established, else surface to user. No match → check teams, then create.
    **Team:** `hawk op team list --format json` (`.data[]`: `id`, `name`; the teams you can put the app on). 0 or 1 team, or 2+ headless (no one can answer) → omit
-   `--team-id`. 2+ and someone can answer → ask which, listing the names plus "No team (visible to the whole org)".
+   `--team-id`. 2+ and someone can answer → ask which, listing the names plus a "Don't pick a team" option (full label in the Detail link below).
    ```bash
    hawk create app --name "<repo-name>" --env <env-name> [--team-id <team-id>]
    ```
-   HTTP 400 naming `teamId` (the caller is on several teams and must pick one) → explain and ask again without "No team"; headless →
+   HTTP 400 naming `teamId` (the caller is on several teams and must pick one) → explain and ask again without "Don't pick a team"; headless →
    stop and report the choices, never guess. "Invalid team ID provided" → explain and ask; never retry blindly. Team list
    failed → create without one; on the `teamId` 400, tell the user to pass a team ID. Detail: [`references/platform-model.md`](references/platform-model.md#choosing-a-team-for-a-new-app)
    Resolve `<env-name>` with the Env Name Algorithm above. Read the new app's team back (same section), then announce `StackHawk | Created app <name> (<appId>) on team <team|none> - <url>`; team unknown → drop "on team", never claim the whole org can see it.

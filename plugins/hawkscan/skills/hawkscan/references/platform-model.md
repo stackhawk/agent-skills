@@ -386,7 +386,7 @@ your own teams; with it you see every org team and may create into any of them.
 | Teams in `data` | Create with |
 |-----------------|-------------|
 | 0 or 1 | `hawk create app --name "<app-name>" --env <env-name>` (no `--team-id`) |
-| 2+, someone can answer | Ask which team, listing the names plus "No team (visible to the whole org)"; then `... --team-id <chosen-team-id>`, or no `--team-id` for No team |
+| 2+, someone can answer | Ask which team, listing the names plus "Don't pick a team (you'll get your only team if you're on exactly one; otherwise the app has no team and the whole org can see it)"; then `... --team-id <chosen-team-id>`, or no `--team-id` for "Don't pick a team" |
 | 2+, headless (CI, autonomous run with no one to answer) | No `--team-id`, so keys with the team-write permission keep working; on the `teamId` 400, see below |
 
 **Announcing the team.** `hawk create app` does not print the team, and
@@ -409,7 +409,7 @@ exactly one.
 
 - **HTTP 400 that mentions `teamId`** — the caller is on several teams and
   must pick one. Interactive: explain that and ask which team again, this
-  time without the No team option. Headless: stop and report the team names
+  time without the "Don't pick a team" option. Headless: stop and report the team names
   and IDs, and that a team must be chosen before the App can be created.
   Never pick one.
 - **`Invalid team ID provided`** — `hawk create app` checked `--team-id`
