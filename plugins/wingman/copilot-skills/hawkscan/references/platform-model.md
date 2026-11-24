@@ -358,17 +358,19 @@ Is there an existing App for this codebase?
 │   │                               ├── One survives  ──► REUSE
 │   │                               └── Still ambiguous ──► Ask the user
 │   │
-│   └── No name match          ──► CREATE (`hawk create app`) on the team
-│                                   chosen below. Announce the
+│   └── No name match          ──► CREATE (`hawk create app`) after the
+│                                   team check below. Announce the
 │                                   details-settings URL for tech flag setup.
 ```
 
 ### Choosing a team for a new App
 
 A member without the team-write permission who belongs to two or more teams
-cannot create an App without naming a team: the API returns HTTP 400 and
-creates nothing. A creator on exactly one team gets the App on that team. So
-resolve the team before every `hawk create app`:
+cannot create an App without naming a team: the API returns HTTP 400 naming
+`teamId` and creates nothing. A creator on exactly one team who names no team
+gets the App on that team. Owners and admins can always create without a team.
+So check the teams before every `hawk create app`, but send `--team-id` only
+when someone chose a team:
 
 ```bash
 hawk op team list --format json
@@ -377,29 +379,32 @@ hawk op team list --format json
 
 The JSON is `{"data": [{"id", "name", "users", "apps"}, ...], "meta": {...}}`.
 Parse from the first `{` — a "skills out of date" banner may precede it. The
-list is already scoped to the caller: a member sees only their own teams; an
-owner or admin, who can create into any team, sees all of them.
+list is scoped to the caller: a member sees only their own teams; an owner or
+admin sees every org team.
 
 | Teams in `data` | Create with | Tell the user |
 |-----------------|-------------|---------------|
-| 0 | `hawk create app --name "<app-name>" --env <env-name>` (no `--team-id`) | The App has no team, so the whole org can see it |
-| 1 | `... --team-id <that-team-id>` | Which team it went on |
-| 2+, someone can answer | Ask which team, listing the names; then `... --team-id <chosen-team-id>` | Which team it went on |
-| 2+, headless (CI, autonomous run with no one to answer) | Nothing — stop | The team names and IDs, and that a team must be chosen before the App can be created. Never pick one |
+| 0 or 1 | `hawk create app --name "<app-name>" --env <env-name>` (no `--team-id`) | The team the App landed on if the output shows one; otherwise that it has no team, so the whole org can see it |
+| 2+, someone can answer | Ask which team, listing the names plus "No team (visible to the whole org)"; then `... --team-id <chosen-team-id>`, or no `--team-id` for No team | The chosen team, or that the whole org can see it |
+| 2+, headless (CI, autonomous run with no one to answer) | No `--team-id`, so owner and admin keys keep working | As for 0 or 1; on the `teamId` 400, see below |
 
 **Failures — never retry blindly:**
 
+- **HTTP 400 that mentions `teamId`** — the caller is a member on several
+  teams and must pick one. Interactive: explain that and ask which team again,
+  this time without the No team option. Headless: stop and report the team
+  names and IDs, and that a team must be chosen before the App can be
+  created. Never pick one.
 - **`Invalid team ID provided`** — `hawk create app` checked `--team-id`
-  against your own teams and refused it; no App was created. Explain, list
-  the teams again, and ask. Do not retry the same ID or switch to another
-  team on your own.
-- **HTTP 400 that mentions `teamId`** — the server requires a team for this
-  user. Explain and ask which team, as for 2+ teams.
+  against `GET /org/{org}/user/{user}/teams` and refused it; no App was
+  created. That endpoint returns a member's own teams, and every org team for
+  an owner or admin, so any team from `hawk op team list` passes unless
+  membership changed. Explain, list the teams again, and ask. Do not retry the
+  same ID or switch to another team on your own.
 - **`hawk op team list` itself fails** (for example a permission error for a
-  scan-only service-account key) — create without `--team-id`, as before
-  teams were required. If that returns the `teamId` 400, stop and tell the
-  user to pass a team ID (the StackHawk UI, or `hawk op team list` run with
-  their own credentials, shows it).
+  scan-only service-account key) — create without `--team-id`. If that returns
+  the `teamId` 400, stop and tell the user to pass a team ID (the StackHawk UI,
+  or `hawk op team list` run with their own credentials, shows it).
 
 Credentials come from the same place as every other `hawk` call
 (`~/.hawk/hawk.properties`, or the `API_KEY=$HAWK_API_KEY` prefix in a

@@ -88,7 +88,7 @@ app:
     filePath: ./openapi.json
 ```
 
-Create both apps in the StackHawk platform (`hawk create app`, each on a team chosen as in
+Create both apps in the StackHawk platform (`hawk create app`, each after the team check in
 SKILL.md Step 1c) and run scans independently.
 
 ---

@@ -197,18 +197,20 @@ hawk create app
 
 # Non-interactive (agent/script use - required for autonomous operation)
 hawk op team list --format json          # teams you can create into: .data[].id / .data[].name
-hawk create app --name "<app-name>" --env <env-name> --team-id <team-id>
+hawk create app --name "<app-name>" --env <env-name> [--team-id <team-id>]
 ```
 
 **Important for agents:** Always use the non-interactive form. The interactive prompt
 blocks execution and cannot be answered programmatically.
 
-**Pick the team first** (SKILL.md Step 1c, substep 5): omit `--team-id` only when the
-team list is empty or the list command itself fails; with two or more teams, ask the
-user which one (headless: stop and report the choices). `-t/--team-id` is checked
-against your own teams before anything is created, so "Invalid team ID provided" means
-no app was created. A member on two or more teams who omits it gets an HTTP 400 naming
-`teamId`, also with no app created. Never retry either blindly; explain and ask.
+**Team** (SKILL.md Step 1c, substep 5): omit `--team-id` when the team list has 0 or 1
+team, when the run is headless, or when the list command itself fails. With two or more
+teams and someone to answer, ask which one, offering "No team (visible to the whole org)"
+too. `-t/--team-id` is checked against the teams `GET /org/{org}/user/{user}/teams`
+returns (a member's own teams; every org team for an owner or admin) before anything is
+created, so "Invalid team ID provided" means no app was created. A member on two or more
+teams who omits it gets an HTTP 400 naming `teamId`, also with no app created. Never
+retry either blindly; explain and ask (headless: stop and report the choices).
 
 ---
 

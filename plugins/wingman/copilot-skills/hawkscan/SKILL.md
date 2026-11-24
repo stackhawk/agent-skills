@@ -190,16 +190,16 @@ strategy, frontend-vs-backend scenarios, and config templates:
 4. **Runtime?** Check `which hawk`. If found: use CLI. If not: check `docker --version`. If both absent: see `references/installation.md`.
 5. **App exists?** Run `hawk op app list --format json`. Match by name (normalized: lowercased,
    `_` and `-` equivalent). Exactly one match → use its `applicationId`. Multiple matches →
-   pick by host if established, else surface to user. No match → choose a team, then create.
-   **Team:** `hawk op team list --format json` lists the teams you can create into (`.data[]`: `id`, `name`).
-   0 teams → omit `--team-id`; say the app has no team, so the whole org can see it. 1 → use it; say which.
-   2+ → ask which, listing the names; headless (no one can answer) → stop and report the choices, never guess.
+   pick by host if established, else surface to user. No match → check teams, then create.
+   **Team:** `hawk op team list --format json` (`.data[]`: `id`, `name`). 0 or 1 team, or 2+ headless (no one can answer) → omit
+   `--team-id`. 2+ and someone can answer → ask which, listing the names plus "No team (visible to the whole org)".
    ```bash
-   hawk create app --name "<repo-name>" --env <env-name> --team-id <team-id>
+   hawk create app --name "<repo-name>" --env <env-name> [--team-id <team-id>]
    ```
-   Team refused ("Invalid team ID provided", or a 400 naming `teamId`) → explain and ask again, never retry
-   blindly. Team list failed → create without one. Detail: [`references/platform-model.md`](references/platform-model.md#choosing-a-team-for-a-new-app)
-   Resolve `<env-name>` with the Env Name Algorithm above. Announce: `StackHawk | Created app <name> (<appId>) on team <team-name|none> - <url>`.
+   HTTP 400 naming `teamId` (a member on several teams must pick one) → explain and ask again without "No team"; headless →
+   stop and report the choices, never guess. "Invalid team ID provided" → explain and ask; never retry blindly. Team list
+   failed → create without one; on the `teamId` 400, tell the user to pass a team ID. Detail: [`references/platform-model.md`](references/platform-model.md#choosing-a-team-for-a-new-app)
+   Resolve `<env-name>` with the Env Name Algorithm above. Announce: `StackHawk | Created app <name> (<appId>) on team <team|none> - <url>` (the chosen team, or the one the output shows; none → say the whole org can see it).
 6. **Env exists?** Determine env name via Env Name Algorithm. Run
    `hawk op env list --app <APP_ID> --format json`. Reuse if exists; otherwise run
    `hawk op env create --app <APP_ID> --env <name> --host <url>`.
