@@ -44,7 +44,7 @@ Three valid integration modes:
 
 ```yaml
 # GitHub Actions
-- uses: stackhawk/hawkscan-action@v2.5.0
+- uses: stackhawk/hawkscan-action@v3
   with:
     apiKey: ${{ secrets.HAWK_API_KEY }}
 # (exit 42 naturally fails the step)
@@ -96,7 +96,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: stackhawk/hawkscan-action@v2.5.0
+      - uses: stackhawk/hawkscan-action@v3
         env:
           APP_HOST: https://staging.example.com
         with:

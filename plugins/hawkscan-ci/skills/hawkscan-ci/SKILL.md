@@ -167,14 +167,14 @@ Four tiers, prefer highest the provider supports:
 
 | Tier | Mechanism | When to use |
 |---|---|---|
-| 1. Native action | `stackhawk/hawkscan-action@v2` | GitHub Actions |
+| 1. Native action | `stackhawk/hawkscan-action@v3` | GitHub Actions |
 | 2. Azure extension | StackHawk Azure Extension | Azure Pipelines |
 | 3. Install script | `curl -fsSL https://download.stackhawk.com/hawk/install.sh \| sh`, then `export PATH="$HOME/.local/bin:$PATH"` | Every other provider: GitLab, Jenkins, CircleCI, Azure Pipelines (when the extension doesn't fit), Bitbucket, Buildkite, Travis, AWS CodeBuild |
 | 4. Docker image | `stackhawk/hawkscan:latest` | Fallback: container-only runners, or when the user asks for Docker; the only option on Kubernetes, ArgoCD and other Kube-native platforms |
 
 **Track the latest stable scanner:**
 - Image: use **`stackhawk/hawkscan:latest`** — HawkScan is a security scanner, so CI should run the newest stable build for the freshest checks.
-- Action: pin the major (`@v2`) — auto-receives the newest action within v2.
+- Action: pin the major (`@v3`) — auto-receives the newest action within v3.
 - CLI: run the install script as shown, with its defaults (no install environment variables). It installs the newest self-contained binary (no Java) to `~/.local/bin` and, in CI, leaves PATH alone, so follow it with a PATH line, then call plain `hawk`. Never build a download URL by hand.
 - **Need fully reproducible builds?** Pin an explicit version (`stackhawk/hawkscan:<X.Y.Z>`, `@vX.Y.Z`, or an image digest) instead — see [`references/execution-shapes.md`](references/execution-shapes.md).
 
