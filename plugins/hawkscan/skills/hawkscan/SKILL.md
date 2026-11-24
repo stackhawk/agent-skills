@@ -191,15 +191,15 @@ strategy, frontend-vs-backend scenarios, and config templates:
 5. **App exists?** Run `hawk op app list --format json`. Match by name (normalized: lowercased,
    `_` and `-` equivalent). Exactly one match → use its `applicationId`. Multiple matches →
    pick by host if established, else surface to user. No match → check teams, then create.
-   **Team:** `hawk op team list --format json` (`.data[]`: `id`, `name`). 0 or 1 team, or 2+ headless (no one can answer) → omit
+   **Team:** `hawk op team list --format json` (`.data[]`: `id`, `name`; the teams you can put the app on). 0 or 1 team, or 2+ headless (no one can answer) → omit
    `--team-id`. 2+ and someone can answer → ask which, listing the names plus "No team (visible to the whole org)".
    ```bash
    hawk create app --name "<repo-name>" --env <env-name> [--team-id <team-id>]
    ```
-   HTTP 400 naming `teamId` (a member on several teams must pick one) → explain and ask again without "No team"; headless →
+   HTTP 400 naming `teamId` (the caller is on several teams and must pick one) → explain and ask again without "No team"; headless →
    stop and report the choices, never guess. "Invalid team ID provided" → explain and ask; never retry blindly. Team list
    failed → create without one; on the `teamId` 400, tell the user to pass a team ID. Detail: [`references/platform-model.md`](references/platform-model.md#choosing-a-team-for-a-new-app)
-   Resolve `<env-name>` with the Env Name Algorithm above. Announce: `StackHawk | Created app <name> (<appId>) on team <team|none> - <url>` (the chosen team, or the one the output shows; none → say the whole org can see it).
+   Resolve `<env-name>` with the Env Name Algorithm above. Read the new app's team back (same section), then announce `StackHawk | Created app <name> (<appId>) on team <team|none> - <url>`; team unknown → drop "on team", never claim the whole org can see it.
 6. **Env exists?** Determine env name via Env Name Algorithm. Run
    `hawk op env list --app <APP_ID> --format json`. Reuse if exists; otherwise run
    `hawk op env create --app <APP_ID> --env <name> --host <url>`.
