@@ -38,7 +38,7 @@ The long-lived object representing "the thing you're scanning." Each App:
 
 - Has a stable UUID (shown as `applicationId` in configs, APIs, everywhere)
 - Has a name (human-readable — used for `hawk op app list` lookups)
-- Has a team ownership assignment
+- Belongs to a team, or to none (see "Choosing a team for a new App")
 - Has **technology flags** that shape scan rule selection (see §5)
 - Is scanned across one or more Environments
 
@@ -358,10 +358,77 @@ Is there an existing App for this codebase?
 │   │                               ├── One survives  ──► REUSE
 │   │                               └── Still ambiguous ──► Ask the user
 │   │
-│   └── No name match          ──► CREATE (`hawk create app`)
-│                                   Announce the details-settings URL for
-│                                   tech flag setup.
+│   └── No name match          ──► CREATE (`hawk create app`) after the
+│                                   team check below. Announce the
+│                                   details-settings URL for tech flag setup.
 ```
+
+### Choosing a team for a new App
+
+A caller without the team-write permission who belongs to two or more teams
+cannot create an App without naming a team: the API returns HTTP 400 naming
+`teamId` and creates nothing. A creator on exactly one team who names no team
+gets the App on that team. A caller with the team-write permission can always
+create without a team. So check the teams before every `hawk create app`, but
+send `--team-id` only when someone chose a team:
+
+```bash
+hawk op team list --format json
+# Multi-org: add --org <org-id>, the same org you pass to `hawk create app --org-id`
+```
+
+The JSON is `{"data": [{"id", "name", "users", "apps"}, ...], "meta": {...}}`.
+Parse from the first `{` — a "skills out of date" banner may precede it. The
+list shows the teams you can put the App on. Its scope depends on the
+READ_ALL_APPLICATIONS permission, not on the role name: without it you see only
+your own teams; with it you see every org team and may create into any of them.
+
+| Teams in `data` | Create with |
+|-----------------|-------------|
+| 0 or 1 | `hawk create app --name "<app-name>" --env <env-name>` (no `--team-id`) |
+| 2+, someone can answer | Ask which team, listing the names plus "Don't pick a team (you'll get your only team if you're on exactly one; otherwise the app has no team and the whole org can see it)"; then `... --team-id <chosen-team-id>`, or no `--team-id` for "Don't pick a team" |
+| 2+, headless (CI, autonomous run with no one to answer) | No `--team-id`, so keys with the team-write permission keep working; on the `teamId` 400, see below |
+
+**Announcing the team.** `hawk create app` does not print the team, and
+`hawk op app list`/`app get` carry no team field, so read the team back:
+
+| How the App was created | Team to announce |
+|-------------------------|------------------|
+| With `--team-id` | That team |
+| No `--team-id`, team list had exactly 1 team | Run `hawk op team get <that-team-id> --format json`; if the new appId is in `.data.applications[].applicationId`, that team; if it is not, none |
+| No `--team-id`, team list had 0 teams | None |
+| Anything else (team list or `team get` failed, or 2+ teams and no team chosen) | Unknown |
+
+Announce `StackHawk | Created app <name> (<appId>) on team <team> - <url>`, or
+`on team none` when it has no team. When the team is unknown, drop the team
+part and never claim the whole org can see the App: say only that it was
+created, and that the server puts it on the creator's team when they are on
+exactly one.
+
+**Failures — never retry blindly:**
+
+- **HTTP 400 that mentions `teamId`** — the caller is on several teams and
+  must pick one. Interactive: explain that and ask which team again, this
+  time without the "Don't pick a team" option. Headless: stop and report the team names
+  and IDs, and that a team must be chosen before the App can be created.
+  Never pick one.
+- **`Invalid team ID provided`** — `hawk create app` checked `--team-id`
+  against `GET /org/{org}/user/{user}/teams` and refused it; no App was
+  created. That endpoint has the same READ_ALL_APPLICATIONS scope as
+  `hawk op team list`, so any team from the list passes unless membership or
+  permissions changed. Explain, list the teams again, and ask. Do not retry
+  the same ID or switch to another team on your own.
+- **`hawk op team list` itself fails** (for example a permission error for a
+  scan-only service-account key) — create without `--team-id`. If that returns
+  the `teamId` 400, stop and tell the user to pass a team ID (the StackHawk UI,
+  or `hawk op team list` run with their own credentials, shows it).
+
+Credentials come from the same place as every other `hawk` call
+(`~/.hawk/hawk.properties`, or the `API_KEY=$HAWK_API_KEY` prefix in a
+headless session). Never put a literal API key on a command line.
+
+This applies only to creating an App. Reusing an existing App never changes
+its team.
 
 ### Environment
 

@@ -196,11 +196,23 @@ hawk download log                        # download the scan log from the last s
 hawk create app
 
 # Non-interactive (agent/script use - required for autonomous operation)
-hawk create app --name "My App" --env Development
+hawk op team list --format json          # teams you can create into: .data[].id / .data[].name
+hawk create app --name "<app-name>" --env <env-name> [--team-id <team-id>]
 ```
 
 **Important for agents:** Always use the non-interactive form. The interactive prompt
 blocks execution and cannot be answered programmatically.
+
+**Team** (SKILL.md Step 1c, substep 5): omit `--team-id` when the team list has 0 or 1
+team, when the run is headless, or when the list command itself fails. With two or more
+teams and someone to answer, ask which one, offering "Don't pick a team (you'll get your only team if you're on exactly one; otherwise the app has no team and the whole org can see it)"
+too. `-t/--team-id` is checked against the teams `GET /org/{org}/user/{user}/teams`
+returns (your own teams; every org team with the READ_ALL_APPLICATIONS permission) before
+anything is created, so "Invalid team ID provided" means no app was created. A caller
+without the team-write permission on two or more teams who omits it gets an HTTP 400
+naming `teamId`, also with no app created. Never retry either blindly; explain and ask
+(headless: stop and report the choices). The command does not print the app's team; see
+platform-model.md ("Choosing a team for a new App") for reading it back before announcing it.
 
 ---
 

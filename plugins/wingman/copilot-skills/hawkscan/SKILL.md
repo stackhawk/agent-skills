@@ -20,8 +20,7 @@ description: >
 
 # HawkScan Skill
 
-This skill enables Claude to act as the security testing orchestrator in an agentic
-coding loop. The core workflow is:
+This skill enables Claude to act as the security testing orchestrator in an agentic coding loop. The core workflow is:
 
 **Code changes → Start Application/API → Configure HawkScan → Run scan → Parse findings → Generate fix tasks → Repeat**
 
@@ -174,8 +173,7 @@ a scan-time step (Step 1c), not part of discovery.
 → Docs-first source table (which files to read and what to harvest):
   [`references/app-discovery.md`](references/app-discovery.md)
 
-Record what discovery produced — surfaces, run command, host/port, auth shape — Step 1c and
-Step 2 consume them.
+Record what discovery produced — surfaces, run command, host/port, auth shape — Step 1c and Step 2 consume them.
 
 **SPA rule:** if the app is a client-rendered JS front end, never scan it without the Ajax
 Spider, and note that a separate backend API is usually the higher-value target. Full
@@ -189,16 +187,19 @@ strategy, frontend-vs-backend scenarios, and config templates:
 3. **Credentials?** The preflight line verifies them (`HAWK_API_KEY`, or `~/.hawk/hawk.properties` from `hawk init`).
    Any **non-interactive session** (CI, container, headless agent): set `HAWK_API_KEY` and prefix every invocation
    with `API_KEY=$HAWK_API_KEY hawk <cmd>` — no `hawk init`, no browser; 401/403 = key wrong or missing. Interactive only: `hawk init --browser`.
-4. **Runtime?** Check `which hawk`. If found: use CLI. If not: check `docker --version`.
-   If both absent: see `references/installation.md`.
+4. **Runtime?** Check `which hawk`. If found: use CLI. If not: check `docker --version`. If both absent: see `references/installation.md`.
 5. **App exists?** Run `hawk op app list --format json`. Match by name (normalized: lowercased,
    `_` and `-` equivalent). Exactly one match → use its `applicationId`. Multiple matches →
-   pick by host if established, else surface to user. No match → create:
+   pick by host if established, else surface to user. No match → check teams, then create.
+   **Team:** `hawk op team list --format json` (`.data[]`: `id`, `name`; the teams you can put the app on). 0 or 1 team, or 2+ headless (no one can answer) → omit
+   `--team-id`. 2+ and someone can answer → ask which, listing the names plus a "Don't pick a team" option (full label in the Detail link below).
    ```bash
-   hawk create app --name "<repo-name>" --env <env-name>
+   hawk create app --name "<repo-name>" --env <env-name> [--team-id <team-id>]
    ```
-   Resolve `<env-name>` with the Env Name Algorithm above. Announce it (Progress output):
-   `StackHawk | Created app <name> (<appId>) - <url>`.
+   HTTP 400 naming `teamId` (the caller is on several teams and must pick one) → explain and ask again without "Don't pick a team"; headless →
+   stop and report the choices, never guess. "Invalid team ID provided" → explain and ask; never retry blindly. Team list
+   failed → create without one; on the `teamId` 400, tell the user to pass a team ID. Detail: [`references/platform-model.md`](references/platform-model.md#choosing-a-team-for-a-new-app)
+   Resolve `<env-name>` with the Env Name Algorithm above. Read the new app's team back (same section), then announce `StackHawk | Created app <name> (<appId>) on team <team|none> - <url>`; team unknown → drop "on team", never claim the whole org can see it.
 6. **Env exists?** Determine env name via Env Name Algorithm. Run
    `hawk op env list --app <APP_ID> --format json`. Reuse if exists; otherwise run
    `hawk op env create --app <APP_ID> --env <name> --host <url>`.
