@@ -491,7 +491,7 @@ steps:
       apiKey: ${{ secrets.HAWK_API_KEY }}
       args: |
         --sarif-ghas
-  - uses: github/codeql-action/upload-sarif@v3
+  - uses: github/codeql-action/upload-sarif@v4
     if: always()
     with:
       sarif_file: stackhawk-ghas.sarif
